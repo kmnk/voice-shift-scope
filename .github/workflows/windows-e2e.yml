@@ -24,6 +24,17 @@ jobs:
         run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - name: Install VB-CABLE
         uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
+      - name: Allow desktop apps to use the microphone
+        shell: pwsh
+        run: |
+          foreach ($root in 'HKLM:', 'HKCU:') {
+            $key = "$root\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"
+            New-Item -Path $key -Force | Out-Null
+            Set-ItemProperty -Path $key -Name Value -Value Allow
+            New-Item -Path "$key\NonPackaged" -Force | Out-Null
+            Set-ItemProperty -Path "$key\NonPackaged" -Name Value -Value Allow
+          }
+          Get-Service audiosrv, AudioEndpointBuilder | Format-Table -AutoSize Name, Status
       - run: cargo build --release -p voice-cli
       - name: Synthesize a test vowel
         run: target/release/voice-cli synth vowel --f0 150 --seconds 2 --out vowel150.wav
