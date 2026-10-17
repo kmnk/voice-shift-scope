@@ -7,3 +7,4 @@ publish.workspace = true
 [dependencies]
 cpal = "0.18"
 voice-domain.workspace = true
+thiserror.workspace = true

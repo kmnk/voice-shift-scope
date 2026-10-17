@@ -1,0 +1,59 @@
+name: windows-e2e
+
+# Windows のランナーに VB-CABLE を入れ、本物の WASAPI の経路を通して確かめる。
+# 今は声を変える処理を通さない loopback だけ。音声の実行（voice-runtime）ができたら e2e に替える。
+# ランナーは毎回作り直されるので、利用者の機器や設定には触れない。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "crates/voice-runtime/**"
+      - "crates/voice-cli/**"
+      - ".github/workflows/windows-e2e.yml"
+
+jobs:
+  with-vb-cable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Point bindgen at LLVM
+        shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+      - name: Install VB-CABLE
+        uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
+      - run: cargo build --release -p voice-cli
+      - name: Synthesize a test vowel
+        run: target/release/voice-cli synth vowel --f0 150 --seconds 2 --out vowel150.wav
+      - name: Loop it through VB-CABLE
+        shell: pwsh
+        run: |
+          target/release/voice-cli loopback --input-wav vowel150.wav --out-wav recorded.wav | Tee-Object -FilePath e2e-report.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report
+          path: |
+            e2e-report.json
+            recorded.wav
+
+  without-vb-cable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Point bindgen at LLVM
+        shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+      - run: cargo build --release -p voice-cli
+      - run: target/release/voice-cli synth vowel --f0 150 --seconds 1 --out vowel150.wav
+      - name: Expect exit code 2 when VB-CABLE is missing
+        shell: pwsh
+        run: |
+          target/release/voice-cli loopback --input-wav vowel150.wav
+          if ($LASTEXITCODE -ne 2) { Write-Error "expected exit code 2, got $LASTEXITCODE"; exit 1 }
+          exit 0

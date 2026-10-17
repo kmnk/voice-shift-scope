@@ -33,7 +33,8 @@ impl Resonance {
         (g, a1, a2)
     }
 
-    /// 周波数 `f` での振幅の応答。
+    /// 周波数 `f` での振幅の応答。`check`（フェーズ 2）でも使う。
+    #[allow(dead_code)]
     pub fn magnitude(&self, f: f64, sample_rate: f64) -> f64 {
         let (g, a1, a2) = self.coefficients(sample_rate);
         let w = 2.0 * PI * f / sample_rate;
@@ -108,6 +109,7 @@ impl XorShift {
     }
 }
 
+#[allow(dead_code)] // `check`（フェーズ 2）でも使う
 /// Hann の窓を掛けた、周波数 `f` での振幅（Goertzel と同じ値を直に計算する）。
 pub fn amplitude_at(x: &[f32], f: f64, sample_rate: f64) -> f64 {
     let n = x.len();
