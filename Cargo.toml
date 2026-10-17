@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+voice-domain = { path = "crates/voice-domain" }
+voice-app = { path = "crates/voice-app" }
+voice-dsp = { path = "crates/voice-dsp" }
+voice-runtime = { path = "crates/voice-runtime" }
+voice-tauri = { path = "crates/voice-tauri" }
+thiserror = "2"

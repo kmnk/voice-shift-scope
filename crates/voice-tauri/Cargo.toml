@@ -1,0 +1,11 @@
+[package]
+name = "voice-tauri"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+voice-domain.workspace = true
+voice-app.workspace = true
+voice-dsp.workspace = true
+voice-runtime.workspace = true

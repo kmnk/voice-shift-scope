@@ -1,0 +1,8 @@
+[package]
+name = "voice-app"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+voice-domain.workspace = true
