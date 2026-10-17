@@ -1,0 +1,29 @@
+name: windows-vbcable-probe
+
+# GitHub Actions の Windows のランナーに VB-CABLE を入れられるかと、
+# 入れたときに cpal が返す機器の名前を確かめる。
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Point bindgen at LLVM
+        shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+      - name: Install VB-CABLE
+        uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
+      - name: Show audio endpoints seen by Windows
+        shell: pwsh
+        run: Get-PnpDevice -Class AudioEndpoint | Format-Table -AutoSize Status, FriendlyName
+      - name: List audio devices
+        run: cargo run -q -p voice-cli -- devices > devices.json
+      - run: type devices.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: devices
+          path: devices.json
