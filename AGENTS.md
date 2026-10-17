@@ -26,6 +26,17 @@ cargo run -p voice-cli -- devices      # 録音と再生の機器を JSON で出
 cd frontend && npm ci && npm test && npm run typecheck
 ```
 
+Praat（Parselmouth）と突き合わせる:
+
+```
+cargo run -p voice-cli -- synth vowel --f0 100 --out /tmp/v100.wav
+uv run scripts/compare_praat.py /tmp/v100.wav --expect 700,1200,2600,3500 --formants 4 --ceiling 5000
+```
+
+- `scripts/compare_praat.py` はファイルを読むだけで書かない。`--expect` か `--compare` を渡すと、許す差（既定 F1〜F3 5%、F4 8%）を超えたとき終了コード 1
+- 合成の母音は共鳴を F1〜F4 の 4 つしか持たないので、Praat の既定（5 個、5500 Hz）では F2 と F3 の間に無い共鳴を置く。合成の母音には `--formants 4 --ceiling 5000` を使う
+- sandbox の中では `UV_CACHE_DIR=$TMPDIR/uv` を付ける
+
 - Signalsmith Stretch の wrapper（`signalsmith-stretch`）は build の時に `bindgen` を使うので、libclang が要る。macOS は Xcode の Command Line Tools、Windows は LLVM（GitHub Actions のランナーには入っている。`LIBCLANG_PATH` を `.github/workflows/ci.yml` で設定している）
 - sandbox の中で動かすエージェントは、home ディレクトリの `.cargo` に書けないので、`CARGO_HOME=$PWD/.cargo-home` を付けて動かす（`.gitignore` 済み）。npm は `--cache "$TMPDIR/npm-cache"` を付ける
 - Windows でしか動かないもの（WASAPI、VB-CABLE、Tauri の Windows の build）は、GitHub Actions の `windows-latest` で確かめる。`gh workflow run ci.yml` で動かし、`gh run watch` で待つ
