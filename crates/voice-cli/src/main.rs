@@ -217,7 +217,7 @@ fn run_loopback(input_wav: &std::path::Path, lead: f64, out_wav: Option<&std::pa
     let rms = |x: &[f32]| (x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / x.len().max(1) as f64).sqrt();
     let level_db = match (source_onset, recorded_onset) {
         (Some(s), Some(r)) => {
-            let n = signal.len().min(recording.samples.len().saturating_sub(r));
+            let n = (played.len() - s).min(recording.samples.len().saturating_sub(r));
             Some(20.0 * (rms(&recording.samples[r..r + n]) / rms(&played[s..s + n])).log10())
         }
         _ => None,
