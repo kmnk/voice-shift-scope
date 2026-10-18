@@ -6,6 +6,8 @@ pub mod analyzer;
 pub mod harmonics;
 pub mod lpc;
 pub mod resample;
+pub mod shifter;
 pub mod yin;
 
 pub use analyzer::{ANALYSIS_WINDOW, DefaultAnalyzer};
+pub use shifter::{DEFAULT_BLOCK_SECONDS, SignalsmithShifter};

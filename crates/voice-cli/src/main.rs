@@ -51,13 +51,16 @@ enum Command {
     },
     /// 受け入れの基準を試験用の信号で判定する。FAIL があれば終了コード 1
     Check {
-        /// 判定する基準（カンマ区切り。今あるのは B1・B3）
+        /// 判定する基準（カンマ区切り。今あるのは A1〜A4・B1・B3）
         #[arg(long, value_delimiter = ',', default_value = "B1,B3")]
         criteria: Vec<String>,
         #[arg(long, default_value_t = 5500.0)]
         ceiling: f32,
         #[arg(long, default_value_t = 10)]
         lpc_order: u32,
+        /// 声を変える処理の窓の長さ（ms）。省くと既定（70 ms）
+        #[arg(long)]
+        block_ms: Option<f32>,
         /// 結果を JSON で出す
         #[arg(long)]
         json: bool,
@@ -106,7 +109,12 @@ fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Devices => devices(),
         Command::Analyze { wav, ceiling, lpc_order } => run_analyze(&wav, ceiling, lpc_order),
-        Command::Check { criteria, ceiling, lpc_order, json } => run_check(&criteria, ceiling, lpc_order, json),
+        Command::Check { criteria, ceiling, lpc_order, block_ms, json } => {
+            if let Some(ms) = block_ms {
+                let _ = check::BLOCK_SECONDS.set(ms / 1000.0);
+            }
+            run_check(&criteria, ceiling, lpc_order, json)
+        }
         Command::Loopback { input_wav, lead, out_wav } => run_loopback(&input_wav, lead, out_wav.as_deref()),
         Command::Synth { signal } => {
             let (samples, out) = match signal {

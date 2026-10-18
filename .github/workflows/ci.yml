@@ -28,7 +28,7 @@ jobs:
       - name: List audio devices
         run: cargo run -q -p voice-cli -- devices
       - name: Check acceptance criteria that already pass
-        run: cargo run -q --release -p voice-cli -- check --criteria B3
+        run: cargo run -q --release -p voice-cli -- check --criteria A1,A4,B3
 
   frontend:
     runs-on: ubuntu-latest

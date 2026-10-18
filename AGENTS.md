@@ -37,7 +37,7 @@ uv run scripts/compare_praat.py /tmp/v100.wav --expect 700,1200,2600,3500 --form
 - 合成の母音は共鳴を F1〜F4 の 4 つしか持たないので、Praat の既定（5 個、5500 Hz）では F2 と F3 の間に無い共鳴を置く。合成の母音には `--formants 4 --ceiling 5000` を使う
 - sandbox の中では `UV_CACHE_DIR=$TMPDIR/uv` を付ける
 
-- Signalsmith Stretch の wrapper（`signalsmith-stretch`）は build の時に `bindgen` を使うので、libclang が要る。macOS は Xcode の Command Line Tools、Windows は LLVM（GitHub Actions のランナーには入っている。`LIBCLANG_PATH` を `.github/workflows/ci.yml` で設定している）
+- 声を変える処理は、`third_party/` に取り込んだ Signalsmith Stretch 1.4.0（C++、MIT）を、`crates/voice-dsp/cpp/stretch_wrapper.cpp` と `crates/voice-dsp/build.rs`（`cc` crate）で build して呼ぶ。C++17 のコンパイラが要る（macOS は Xcode の Command Line Tools、Windows は MSVC）。crates.io の `signalsmith-stretch` 0.1.3 は、中の版が古くフォルマントの包絡が粗いことと、`set_formant_base` が `setFormantSemitones` を呼ぶ誤りがあるので使わない
 - sandbox の中で動かすエージェントは、home ディレクトリの `.cargo` に書けないので、`CARGO_HOME=$PWD/.cargo-home` を付けて動かす（`.gitignore` 済み）。npm は `--cache "$TMPDIR/npm-cache"` を付ける
 - Windows でしか動かないもの（WASAPI、VB-CABLE、Tauri の Windows の build）は、GitHub Actions の `windows-latest` で確かめる。`gh workflow run ci.yml` で動かし、`gh run watch` で待つ
 
@@ -46,7 +46,7 @@ uv run scripts/compare_praat.py /tmp/v100.wav --expect 700,1200,2600,3500 --form
 作りかけ。今あるのは次のとおり。画面の試験（`windows-ui.yml`）はまだ無い。
 
 - `cargo test --workspace`: 値の型と `VoiceSession` の規則、use case、分析の部品、試験用の信号（`synth`）、VB-CABLE を driver の名前で見つける処理の試験
-- `cargo run --release -p voice-cli -- check --criteria B1,B3 [--json]`: spec の受け入れの基準を、試験用の信号で判定する。FAIL があれば終了コード 1。今あるのは B1・B3（B1 は F0 150 Hz の F1 で FAIL する。Praat も同じ値を出す）
+- `cargo run --release -p voice-cli -- check --criteria B1,B3 [--json]`: spec の受け入れの基準を、試験用の信号で判定する。FAIL があれば終了コード 1。今あるのは A1〜A4・B1・B3。B1 は F0 150 Hz の F1 で FAIL し（Praat も同じ値を出す）、A2 と A3 にも 1 つずつ FAIL がある（どちらも F1 か F3 が倍音の近くにある場合）。`--block-ms` で声を変える処理の窓の長さを替えて比べられる
 - `voice-cli analyze <wav>` の CSV を `scripts/compare_praat.py <wav> --compare <csv>` に渡すと、Praat との差を出す
 - `scripts/compare_praat.py`: Praat の推定値との突き合わせ（上の「build と test」）
 - `windows-e2e.yml`（Windows のランナー）: VB-CABLE を入れたランナーで `voice-cli loopback` を動かし、合成の母音を VB-CABLE に流して録り返す。成功すると artifact `e2e-report` の `e2e-report.json` に `"signal_detected": true` と遅れ（`latency_ms`）が出る。VB-CABLE の無いランナーでは終了コード 2 を確かめる

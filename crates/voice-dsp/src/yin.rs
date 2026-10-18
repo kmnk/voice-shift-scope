@@ -15,7 +15,7 @@ pub struct Yin {
 
 impl Default for Yin {
     fn default() -> Self {
-        Self { min_f0: 60.0, max_f0: 1000.0, threshold: 0.15, silence_dbfs: -55.0, diff: Vec::new() }
+        Self { min_f0: 40.0, max_f0: 1000.0, threshold: 0.15, silence_dbfs: -55.0, diff: Vec::new() }
     }
 }
 
