@@ -58,7 +58,15 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force ui-out\saved, ui-out\config | Out-Null
           $p = Start-Process target\release\voice-shift-scope.exe -ArgumentList '--input-wav', 'vowel150.wav', '--ui-selftest', "$PWD\ui-out" -PassThru
-          if (-not $p.WaitForExit(180000)) { Stop-Process -Id $p.Id -Force; Write-Error "self-test did not finish in 180 s"; exit 1 }
+          Start-Sleep -Seconds 20
+          # 止まったときの手掛かりに、20 秒後の画面を撮る
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$PWD\ui-out\screen-20s.png")
+          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Format-Table -AutoSize Id, StartTime | Out-String | Set-Content ui-out\webview-processes.txt
+          if (-not $p.WaitForExit(160000)) { Stop-Process -Id $p.Id -Force; Get-Content ui-out\app-log.txt -ErrorAction SilentlyContinue; Write-Error "self-test did not finish in 180 s"; exit 1 }
           Get-Content ui-out\ui-report.json
           exit $p.ExitCode
       - uses: actions/upload-artifact@v4

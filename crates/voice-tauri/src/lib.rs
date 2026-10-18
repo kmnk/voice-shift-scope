@@ -179,6 +179,7 @@ async fn save_png(app: tauri::AppHandle, bytes: Vec<u8>, file_name: String) -> R
 /// 画面の通しの試験: 画面の側が、利用者と同じ操作（ボタンを押す・値を入れる）を順に行い、結果を書いて終わる。
 #[tauri::command]
 fn selftest_config(state: State<AppState>) -> Option<String> {
+    selftest_log("selftest_config が呼ばれた");
     state.selftest_dir.as_ref().map(|d| d.display().to_string())
 }
 
@@ -192,6 +193,18 @@ fn finish_selftest(app: tauri::AppHandle, state: State<AppState>, report: String
     }
     app.exit(if passed { 0 } else { 1 });
     Ok(())
+}
+
+/// `--ui-selftest <dir>` のときだけ、<dir>/app-log.txt に起動の経過を書く（試験が止まったときの手掛かり）。
+fn selftest_log(line: &str) {
+    if let Some(dir) = arg_value("--ui-selftest") {
+        use std::io::Write;
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(PathBuf::from(dir).join("app-log.txt")) {
+            let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+            let _ = writeln!(f, "{t:.3} {line}");
+        }
+    }
 }
 
 fn arg_value(name: &str) -> Option<String> {
@@ -222,7 +235,9 @@ fn input_wav_from_args() -> Option<Vec<f32>> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .on_page_load(|_webview, payload| selftest_log(&format!("page load {:?} {}", payload.event(), payload.url())))
         .setup(|app| {
+            selftest_log("setup を始めた");
             let publisher = Arc::new(ChannelPublisher::default());
             let mut pipeline = RuntimePipeline::new(
                 Box::new(|rate| Box::new(SignalsmithShifter::new(rate))),
@@ -240,6 +255,7 @@ pub fn run() {
                 preferences: PreferencesStore::new(config_dir),
                 selftest_dir: arg_value("--ui-selftest").map(PathBuf::from),
             });
+            selftest_log("setup を終えた");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
