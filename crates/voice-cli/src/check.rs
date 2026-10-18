@@ -22,24 +22,42 @@ pub struct Outcome {
     pub detail: Value,
 }
 
-/// B1: 合成の母音で、推定した F1〜F3 が ±5%、F4 が ±8% 以内。
-/// `resonances` は信号を作る共鳴で、正しい値は常に spec の値（SPEC_VOWEL）と比べる。
+/// 試験用の母音（`synth vowel --seconds 1.5`）を、Praat（Parselmouth 0.4.7、Burg 法、5 個・5500 Hz）で分析した
+/// F1〜F4 の中央値（0.2 秒より後）。作り直すときは `scripts/praat_reference.sh`。
+/// 2026-10-18 に macOS で出した値。合成の母音や分析の既定を替えたら作り直す。
+pub const PRAAT_REFERENCE: [(f64, [f32; 4]); 3] = [
+    (100.0, [720.0, 1215.9, 2576.4, 3471.5]),
+    (150.0, [761.3, 1214.4, 2551.9, 3425.4]),
+    (220.0, [710.1, 1231.8, 2606.6, 3525.2]),
+];
+
+/// B1: 試験用の母音（F0 100・150・220 Hz）で、推定した F1〜F4 が、同じ設定の Praat の値から ±2% 以内。
+/// 正しい値（作った共鳴）との差も、参考として出す（F1 が倍音に引かれる LPC の性質で、Praat も同じだけずれる）。
+/// `resonances` は信号を作る共鳴。
 pub fn b1(resonances: &[Resonance], settings: &AnalysisSettings) -> Vec<Outcome> {
-    let tolerance = [5.0, 5.0, 5.0, 8.0];
-    [100.0, 150.0]
+    PRAAT_REFERENCE
         .iter()
-        .map(|&f0| {
+        .map(|&(f0, praat)| {
             let x = synth::vowel(f0, resonances, RATE as f64, 1.5, 0.5);
             let frames = analyze_signal(&x, RATE, settings);
             let med = formant_medians(&frames, SKIP);
             let mut pass = true;
             let rows: Vec<Value> = (0..4)
                 .map(|i| {
-                    let expected = SPEC_VOWEL[i].frequency as f32;
-                    let diff = med[i].map(|v| (v / expected - 1.0) * 100.0);
-                    let ok = diff.is_some_and(|d| d.abs() <= tolerance[i]);
+                    let diff = med[i].map(|v| (v / praat[i] - 1.0) * 100.0);
+                    let ok = diff.is_some_and(|d| d.abs() <= 2.0);
                     pass &= ok;
-                    json!({ "formant": format!("F{}", i + 1), "expected": expected, "estimated": med[i], "diff_percent": diff, "tolerance_percent": tolerance[i], "pass": ok })
+                    let truth = SPEC_VOWEL[i].frequency as f32;
+                    json!({
+                        "formant": format!("F{}", i + 1),
+                        "praat": praat[i],
+                        "estimated": med[i],
+                        "diff_from_praat_percent": diff,
+                        "tolerance_percent": 2.0,
+                        "true_value": truth,
+                        "diff_from_true_percent": med[i].map(|v| (v / truth - 1.0) * 100.0),
+                        "pass": ok,
+                    })
                 })
                 .collect();
             Outcome { criterion: "B1".into(), case: format!("F0 {f0} Hz"), pass, detail: json!(rows) }
@@ -227,7 +245,7 @@ pub fn run(criteria: &[String], settings: &AnalysisSettings) -> Result<Vec<Outco
 mod tests {
     use super::*;
 
-    /// F1 を 20% ずらして作った信号では、B1 が FAIL になる。
+    /// F1 を 20% ずらして作った信号では、Praat の値（ずらす前の信号のもの）から外れて、B1 が FAIL になる。
     #[test]
     fn b1_fails_when_signal_f1_is_off_by_twenty_percent() {
         let mut shifted = SYNTH_VOWEL;
