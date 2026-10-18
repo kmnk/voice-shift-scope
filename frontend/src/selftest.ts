@@ -98,6 +98,25 @@ export async function runSelftest(dir: string): Promise<void> {
       const saveEnabled = !disabled("save");
       record("B5-freeze", frozen("before") && frozen("after") && JSON.stringify(held) === JSON.stringify(still), { held, still });
 
+      // 止めている間に図の大きさが変わっても（窓の最小化や大きさの変更）、描いた点が残る
+      const inked = () => {
+        const cv = q<HTMLCanvasElement>("#before-gram");
+        const data = cv.getContext("2d")!.getImageData(0, 0, cv.width, cv.height).data;
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) if (data[i] < 200) n++;
+        return n;
+      };
+      const inkBefore = inked();
+      const screen = q("#screen");
+      screen.style.gridTemplateRows = "2fr 3fr";
+      window.dispatchEvent(new Event("resize"));
+      await sleep(300);
+      const inkResized = inked();
+      screen.style.gridTemplateRows = "";
+      window.dispatchEvent(new Event("resize"));
+      await sleep(300);
+      record("held-survives-resize", inkBefore > 1000 && inkResized > inkBefore * 0.3, { inkBefore, inkResized });
+
       click("save");
       const saved = await waitFor(() => q("#message").dataset.kind === "saved", 10_000);
       record("C5-save", saveEnabled && saved, { saveEnabled, message: q("#message").textContent });

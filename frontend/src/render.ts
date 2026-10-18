@@ -11,6 +11,8 @@ const DB_FLOOR = -100;
 
 /// canvas の画素数を、表示の大きさと画面の拡大率に合わせる。変わったら true。
 export function fitCanvas(canvas: HTMLCanvasElement): boolean {
+  // 最小化の間などは表示の大きさが 0 になる。そのときは画素数を替えない（替えると描いたものが消える）
+  if (canvas.clientWidth === 0 || canvas.clientHeight === 0) return false;
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
   const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
@@ -24,14 +26,19 @@ export function fitCanvas(canvas: HTMLCanvasElement): boolean {
 /// 1 列が分析の 1 フレーム（10 ms）。倍音は観測できたものだけを灰色の点で、F1〜F4 は色の点で描く。
 /// 観測できていない倍音は描かない（フォルマントと混ざり、前と後の違いが見えにくくなるため）。
 /// 音の強さの濃淡は描かない（今の瞬間のスペクトルで見る）。
+/// 描き直しのために覚えておくフレームの数（10 ms ごとなので 20 秒）。
+const HISTORY = 2000;
+
 export class Spectrogram {
   private ctx: CanvasRenderingContext2D;
   private axisMax = 0;
+  /// 描いたフレーム。窓の大きさや縦の範囲が変わったら、これから描き直す
+  private history: Frame[] = [];
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
   }
 
-  /// 大きさか縦の範囲が変わったら描き直す（過去の点は消える）。
+  /// 大きさか縦の範囲が変わったら、覚えているフレームから描き直す。
   prepare(axisMax: number): void {
     if (fitCanvas(this.canvas) || axisMax !== this.axisMax) {
       this.axisMax = axisMax;
@@ -39,7 +46,16 @@ export class Spectrogram {
       this.ctx.fillStyle = "#fff";
       this.ctx.fillRect(0, 0, width, height);
       this.drawAxis();
+      const dpr = window.devicePixelRatio || 1;
+      const columns = Math.ceil((width - AXIS * dpr) / Math.max(1, Math.round(dpr)));
+      for (const frame of this.history.slice(-columns)) this.draw(frame);
     }
+  }
+
+  push(frame: Frame): void {
+    this.history.push(frame);
+    if (this.history.length > HISTORY) this.history.splice(0, this.history.length - HISTORY);
+    this.draw(frame);
   }
 
   private drawAxis(): void {
@@ -59,7 +75,7 @@ export class Spectrogram {
     }
   }
 
-  push(frame: Frame): void {
+  private draw(frame: Frame): void {
     const { width, height } = this.canvas;
     const dpr = window.devicePixelRatio || 1;
     const axis = Math.round(AXIS * dpr);
