@@ -36,6 +36,8 @@ input[type="number"] { width: 64px; }
 .toggle button { flex: 1; }
 .toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 button[aria-pressed="true"] { background: var(--frozen); color: #fff; }
+/* アイコン（⏸ ▶ など）が絵文字として描かれると文字より背が高くなり、英語のときにボタンの高さがそろわないので、高さを決めて中央にそろえる */
+button { height: 24px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; gap: 2px; white-space: nowrap; }
 .screen { display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: 3fr 2fr; gap: 8px; min-height: 0; }
 .gram-before { grid-column: 1 / span 5; }
 .gram-after { grid-column: 6 / span 5; }
