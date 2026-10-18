@@ -73,9 +73,9 @@ function showDevices(d: Devices): void {
   cable.textContent = d.cable ? "" : t("cable.missing");
   cable.classList.toggle("missing", !d.cable);
   cable.dataset.found = String(!!d.cable);
+  // 出力とモニターには同じ音を流す（モニターは出しているものを確かめるため。2026-10-18 に利用者が 1 つにした）
   document.querySelectorAll<HTMLButtonElement>("button[data-route]").forEach((b) => {
-    const current = b.dataset.route === "output" ? d.outputSource : d.monitorSource;
-    b.setAttribute("aria-pressed", String(b.dataset.source === current));
+    b.setAttribute("aria-pressed", String(b.dataset.source === d.outputSource));
   });
   ($("start") as HTMLButtonElement).disabled = d.running || !d.selectedOutput;
   ($("output") as HTMLSelectElement).disabled = d.running;
@@ -278,15 +278,14 @@ function wire(): void {
   $("volume").addEventListener("input", (e) => void call("set_monitor_volume", { volume: Number((e.target as HTMLInputElement).value) }));
   link("pitch", "pitch-num");
   link("formant", "formant-num");
-  // 続けて押しても前の押した分を失わないよう、選んでいる音は画面の側で先に替えてから送る
   document.querySelectorAll<HTMLButtonElement>("button[data-route]").forEach((b) =>
     b.addEventListener("click", async () => {
       if (!devices) return;
       const source = b.dataset.source as Devices["outputSource"];
-      if (b.dataset.route === "output") devices.outputSource = source;
-      else devices.monitorSource = source;
+      devices.outputSource = source;
+      devices.monitorSource = source;
       showDevices(devices);
-      const d = await call<Devices>("set_routing", { output: devices.outputSource, monitor: devices.monitorSource });
+      const d = await call<Devices>("set_routing", { output: source, monitor: source });
       if (d) showDevices(d);
     }),
   );

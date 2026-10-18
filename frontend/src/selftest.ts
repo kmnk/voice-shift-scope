@@ -137,21 +137,13 @@ export async function runSelftest(dir: string): Promise<void> {
         formantReset: value("formant-num"),
       });
 
-      // 出力とモニターに流す音の切り替え（続けて押しても前の押した分を失わない）
-      click("output-original");
-      await sleep(300);
-      const outOriginal = pressed("output-original");
-      click("monitor-original");
-      await sleep(300);
-      const monOriginal = pressed("monitor-original");
-      click("output-shifted");
-      click("monitor-shifted");
-      await sleep(800);
-      record("routing", outOriginal && monOriginal && pressed("output-shifted") && pressed("monitor-shifted"), {
-        outOriginal,
-        monOriginal,
-        message: q("#message").textContent,
-      });
+      // 出力とモニターに流す音の切り替え（1 つで両方）
+      click("route-original");
+      await sleep(400);
+      const toOriginal = pressed("route-original") && !pressed("route-shifted");
+      click("route-shifted");
+      await sleep(400);
+      record("routing", toOriginal && pressed("route-shifted"), { toOriginal, message: q("#message").textContent });
 
       // 画面に収まり、縦に流さなくてよい
       const root = document.documentElement;
