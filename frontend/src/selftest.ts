@@ -107,15 +107,22 @@ export async function runSelftest(dir: string): Promise<void> {
         return n;
       };
       const inkBefore = inked();
+      const heightBefore = q<HTMLCanvasElement>("#before-gram").height;
       const screen = q("#screen");
-      screen.style.gridTemplateRows = "2fr 3fr";
+      screen.style.gridTemplateRows = "1fr 3fr";
       window.dispatchEvent(new Event("resize"));
       await sleep(300);
+      const heightResized = q<HTMLCanvasElement>("#before-gram").height;
       const inkResized = inked();
       screen.style.gridTemplateRows = "";
       window.dispatchEvent(new Event("resize"));
       await sleep(300);
-      record("held-survives-resize", inkBefore > 1000 && inkResized > inkBefore * 0.3, { inkBefore, inkResized });
+      record("held-survives-resize", heightResized !== heightBefore && inkBefore > 1000 && inkResized > inkBefore * 0.2, {
+        heightBefore,
+        heightResized,
+        inkBefore,
+        inkResized,
+      });
 
       click("save");
       const saved = await waitFor(() => q("#message").dataset.kind === "saved", 10_000);
