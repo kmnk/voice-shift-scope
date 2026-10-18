@@ -38,3 +38,5 @@ th:first-child, td:first-child { text-align: left; }
 td.stale { color: #aaa; }
 .differs { color: var(--frozen); }
 button[aria-pressed="true"] { background: var(--frozen); color: #fff; }
+.toggle button { flex: 1; }
+.toggle button[aria-pressed="true"] { background: #1f6fd1; color: #fff; }

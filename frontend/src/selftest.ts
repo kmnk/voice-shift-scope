@@ -105,6 +105,22 @@ export async function runSelftest(dir: string): Promise<void> {
         formant,
         formantReset: value("formant-num"),
       });
+      // 出力とモニターに流す音の切り替え
+      click("output-original");
+      await sleep(500);
+      const outOriginal = q('[data-testid="output-original"]').getAttribute("aria-pressed");
+      click("monitor-original");
+      await sleep(500);
+      const monOriginal = q('[data-testid="monitor-original"]').getAttribute("aria-pressed");
+      click("output-shifted");
+      click("monitor-shifted");
+      await sleep(500);
+      record("routing", outOriginal === "true" && monOriginal === "true" && q('[data-testid="output-shifted"]').getAttribute("aria-pressed") === "true", {
+        outOriginal,
+        monOriginal,
+        message: q("#message").textContent,
+      });
+
       // 画面に収まり、縦に流さなくてよい
       const root = document.documentElement;
       record("fits-window", root.scrollHeight <= window.innerHeight + 1, { scrollHeight: root.scrollHeight, innerHeight: window.innerHeight });

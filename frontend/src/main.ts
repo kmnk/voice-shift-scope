@@ -50,6 +50,10 @@ function showDevices(d: Devices): void {
       '出力の先の VB-CABLE が見つかりません。VB-CABLE を入れてから起動し直してください（入手先: https://vb-audio.com/Cable/ ）。機器の名前を変えていたら戻してください';
     cable.classList.add("missing");
   }
+  document.querySelectorAll<HTMLButtonElement>("button[data-route]").forEach((b) => {
+    const current = b.dataset.route === "output" ? d.outputSource : d.monitorSource;
+    b.setAttribute("aria-pressed", String(b.dataset.source === current));
+  });
   ($("start") as HTMLButtonElement).disabled = d.running || !d.cable;
   ($("stop") as HTMLButtonElement).disabled = !d.running;
   ($("input") as HTMLSelectElement).disabled = d.running;
@@ -201,6 +205,15 @@ function wire(): void {
   $("volume").addEventListener("input", (e) => void call("set_monitor_volume", { volume: Number((e.target as HTMLInputElement).value) }));
   link("pitch", "pitch-num");
   link("formant", "formant-num");
+  document.querySelectorAll<HTMLButtonElement>("button[data-route]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!devices) return;
+      const output = b.dataset.route === "output" ? b.dataset.source : devices.outputSource;
+      const monitor = b.dataset.route === "monitor" ? b.dataset.source : devices.monitorSource;
+      const d = await call<Devices>("set_routing", { output, monitor });
+      if (d) showDevices(d);
+    }),
+  );
   // 細かく合わせるための、決まった幅で上げ下げするボタンと、元に戻すボタン
   const defaults: Record<string, number> = { pitch: 0, formant: 1 };
   const decimals: Record<string, number> = { pitch: 1, formant: 2 };

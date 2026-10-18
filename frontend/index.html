@@ -12,6 +12,11 @@
         <h2>機器</h2>
         <label>入力 <select id="input"></select></label>
         <p id="cable" class="cable" data-testid="cable-status"></p>
+        <div class="row toggle" role="group" aria-label="出力する音">
+          <span>出力</span>
+          <button data-route="output" data-source="shifted" data-testid="output-shifted">変えた後</button>
+          <button data-route="output" data-source="original" data-testid="output-original">変える前</button>
+        </div>
         <div class="row">
           <button id="start" data-testid="start">開始</button>
           <button id="stop" data-testid="stop" disabled>停止</button>
@@ -55,6 +60,10 @@
       <section class="group">
         <h2>モニター</h2>
         <label><input id="monitor-on" type="checkbox" /> 聞く</label>
+        <div class="row toggle" role="group" aria-label="モニターで聞く音">
+          <button data-route="monitor" data-source="shifted" data-testid="monitor-shifted">変えた後</button>
+          <button data-route="monitor" data-source="original" data-testid="monitor-original">変える前</button>
+        </div>
         <select id="monitor"></select>
         <label>音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
       </section>

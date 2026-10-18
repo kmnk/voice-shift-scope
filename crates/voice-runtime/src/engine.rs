@@ -23,6 +23,9 @@ pub struct Shared {
     pub pitch_hint: AtomicU32,
     pub monitor_volume: AtomicU32,
     pub monitor_enabled: AtomicBool,
+    /// true なら変える前の音を流す（声を変える処理の遅れだけ遅らせて、切り替えても時刻が跳ばないように）。
+    pub output_original: AtomicBool,
+    pub monitor_original: AtomicBool,
     /// 処理した入力の標本の数。
     pub processed: AtomicU64,
     pub output_underruns: AtomicU64,
@@ -79,6 +82,10 @@ pub struct InputProcessor {
     after: HeapProd<f32>,
     seen_generation: u64,
     seen_hint: u32,
+    /// 変える前の音を、声を変える処理と同じだけ遅らせる輪の buffer
+    delay: Vec<f32>,
+    delay_pos: usize,
+    delayed_block: Vec<f32>,
 }
 
 impl InputProcessor {
@@ -101,6 +108,30 @@ impl InputProcessor {
             after,
             seen_generation: u64::MAX,
             seen_hint: 0,
+            delay: Vec::new(),
+            delay_pos: 0,
+            delayed_block: vec![0.0; BLOCK],
+        }
+    }
+
+    /// 変える前の音を遅らせる長さ（声を変える処理の遅れ）を決める。音声のスレッドで動かす前に呼ぶ。
+    pub fn with_original_delay(mut self, samples: usize) -> Self {
+        self.delay = vec![0.0; samples.max(1)];
+        self.delay_pos = 0;
+        self
+    }
+
+    fn delay_original(&mut self, start: usize) {
+        if self.delay.is_empty() {
+            self.delayed_block.copy_from_slice(&self.pending[start..start + BLOCK]);
+            return;
+        }
+        let n = self.delay.len();
+        for i in 0..BLOCK {
+            let x = self.pending[start + i];
+            self.delayed_block[i] = self.delay[self.delay_pos];
+            self.delay[self.delay_pos] = x;
+            self.delay_pos = (self.delay_pos + 1) % n;
         }
     }
 
@@ -115,13 +146,21 @@ impl InputProcessor {
         let mut start = 0;
         while self.pending.len() - start >= BLOCK {
             self.update_settings();
-            let block = &self.pending[start..start + BLOCK];
-            self.shifter.process(block, &mut self.out_block);
-            self.output.push_slice(&self.out_block);
-            if self.shared.monitor_enabled.load(Ordering::Relaxed) {
-                self.monitor.push_slice(&self.out_block);
+            self.shifter.process(&self.pending[start..start + BLOCK], &mut self.out_block);
+            self.delay_original(start);
+            if self.shared.output_original.load(Ordering::Relaxed) {
+                self.output.push_slice(&self.delayed_block);
+            } else {
+                self.output.push_slice(&self.out_block);
             }
-            self.before.push_slice(block);
+            if self.shared.monitor_enabled.load(Ordering::Relaxed) {
+                if self.shared.monitor_original.load(Ordering::Relaxed) {
+                    self.monitor.push_slice(&self.delayed_block);
+                } else {
+                    self.monitor.push_slice(&self.out_block);
+                }
+            }
+            self.before.push_slice(&self.pending[start..start + BLOCK]);
             self.after.push_slice(&self.out_block);
             self.shared.processed.fetch_add(BLOCK as u64, Ordering::Relaxed);
             start += BLOCK;
@@ -334,6 +373,44 @@ mod tests {
             }
         }
         assert_eq!(missing_after_warmup, 0);
+    }
+
+    struct Silence;
+    impl VoiceShifter for Silence {
+        fn set(&mut self, _: ShiftSettings) {}
+        fn process(&mut self, _input: &[f32], output: &mut [f32]) {
+            output.fill(0.0);
+        }
+        fn latency(&self) -> usize {
+            700
+        }
+    }
+
+    /// 出力に変える前の音を選ぶと、声を変える処理の遅れと同じだけ遅れた入力がそのまま出る。
+    #[test]
+    fn original_routing_outputs_input_delayed_by_shifter_latency() {
+        let shared = Shared::new(ShiftSettings::NONE, 1.0, false);
+        shared.output_original.store(true, Ordering::Relaxed);
+        let (out_prod, mut out_cons) = HeapRb::<f32>::new(48_000).split();
+        let (mon_prod, _m) = HeapRb::<f32>::new(48_000).split();
+        let (b_prod, _b) = HeapRb::<f32>::new(48_000).split();
+        let (a_prod, _a) = HeapRb::<f32>::new(48_000).split();
+        let mut p = InputProcessor::new(Box::new(Silence), shared.clone(), out_prod, mon_prod, b_prod, a_prod)
+            .with_original_delay(700);
+        let input: Vec<f32> = (0..4800).map(|i| i as f32).collect();
+        p.push(&input);
+        let mut out = vec![0.0f32; 4800];
+        out_cons.pop_slice(&mut out);
+        assert!(out[..700].iter().all(|v| *v == 0.0));
+        assert_eq!(out[700], 0.0);
+        assert_eq!(out[701], 1.0);
+        assert_eq!(out[4799], 4099.0);
+        // 変えた後に戻すと、声を変える処理の出力（ここでは無音）になる
+        shared.output_original.store(false, Ordering::Relaxed);
+        p.push(&vec![1.0f32; 480]);
+        let mut next = vec![9.0f32; 480];
+        out_cons.pop_slice(&mut next);
+        assert!(next.iter().all(|v| *v == 0.0));
     }
 
     #[test]

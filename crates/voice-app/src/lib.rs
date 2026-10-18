@@ -4,7 +4,7 @@
 use thiserror::Error;
 use voice_domain::ports::{AudioDevices, AudioPipeline, PipelineConfig};
 use voice_domain::{
-    AnalysisSettings, DeviceDirection, DeviceList, DomainError, MonitorVolume, SessionState, ShiftSettings,
+    AnalysisSettings, DeviceDirection, DeviceList, DomainError, MonitorVolume, Routing, SessionState, ShiftSettings,
     VoiceSession,
 };
 
@@ -60,6 +60,7 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
             let device = monitor.device.as_ref().and_then(|d| list.id(d.raw(), DeviceDirection::Output).ok());
             let _ = session.set_monitor(monitor.enabled && device.is_some(), device);
             session.set_monitor_volume(monitor.volume);
+            session.set_routing(previous.routing());
             session.change_shift(previous.shift());
             session.change_analysis(previous.analysis());
             self.session = session;
@@ -94,6 +95,15 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         Ok(())
     }
 
+    /// 出力とモニターに、変える前と後のどちらの音を流すかを切り替える。
+    pub fn set_routing(&mut self, routing: Routing) -> Result<(), AppError> {
+        self.session.set_routing(routing);
+        if self.session.state() == SessionState::Running {
+            self.pipeline.set_routing(routing).map_err(|e| AppError::Pipeline(Box::new(e)))?;
+        }
+        Ok(())
+    }
+
     pub fn start(&mut self) -> Result<(), AppError> {
         let mut next = self.session.clone();
         next.start()?;
@@ -101,6 +111,7 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
             input: next.input().cloned().ok_or(DomainError::NoInputDevice)?,
             output: next.output().cloned().ok_or(DomainError::NoVirtualCable)?,
             monitor: next.monitor().clone(),
+            routing: next.routing(),
             shift: next.shift(),
             analysis: next.analysis(),
         };
@@ -158,6 +169,7 @@ mod tests {
         Shift(ShiftSettings),
         Analysis(AnalysisSettings),
         Monitor(MonitorSettings),
+        Routing(Routing),
     }
 
     #[derive(Default)]
@@ -189,6 +201,10 @@ mod tests {
         }
         fn set_monitor(&mut self, m: MonitorSettings) -> Result<(), FakeError> {
             self.calls.borrow_mut().push(Call::Monitor(m));
+            Ok(())
+        }
+        fn set_routing(&mut self, r: Routing) -> Result<(), FakeError> {
+            self.calls.borrow_mut().push(Call::Routing(r));
             Ok(())
         }
     }
@@ -264,6 +280,20 @@ mod tests {
         assert!(matches!(calls[2], Call::Monitor(ref m) if m.enabled));
         assert!(matches!(calls[3], Call::Monitor(ref m) if m.volume.get() == 0.5));
         assert_eq!(calls[4], Call::Stop);
+    }
+
+    #[test]
+    fn routing_is_kept_while_stopped_and_sent_while_running() {
+        use voice_domain::AudioSource;
+        let (mut s, calls, _) = studio(true);
+        let original_out = Routing { output: AudioSource::Original, monitor: AudioSource::Shifted };
+        s.set_routing(original_out).unwrap();
+        assert!(calls.borrow().is_empty());
+        s.start().unwrap();
+        assert!(matches!(calls.borrow()[0], Call::Start(ref c) if c.routing == original_out));
+        let both_original = Routing { output: AudioSource::Original, monitor: AudioSource::Original };
+        s.set_routing(both_original).unwrap();
+        assert_eq!(calls.borrow()[1], Call::Routing(both_original));
     }
 
     #[test]

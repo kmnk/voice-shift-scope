@@ -2,7 +2,7 @@
 
 use crate::{
     AnalysisFrame, AnalysisPair, AnalysisSettings, DeviceId, DeviceList, Formant, Frequency, Harmonic,
-    MonitorSettings, SampleRate, ShiftSettings, VirtualCable,
+    MonitorSettings, Routing, SampleRate, ShiftSettings, VirtualCable,
 };
 
 /// 声を変える処理。音声のスレッドから呼ばれるので、`process` の中でメモリを確保しない。
@@ -52,6 +52,7 @@ pub struct PipelineConfig {
     pub input: DeviceId,
     pub output: VirtualCable,
     pub monitor: MonitorSettings,
+    pub routing: Routing,
     pub shift: ShiftSettings,
     pub analysis: AnalysisSettings,
 }
@@ -64,6 +65,7 @@ pub trait AudioPipeline {
     fn set_shift(&mut self, shift: ShiftSettings) -> Result<(), Self::Error>;
     fn set_analysis(&mut self, analysis: AnalysisSettings) -> Result<(), Self::Error>;
     fn set_monitor(&mut self, monitor: MonitorSettings) -> Result<(), Self::Error>;
+    fn set_routing(&mut self, routing: Routing) -> Result<(), Self::Error>;
 }
 
 /// 分析の結果の行き先。

@@ -12,7 +12,7 @@ mod settings;
 pub use analysis::{AnalysisFrame, AnalysisPair, Decibels, Formant, Frequency, Harmonic, SamplePosition, SampleRate};
 pub use devices::{DeviceDirection, DeviceId, DeviceInfo, DeviceList, VirtualCable};
 pub use error::DomainError;
-pub use session::{MonitorSettings, MonitorVolume, SessionState, VoiceSession};
+pub use session::{AudioSource, MonitorSettings, MonitorVolume, Routing, SessionState, VoiceSession};
 pub use settings::{
     AnalysisSettings, FormantCeiling, FormantShift, HarmonicRelativeLimit, HarmonicThreshold, LpcOrder, PitchShift, ShiftSettings,
 };

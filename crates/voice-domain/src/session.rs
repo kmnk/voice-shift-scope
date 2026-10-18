@@ -36,6 +36,21 @@ pub struct MonitorSettings {
     pub volume: MonitorVolume,
 }
 
+/// 出力やモニターに流す音。変える前の音は、変えた後と同じだけ遅らせて流す（切り替えても時刻が跳ばない）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AudioSource {
+    #[default]
+    Shifted,
+    Original,
+}
+
+/// 出力（仮想マイク）とモニターに、それぞれどちらの音を流すか。起動したときはどちらも変えた後。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Routing {
+    pub output: AudioSource,
+    pub monitor: AudioSource,
+}
+
 /// aggregate。use case はこのメソッドを通してだけ状態を変える。
 #[derive(Debug, Clone, PartialEq)]
 pub struct VoiceSession {
@@ -43,6 +58,7 @@ pub struct VoiceSession {
     input: Option<DeviceId>,
     output: Option<VirtualCable>,
     monitor: MonitorSettings,
+    routing: Routing,
     shift: ShiftSettings,
     analysis: AnalysisSettings,
 }
@@ -60,9 +76,19 @@ impl VoiceSession {
                 device: devices.default_device(DeviceDirection::Output),
                 volume: MonitorVolume::DEFAULT,
             },
+            routing: Routing::default(),
             shift: ShiftSettings::default(),
             analysis: AnalysisSettings::default(),
         }
+    }
+
+    pub fn routing(&self) -> Routing {
+        self.routing
+    }
+
+    /// 流す音の切り替えは、動いている間でもできる。
+    pub fn set_routing(&mut self, routing: Routing) {
+        self.routing = routing;
     }
 
     pub fn state(&self) -> SessionState {

@@ -28,6 +28,9 @@ pub struct DevicesDto {
     pub selected_monitor: Option<String>,
     pub monitor_enabled: bool,
     pub monitor_volume: f32,
+    /// 出力とモニターに流す音（"shifted" か "original"）
+    pub output_source: &'static str,
+    pub monitor_source: &'static str,
     pub running: bool,
 }
 
@@ -36,6 +39,13 @@ pub struct DevicesDto {
 pub struct CableDto {
     pub playback: String,
     pub recording: String,
+}
+
+fn source_name(s: voice_domain::AudioSource) -> &'static str {
+    match s {
+        voice_domain::AudioSource::Shifted => "shifted",
+        voice_domain::AudioSource::Original => "original",
+    }
 }
 
 pub fn devices_dto(list: &DeviceList, session: &VoiceSession, names: impl Fn(&str) -> String) -> DevicesDto {
@@ -47,6 +57,8 @@ pub fn devices_dto(list: &DeviceList, session: &VoiceSession, names: impl Fn(&st
         selected_monitor: session.monitor().device.as_ref().map(|d| d.raw().to_string()),
         monitor_enabled: session.monitor().enabled,
         monitor_volume: session.monitor().volume.get(),
+        output_source: source_name(session.routing().output),
+        monitor_source: source_name(session.routing().monitor),
         running: session.state() == voice_domain::SessionState::Running,
     }
 }

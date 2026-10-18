@@ -20,7 +20,8 @@ export function fitCanvas(canvas: HTMLCanvasElement): boolean {
 }
 
 /// フォルマントと倍音の位置を、時間とともに右から左へ流す図。
-/// 1 列が分析の 1 フレーム（10 ms）。倍音は点（観測できたものは濃く、そうでないものは薄く）、F1〜F4 は色の点。
+/// 1 列が分析の 1 フレーム（10 ms）。倍音は観測できたものだけを灰色の点で、F1〜F4 は色の点で描く。
+/// 観測できていない倍音は描かない（フォルマントと混ざり、前と後の違いが見えにくくなるため）。
 /// 音の強さの濃淡は描かない（今の瞬間のスペクトルで見る）。
 export class Spectrogram {
   private ctx: CanvasRenderingContext2D;
@@ -72,9 +73,10 @@ export class Spectrogram {
     for (let f = 1000; f < this.axisMax; f += 1000) c.fillRect(x, Math.round(height - (f / this.axisMax) * height), step, 1);
     if (frame.voiced) {
       const dot = Math.max(2, Math.round(2 * dpr));
+      c.fillStyle = "#77776f";
       for (const h of frame.harmonics) {
+        if (!h.observed) continue;
         const y = height - (h.frequency / this.axisMax) * height;
-        c.fillStyle = h.observed ? "#55554f" : "#d4d4cf";
         c.fillRect(x, y - dot / 2, step, dot);
       }
       frame.formants.forEach((f, i) => {

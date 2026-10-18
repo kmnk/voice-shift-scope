@@ -10,7 +10,7 @@ use ringbuf::HeapRb;
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use voice_domain::ports::{AnalysisPublisher, Analyzer, AudioDevices, AudioPipeline, PipelineConfig, VoiceShifter};
 use voice_domain::{
-    AnalysisPair, AnalysisSettings, DeviceDirection as DomainDirection, DeviceInfo, DeviceList, MonitorSettings,
+    AnalysisPair, AnalysisSettings, AudioSource, DeviceDirection as DomainDirection, DeviceInfo, DeviceList, MonitorSettings, Routing,
     SamplePosition, SampleRate, ShiftSettings,
 };
 
@@ -304,7 +304,10 @@ impl AudioPipeline for RuntimePipeline {
             monitor_device = Some(device.raw().to_string());
         }
 
-        let mut processor = InputProcessor::new(shifter, shared.clone(), out_prod, mon_prod, before_prod, after_prod);
+        shared.output_original.store(config.routing.output == AudioSource::Original, Ordering::Relaxed);
+        shared.monitor_original.store(config.routing.monitor == AudioSource::Original, Ordering::Relaxed);
+        let mut processor = InputProcessor::new(shifter, shared.clone(), out_prod, mon_prod, before_prod, after_prod)
+            .with_original_delay(shifter_latency);
 
         // 入力
         let source_started = Arc::new(Mutex::new(None));
@@ -488,6 +491,14 @@ impl AudioPipeline for RuntimePipeline {
     fn set_analysis(&mut self, analysis: AnalysisSettings) -> Result<(), RuntimeError> {
         if let Some(r) = &self.running {
             *r.analysis_settings.lock().expect("分析の設定") = analysis;
+        }
+        Ok(())
+    }
+
+    fn set_routing(&mut self, routing: Routing) -> Result<(), RuntimeError> {
+        if let Some(r) = &self.running {
+            r.shared.output_original.store(routing.output == AudioSource::Original, Ordering::Relaxed);
+            r.shared.monitor_original.store(routing.monitor == AudioSource::Original, Ordering::Relaxed);
         }
         Ok(())
     }

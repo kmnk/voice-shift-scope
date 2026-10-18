@@ -123,6 +123,23 @@ fn set_monitor_volume(state: State<AppState>, volume: f32) -> Res<()> {
     Ok(state.studio.lock().expect("studio").set_monitor_volume(volume)?)
 }
 
+fn parse_source(s: &str) -> Res<voice_domain::AudioSource> {
+    match s {
+        "shifted" => Ok(voice_domain::AudioSource::Shifted),
+        "original" => Ok(voice_domain::AudioSource::Original),
+        other => Err(CommandError { kind: "invalid", message: format!("流す音は shifted か original です（{other}）") }),
+    }
+}
+
+/// 出力とモニターに、変える前と後のどちらの音を流すか。
+#[tauri::command]
+fn set_routing(state: State<AppState>, output: String, monitor: String) -> Res<DevicesDto> {
+    let routing = voice_domain::Routing { output: parse_source(&output)?, monitor: parse_source(&monitor)? };
+    let mut studio = state.studio.lock().expect("studio");
+    studio.set_routing(routing)?;
+    Ok(snapshot(&studio))
+}
+
 #[tauri::command]
 fn start(state: State<AppState>, on_analysis: Channel<PairDto>) -> Res<DevicesDto> {
     state.publisher.set(on_analysis);
@@ -304,6 +321,7 @@ pub fn run() {
             select_input,
             set_monitor,
             set_monitor_volume,
+            set_routing,
             start,
             stop,
             change_shift,

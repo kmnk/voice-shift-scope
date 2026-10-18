@@ -53,6 +53,8 @@ export interface Devices {
   selectedMonitor: string | null;
   monitorEnabled: boolean;
   monitorVolume: number;
+  outputSource: "shifted" | "original";
+  monitorSource: "shifted" | "original";
   running: boolean;
 }
 

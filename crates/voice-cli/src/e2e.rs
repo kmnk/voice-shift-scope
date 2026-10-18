@@ -78,6 +78,7 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
         input: placeholder_input,
         output: cable.clone(),
         monitor: MonitorSettings { enabled: false, device: None, volume: MonitorVolume::DEFAULT },
+        routing: Default::default(),
         shift,
         analysis: Default::default(),
     };
