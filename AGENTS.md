@@ -43,17 +43,17 @@ uv run scripts/compare_praat.py /tmp/v100.wav --expect 700,1200,2600,3500 --form
 
 ## 検証
 
-作りかけ。今あるのは次のとおり。画面の試験（`windows-ui.yml`）はまだ無い。
+変更の種類ごとに、次で確かめる。Windows でしか動かないものは GitHub Actions の Windows のランナーで動かす（ランナーは毎回作り直されるので、利用者の機器や設定に触れない）。
 
-- `cargo test --workspace`: 値の型と `VoiceSession` の規則、use case、分析の部品、試験用の信号（`synth`）、VB-CABLE を driver の名前で見つける処理の試験
-- `cargo run --release -p voice-cli -- check --criteria B1,B3 [--json]`: spec の受け入れの基準を、試験用の信号で判定する。FAIL があれば終了コード 1。今あるのは A1〜A4・B1・B3。B1 は F0 150 Hz の F1 で FAIL し（Praat も同じ値を出す）、A2 と A3 にも 1 つずつ FAIL がある（どちらも F1 か F3 が倍音の近くにある場合）。`--block-ms` で声を変える処理の窓の長さを替えて比べられる
+- `cargo test --workspace` と `cd frontend && npm test`: 値の型と `VoiceSession` の規則、use case、分析の部品、試験用の信号、VB-CABLE を見つける処理、音声の実行の部品（時計のずれの補正など）、表示を止める状態（B5・B7・B8 の状態の移り方）
+- `cargo run --release -p voice-cli -- check --criteria A1,A2,A3,A4,B1,B3 [--json] [--block-ms 70]`: spec の受け入れの基準を、試験用の信号で判定する。FAIL があれば終了コード 1。今は B1 の F0 150 Hz（F1 +8.8%、Praat も同じ値）、A2 の F0 150 Hz・−12 半音、A3 の F0 150 Hz・0.9 倍が FAIL する（CI は通るものだけ `A1,A4,B3` を動かす）
 - `voice-cli analyze <wav>` の CSV を `scripts/compare_praat.py <wav> --compare <csv>` に渡すと、Praat との差を出す
-- `scripts/compare_praat.py`: Praat の推定値との突き合わせ（上の「build と test」）
-- `windows-e2e.yml`（Windows のランナー）: VB-CABLE を入れたランナーで `voice-cli loopback` を動かし、合成の母音を VB-CABLE に流して録り返す。成功すると artifact `e2e-report` の `e2e-report.json` に `"signal_detected": true` と遅れ（`latency_ms`）が出る。VB-CABLE の無いランナーでは終了コード 2 を確かめる
-  - 動かし方: `gh workflow run windows-e2e.yml`、待つのは `gh run watch <id> --exit-status`、結果は `gh run download <id> -n e2e-report`
-  - ランナーは毎回作り直されるので、利用者の機器や設定に触れない
+- `windows-e2e.yml`（`gh workflow run windows-e2e.yml`、結果は `gh run download <id> -n e2e-report`）: VB-CABLE を入れたランナーで、`voice-cli loopback`（声を変える処理を通さない VB-CABLE の経路）と `voice-cli e2e`（音声の実行を wav の音源で通し、VB-CABLE から録り返す）を動かす。`e2e-*.json` に A1・A5（0 半音のときだけ）・A6 と、出力の ring buffer の量と補正が出る。ランナーでは A5 と A6 は FAIL する（ランナーの機器と時計の性質による。利用者の Windows で `docs/windows-checklist.md` のとおりに確かめる）
+- `windows-ui.yml`: アプリを `--input-wav <wav> --ui-selftest <dir>` で起動し、画面の側（`frontend/src/selftest.ts`）が利用者と同じ操作を順に行って `<dir>/ui-report.json` を書く。全部 PASS なら終了コード 0。保存した PNG は `<dir>/saved/` にあり、artifact に上がる。VB-CABLE の無いランナーでは C4 を確かめる
   - 録音の機器を開くために、workflow の中でマイクのプライバシーの設定を許している。消すと WASAPI が「Access is denied」を返す
-- `voice-cli loopback` を利用者の Windows で動かすと、VB-CABLE に音を流す。動いている他のソフトが CABLE Output を録っていると、その音が入る
+  - 試験のときだけの入口: `--input-wav`（入力の機器の代わりに wav を流す。一覧に「試験の音源」が出る）、`--ui-selftest`、環境変数 `VOICE_SHIFT_SCOPE_CONFIG_DIR`（`preferences.json` の置き場）・`VOICE_SHIFT_SCOPE_TEST_SAVE_DIR`（保存先を選ぶ画面を出さずに画像を書く）・`VOICE_SHIFT_SCOPE_OUTPUT_BUFFER_MS`（出力の ring buffer の量）
+- `voice-cli loopback` と `voice-cli e2e` を利用者の Windows で動かすと、VB-CABLE に音を流す。動いている他のソフトが CABLE Output を録っていると、その音が入る
+- Tauri のアプリは、`voice-tauri` の既定の feature の `custom-protocol` で、`cargo build` だけでも build した画面（`frontend/dist`）を開く。先に `cd frontend && npm run build` が要る
 
 ## commit
 
