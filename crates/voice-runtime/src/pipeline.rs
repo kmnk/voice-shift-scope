@@ -291,7 +291,7 @@ impl AudioPipeline for RuntimePipeline {
         // 出力（VB-CABLE の再生側）
         let out_reader = Arc::new(Mutex::new(None));
         let (output, out_rate) =
-            self.open_output(config.output.playback.raw(), out_reader.clone(), shared.clone(), false)?;
+            self.open_output(config.output.raw(), out_reader.clone(), shared.clone(), false)?;
         *out_reader.lock().expect("読み手") = Some(AdaptiveReader::new(out_cons, CORE_RATE, out_rate, output_target()));
 
         // モニター: 読み手は始めに作って残し、機器のストリームだけを開け閉めする

@@ -56,7 +56,10 @@ pub struct Routing {
 pub struct VoiceSession {
     state: SessionState,
     input: Option<DeviceId>,
-    output: Option<VirtualCable>,
+    /// 声を出す先（再生デバイス）。既定は見つかった VB-CABLE の再生側（2026-10-18 に利用者が選べる形にした）
+    output: Option<DeviceId>,
+    /// 見つかった VB-CABLE。入力の規則（録音側を選ばない）と既定の出力に使う
+    cable: Option<VirtualCable>,
     monitor: MonitorSettings,
     routing: Routing,
     shift: ShiftSettings,
@@ -65,17 +68,17 @@ pub struct VoiceSession {
 
 impl VoiceSession {
     /// 起動したときの状態。入力とモニターは Windows の既定の機器（VB-CABLE の端なら空）、
-    /// 出力の先は見つかった VB-CABLE。
+    /// 出力は見つかった VB-CABLE の再生側（無ければ空）。モニターは出力と同じ機器にしない。
     pub fn new(devices: &DeviceList) -> Self {
+        let cable = devices.cable().cloned();
+        let output = cable.as_ref().map(|c| c.playback.clone());
+        let monitor = devices.default_device(DeviceDirection::Output).filter(|d| Some(d) != output.as_ref());
         Self {
             state: SessionState::Stopped,
             input: devices.default_device(DeviceDirection::Input),
-            output: devices.cable().cloned(),
-            monitor: MonitorSettings {
-                enabled: false,
-                device: devices.default_device(DeviceDirection::Output),
-                volume: MonitorVolume::DEFAULT,
-            },
+            output,
+            cable,
+            monitor: MonitorSettings { enabled: false, device: monitor, volume: MonitorVolume::DEFAULT },
             routing: Routing::default(),
             shift: ShiftSettings::default(),
             analysis: AnalysisSettings::default(),
@@ -97,8 +100,11 @@ impl VoiceSession {
     pub fn input(&self) -> Option<&DeviceId> {
         self.input.as_ref()
     }
-    pub fn output(&self) -> Option<&VirtualCable> {
+    pub fn output(&self) -> Option<&DeviceId> {
         self.output.as_ref()
+    }
+    pub fn cable(&self) -> Option<&VirtualCable> {
+        self.cable.as_ref()
     }
     pub fn monitor(&self) -> &MonitorSettings {
         &self.monitor
@@ -110,27 +116,35 @@ impl VoiceSession {
         self.analysis
     }
 
-    fn is_cable(&self, id: &DeviceId) -> bool {
-        self.output.as_ref().is_some_and(|c| &c.playback == id || &c.recording == id)
-    }
-
     pub fn select_input(&mut self, device: DeviceId) -> Result<(), DomainError> {
         if self.state == SessionState::Running {
             return Err(DomainError::InputChangeWhileRunning);
         }
-        if self.is_cable(&device) {
+        // 自分の変えた声が入力に戻って回り続けないよう、VB-CABLE の録音側は入力に選べない
+        if self.cable.as_ref().is_some_and(|c| c.recording == device) {
             return Err(DomainError::CableRecordingAsInput);
         }
         self.input = Some(device);
         Ok(())
     }
 
-    /// モニターは動いている間でも替えられる。
+    /// 声を出す先を選ぶ。止まっている間だけ。モニターが同じ機器なら、モニターを外す。
+    pub fn select_output(&mut self, device: DeviceId) -> Result<(), DomainError> {
+        if self.state == SessionState::Running {
+            return Err(DomainError::OutputChangeWhileRunning);
+        }
+        if self.monitor.device.as_ref() == Some(&device) {
+            self.monitor.device = None;
+            self.monitor.enabled = false;
+        }
+        self.output = Some(device);
+        Ok(())
+    }
+
+    /// モニターは動いている間でも替えられる。出力と同じ機器は選べない。
     pub fn set_monitor(&mut self, enabled: bool, device: Option<DeviceId>) -> Result<(), DomainError> {
-        if let Some(d) = &device {
-            if self.is_cable(d) {
-                return Err(DomainError::CablePlaybackAsMonitor);
-            }
+        if device.is_some() && device == self.output {
+            return Err(DomainError::MonitorSameAsOutput);
         }
         if enabled && device.is_none() {
             return Err(DomainError::NoMonitorDevice);
@@ -149,7 +163,7 @@ impl VoiceSession {
             return Err(DomainError::AlreadyRunning);
         }
         if self.output.is_none() {
-            return Err(DomainError::NoVirtualCable);
+            return Err(DomainError::NoOutputDevice);
         }
         if self.input.is_none() {
             return Err(DomainError::NoInputDevice);
@@ -189,64 +203,77 @@ mod tests {
             info("mic", DeviceDirection::Input, true),
             info("cable-rec", DeviceDirection::Input, false),
             info("phones", DeviceDirection::Output, !cable_is_default_output),
+            info("speakers", DeviceDirection::Output, false),
             info("cable-play", DeviceDirection::Output, cable_is_default_output),
         ];
         DeviceList::new(devices, with_cable.then_some(("cable-play", "cable-rec")))
     }
 
     #[test]
-    fn starts_with_windows_defaults_and_monitor_off() {
+    fn starts_with_cable_as_output_and_windows_defaults_elsewhere() {
         let devices = list(true, false);
         let s = VoiceSession::new(&devices);
         assert_eq!(s.input().map(DeviceId::raw), Some("mic"));
+        assert_eq!(s.output().map(DeviceId::raw), Some("cable-play"));
         assert_eq!(s.monitor().device.as_ref().map(DeviceId::raw), Some("phones"));
         assert!(!s.monitor().enabled);
-        assert_eq!(s.output().map(|c| c.playback.raw()), Some("cable-play"));
     }
 
-    /// C6: 既定の再生デバイスが VB-CABLE の再生側なら、モニターの欄は空。
+    /// C6: 既定の再生デバイスが VB-CABLE の再生側（＝出力）なら、モニターの欄は空。
     #[test]
-    fn default_monitor_is_empty_when_default_output_is_cable() {
+    fn default_monitor_is_empty_when_default_output_is_the_output() {
         let devices = list(true, true);
         assert!(VoiceSession::new(&devices).monitor().device.is_none());
     }
 
-    /// C2: 一覧から VB-CABLE の端を外す。
     #[test]
-    fn lists_exclude_cable_ends() {
+    fn input_list_excludes_cable_recording() {
         let devices = list(true, false);
         assert_eq!(devices.inputs().map(|d| d.raw_id.as_str()).collect::<Vec<_>>(), ["mic"]);
-        assert_eq!(devices.monitors().map(|d| d.raw_id.as_str()).collect::<Vec<_>>(), ["phones"]);
+        assert_eq!(devices.outputs().count(), 3);
     }
 
-    /// C4: VB-CABLE が無いと開始できない。
+    /// C4: VB-CABLE が無ければ出力は空で、開始できない。別の再生デバイスを選べば開始できる。
     #[test]
-    fn cannot_start_without_cable() {
+    fn without_cable_output_must_be_chosen() {
         let devices = list(false, false);
         let mut s = VoiceSession::new(&devices);
-        assert_eq!(s.start(), Err(DomainError::NoVirtualCable));
+        assert_eq!(s.start(), Err(DomainError::NoOutputDevice));
+        s.select_output(devices.id("speakers", DeviceDirection::Output).unwrap()).unwrap();
+        assert!(s.start().is_ok());
     }
 
-    /// C2 の規則: 一覧の作りに頼らず、domain でも VB-CABLE の端を選べない。
     #[test]
-    fn cable_ends_are_rejected_as_input_and_monitor() {
+    fn cable_recording_cannot_be_input_and_monitor_cannot_be_output() {
         let devices = list(true, false);
         let mut s = VoiceSession::new(&devices);
         let rec = devices.id("cable-rec", DeviceDirection::Input).unwrap();
         let play = devices.id("cable-play", DeviceDirection::Output).unwrap();
         assert_eq!(s.select_input(rec), Err(DomainError::CableRecordingAsInput));
-        assert_eq!(s.set_monitor(true, Some(play)), Err(DomainError::CablePlaybackAsMonitor));
+        assert_eq!(s.set_monitor(true, Some(play)), Err(DomainError::MonitorSameAsOutput));
+    }
+
+    /// 出力をモニターと同じ機器に替えると、モニターを外す。
+    #[test]
+    fn choosing_monitor_device_as_output_clears_monitor() {
+        let devices = list(true, false);
+        let mut s = VoiceSession::new(&devices);
+        let phones = devices.id("phones", DeviceDirection::Output).unwrap();
+        s.set_monitor(true, Some(phones.clone())).unwrap();
+        s.select_output(phones).unwrap();
+        assert!(s.monitor().device.is_none() && !s.monitor().enabled);
     }
 
     #[test]
-    fn input_is_fixed_while_running_but_monitor_can_change() {
+    fn devices_are_fixed_while_running_but_monitor_can_change() {
         let devices = list(true, false);
         let mut s = VoiceSession::new(&devices);
         s.start().unwrap();
         let mic = devices.id("mic", DeviceDirection::Input).unwrap();
         assert_eq!(s.select_input(mic), Err(DomainError::InputChangeWhileRunning));
-        let phones = devices.id("phones", DeviceDirection::Output).unwrap();
-        assert!(s.set_monitor(true, Some(phones)).is_ok());
+        let speakers = devices.id("speakers", DeviceDirection::Output).unwrap();
+        assert_eq!(s.select_output(speakers.clone()), Err(DomainError::OutputChangeWhileRunning));
+        assert!(s.set_monitor(true, Some(speakers)).is_ok());
         s.stop().unwrap();
     }
 
@@ -260,11 +287,7 @@ mod tests {
     #[test]
     fn device_id_cannot_be_made_from_unknown_string() {
         let devices = list(true, false);
-        assert!(matches!(
-            devices.id("not-in-list", DeviceDirection::Input),
-            Err(DomainError::UnknownDevice(_))
-        ));
-        // 方向が違えば同じ id でも作れない
+        assert!(matches!(devices.id("not-in-list", DeviceDirection::Input), Err(DomainError::UnknownDevice(_))));
         assert!(devices.id("mic", DeviceDirection::Output).is_err());
     }
 }

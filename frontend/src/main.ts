@@ -67,21 +67,18 @@ function showDevices(d: Devices): void {
   fillSelect($("monitor"), d.monitors, d.selectedMonitor);
   ($("monitor-on") as HTMLInputElement).checked = d.monitorEnabled;
   ($("volume") as HTMLInputElement).value = String(d.monitorVolume);
+  fillSelect($("output"), d.outputs, d.selectedOutput);
+  // VB-CABLE が見つからないときだけ知らせる（見つかったときの説明は出さない）
   const cable = $("cable");
-  if (d.cable) {
-    cable.textContent = t("cable.found", { playback: d.cable.playback, recording: d.cable.recording });
-    cable.classList.remove("missing");
-    cable.dataset.found = "true";
-  } else {
-    cable.textContent = t("cable.missing");
-    cable.classList.add("missing");
-    cable.dataset.found = "false";
-  }
+  cable.textContent = d.cable ? "" : t("cable.missing");
+  cable.classList.toggle("missing", !d.cable);
+  cable.dataset.found = String(!!d.cable);
   document.querySelectorAll<HTMLButtonElement>("button[data-route]").forEach((b) => {
     const current = b.dataset.route === "output" ? d.outputSource : d.monitorSource;
     b.setAttribute("aria-pressed", String(b.dataset.source === current));
   });
-  ($("start") as HTMLButtonElement).disabled = d.running || !d.cable;
+  ($("start") as HTMLButtonElement).disabled = d.running || !d.selectedOutput;
+  ($("output") as HTMLSelectElement).disabled = d.running;
   ($("stop") as HTMLButtonElement).disabled = !d.running;
   ($("input") as HTMLSelectElement).disabled = d.running;
 }
@@ -255,6 +252,13 @@ function wire(): void {
     const d = await call<Devices>("stop");
     if (d) showDevices(d);
   });
+  $("output").addEventListener("change", async (e) => {
+    const id = (e.target as HTMLSelectElement).value;
+    if (!id) return;
+    const d = await call<Devices>("select_output", { id });
+    if (d) showDevices(d);
+    else if (devices) showDevices(devices);
+  });
   $("input").addEventListener("change", async (e) => {
     const id = (e.target as HTMLSelectElement).value;
     if (!id) return;
@@ -352,7 +356,13 @@ async function boot(): Promise<void> {
   setLang(prefs.language);
   applyView(prefs.view);
   const d = await call<Devices>("list_devices");
-  if (d) showDevices(d);
+  if (d) {
+    showDevices(d);
+    // 覚えておいた分析の設定を欄に入れる
+    ($("ceiling") as HTMLInputElement).value = String(d.analysis.ceiling);
+    ($("threshold") as HTMLInputElement).value = String(d.analysis.threshold);
+    ($("relative-limit") as HTMLInputElement).value = String(d.analysis.relativeLimit);
+  }
   requestAnimationFrame(loop);
   const dir = await invoke<string | null>("selftest_config").catch(() => null);
   if (dir) void runSelftest(dir);

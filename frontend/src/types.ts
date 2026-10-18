@@ -47,15 +47,18 @@ export interface Device {
 
 export interface Devices {
   inputs: Device[];
+  outputs: Device[];
   monitors: Device[];
   cable: { playback: string; recording: string } | null;
   selectedInput: string | null;
+  selectedOutput: string | null;
   selectedMonitor: string | null;
   monitorEnabled: boolean;
   monitorVolume: number;
   outputSource: "shifted" | "original";
   monitorSource: "shifted" | "original";
   running: boolean;
+  analysis: { ceiling: number; threshold: number; relativeLimit: number };
 }
 
 export type Side = "before" | "after";

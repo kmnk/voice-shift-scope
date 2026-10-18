@@ -1,4 +1,5 @@
-//! アプリを閉じた後まで覚える値。前に画像を保存したフォルダー、画面の言葉、表示（全体か簡易か）を持つ。
+//! アプリを閉じた後まで覚える値。前に画像を保存したフォルダー、画面の言葉、表示（全体か簡易か）、
+//! 入力・出力・モニターの機器、分析の設定を持つ（機器と分析の値は 2026-10-18 に利用者が覚えるとした）。
 
 use std::path::{Path, PathBuf};
 
@@ -13,6 +14,26 @@ pub struct Preferences {
     /// "full"（グラフを出す）か "compact"（声を変えるだけの簡易表示）。無ければ全体。
     #[serde(default)]
     pub view: Option<String>,
+    #[serde(default)]
+    pub devices: RememberedDevices,
+    #[serde(default)]
+    pub analysis: Option<RememberedAnalysis>,
+}
+
+/// 機器は cpal の id で覚える。起動したときに一覧に無ければ、既定の機器にする。
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct RememberedDevices {
+    pub input: Option<String>,
+    pub output: Option<String>,
+    pub monitor: Option<String>,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct RememberedAnalysis {
+    pub ceiling: f32,
+    pub threshold: f32,
+    pub relative_limit: f32,
+    pub lpc_order: u32,
 }
 
 pub struct PreferencesStore {
@@ -49,6 +70,18 @@ impl PreferencesStore {
             Some("ja") => "ja",
             _ => "en",
         }
+    }
+
+    pub fn remember_devices(&self, devices: RememberedDevices) -> std::io::Result<()> {
+        let mut prefs = self.load();
+        prefs.devices = devices;
+        self.save(&prefs)
+    }
+
+    pub fn remember_analysis(&self, analysis: RememberedAnalysis) -> std::io::Result<()> {
+        let mut prefs = self.load();
+        prefs.analysis = Some(analysis);
+        self.save(&prefs)
     }
 
     pub fn view(&self) -> &'static str {
@@ -100,6 +133,14 @@ mod tests {
         store.remember_view("compact").unwrap();
         assert_eq!(store.view(), "compact");
         assert_eq!(store.language(), "ja");
+        store
+            .remember_devices(RememberedDevices { input: Some("mic".into()), output: Some("cable".into()), monitor: None })
+            .unwrap();
+        store.remember_analysis(RememberedAnalysis { ceiling: 5000.0, threshold: 12.0, relative_limit: 35.0, lpc_order: 10 }).unwrap();
+        let loaded = store.load();
+        assert_eq!(loaded.devices.output.as_deref(), Some("cable"));
+        assert_eq!(loaded.analysis.map(|a| a.ceiling), Some(5000.0));
+        assert_eq!(loaded.view.as_deref(), Some("compact"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

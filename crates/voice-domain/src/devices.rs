@@ -102,9 +102,9 @@ impl DeviceList {
         self.devices.iter().filter(|d| d.direction == DeviceDirection::Input && !self.is_cable_end(d))
     }
 
-    /// 画面に出すモニターの一覧。VB-CABLE の端を外す。
-    pub fn monitors(&self) -> impl Iterator<Item = &DeviceInfo> {
-        self.devices.iter().filter(|d| d.direction == DeviceDirection::Output && !self.is_cable_end(d))
+    /// 画面に出す出力とモニターの一覧（再生デバイスすべて）。モニターの一覧から出力と同じ機器を外すのは画面の側。
+    pub fn outputs(&self) -> impl Iterator<Item = &DeviceInfo> {
+        self.devices.iter().filter(|d| d.direction == DeviceDirection::Output)
     }
 
     /// Windows の既定の機器。VB-CABLE の端なら `None`。

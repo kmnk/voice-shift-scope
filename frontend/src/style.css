@@ -31,7 +31,8 @@ input[type="number"] { width: 64px; }
 .cable.missing { color: var(--frozen); font-weight: 600; }
 .note { color: var(--muted); margin: 0; }
 .message { margin: 0; color: var(--frozen); }
-.toggle-label { min-width: 3.2em; color: var(--muted); }
+.field-label { min-width: 3.2em; color: var(--muted); }
+.group label select { flex: 1; width: auto; min-width: 0; }
 .toggle button { flex: 1; }
 .toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 button[aria-pressed="true"] { background: var(--frozen); color: #fff; }

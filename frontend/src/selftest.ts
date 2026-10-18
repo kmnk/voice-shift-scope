@@ -68,9 +68,14 @@ export async function runSelftest(dir: string): Promise<void> {
     record("compact-view", compactHidden && saveHidden && getComputedStyle(q("#screen")).display !== "none", { compactHidden, saveHidden });
 
     if (q("#cable").dataset.found === "false") {
-      record("C4", disabled("start"), { cable: q("#cable").textContent, startDisabled: disabled("start") });
+      // VB-CABLE が無いときは、出力が空で開始できず、知らせが出る
+      record("C4", disabled("start") && q<HTMLSelectElement>("#output").value === "" && (q("#cable").textContent ?? "") !== "", {
+        cable: q("#cable").textContent,
+        startDisabled: disabled("start"),
+      });
     } else {
-      record("cable-found", true, { cable: q("#cable").textContent });
+      const out = q<HTMLSelectElement>("#output");
+      record("cable-found", out.value !== "" && (q("#cable").textContent ?? "") === "", { output: out.selectedOptions[0]?.textContent, note: q("#cable").textContent });
       click("start");
       await sleep(5000);
       const stats = JSON.parse(q("#test-stats").textContent || "{}");

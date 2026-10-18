@@ -14,17 +14,18 @@
       </div>
       <section class="group">
         <h2 data-i18n="sec.devices"></h2>
-        <label><span data-i18n="input"></span> <select id="input"></select></label>
-        <p id="cable" class="cable" data-testid="cable-status"></p>
-        <div class="row toggle" role="group">
-          <span class="toggle-label" data-i18n="route.output"></span>
-          <button data-route="output" data-source="original" data-testid="output-original" data-i18n="original"></button>
-          <button data-route="output" data-source="shifted" data-testid="output-shifted" data-i18n="shifted"></button>
-        </div>
+        <label><span class="field-label" data-i18n="input"></span> <select id="input"></select></label>
         <div class="row">
           <button id="start" data-testid="start" data-i18n="start"></button>
           <button id="stop" data-testid="stop" data-i18n="stop" disabled></button>
         </div>
+        <label><span class="field-label" data-i18n="output"></span> <select id="output" data-testid="output"></select></label>
+        <div class="row toggle" role="group">
+          <span class="field-label"></span>
+          <button data-route="output" data-source="original" data-testid="output-original" data-i18n="original"></button>
+          <button data-route="output" data-source="shifted" data-testid="output-shifted" data-i18n="shifted"></button>
+        </div>
+        <p id="cable" class="cable" data-testid="cable-status"></p>
       </section>
       <section class="group">
         <h2 data-i18n="sec.pitch"></h2>
@@ -54,13 +55,6 @@
           <button data-target="formant" data-step="0.05">+0.05</button>
         </div>
       </section>
-      <section class="group full-only">
-        <h2 data-i18n="sec.analysis"></h2>
-        <label><span data-i18n="ceiling"></span> <input id="ceiling" type="number" min="3000" max="8000" step="100" value="5500" /></label>
-        <p id="ceiling-note" class="note"></p>
-        <label data-i18n-title="harm.floor.title"><span data-i18n="harm.floor"></span> <input id="threshold" type="number" min="0" max="40" step="1" value="10" /></label>
-        <label data-i18n-title="harm.range.title"><span data-i18n="harm.range"></span> <input id="relative-limit" type="number" min="10" max="100" step="5" value="40" /></label>
-      </section>
       <section class="group">
         <h2 data-i18n="sec.monitor"></h2>
         <div class="row">
@@ -68,7 +62,7 @@
           <select id="monitor"></select>
         </div>
         <div class="row toggle" role="group">
-          <span class="toggle-label" data-i18n="route.monitor"></span>
+          <span class="field-label" data-i18n="route.monitor"></span>
           <button data-route="monitor" data-source="original" data-testid="monitor-original" data-i18n="original"></button>
           <button data-route="monitor" data-source="shifted" data-testid="monitor-shifted" data-i18n="shifted"></button>
         </div>
@@ -84,6 +78,13 @@
           <button id="freeze-after" data-testid="freeze-after" data-i18n-title="hold.title.shifted"></button>
         </div>
         <button id="save" data-testid="save" data-i18n="snapshot" data-i18n-title="snapshot.title" disabled></button>
+      </section>
+      <section class="group full-only">
+        <h2 data-i18n="sec.analysis"></h2>
+        <label><span data-i18n="ceiling"></span> <input id="ceiling" type="number" min="3000" max="8000" step="100" value="5500" /></label>
+        <p id="ceiling-note" class="note"></p>
+        <label data-i18n-title="harm.floor.title"><span data-i18n="harm.floor"></span> <input id="threshold" type="number" min="0" max="40" step="1" value="10" /></label>
+        <label data-i18n-title="harm.range.title"><span data-i18n="harm.range"></span> <input id="relative-limit" type="number" min="10" max="100" step="5" value="40" /></label>
       </section>
       <p id="message" class="message" role="status"></p>
     </aside>

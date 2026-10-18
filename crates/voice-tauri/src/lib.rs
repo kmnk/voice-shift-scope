@@ -21,7 +21,7 @@ use voice_dsp::{DefaultAnalyzer, SignalsmithShifter};
 use voice_runtime::{CpalDevices, RuntimePipeline};
 
 use crate::dto::{DevicesDto, PairDto, devices_dto};
-use crate::preferences::PreferencesStore;
+use crate::preferences::{PreferencesStore, RememberedAnalysis, RememberedDevices};
 use crate::publisher::ChannelPublisher;
 
 type Studio = VoiceStudio<TestSourceDevices, RuntimePipeline>;
@@ -99,6 +99,17 @@ fn io_error(e: impl std::fmt::Display) -> CommandError {
 
 type Res<T> = Result<T, CommandError>;
 
+/// 選んでいる機器を覚える（試験の音源は覚えない）。
+fn remember_devices(state: &AppState, studio: &Studio) {
+    let s = studio.session();
+    let keep = |d: Option<&voice_domain::DeviceId>| d.map(|d| d.raw().to_string()).filter(|id| id != TEST_SOURCE_ID);
+    let _ = state.preferences.remember_devices(RememberedDevices {
+        input: keep(s.input()),
+        output: keep(s.output()),
+        monitor: keep(s.monitor().device.as_ref()),
+    });
+}
+
 fn snapshot(studio: &Studio) -> DevicesDto {
     let list = studio.devices();
     devices_dto(list, studio.session(), |raw| list.name(raw).unwrap_or(raw).to_string())
@@ -115,6 +126,15 @@ fn list_devices(state: State<AppState>) -> Res<DevicesDto> {
 fn select_input(state: State<AppState>, id: String) -> Res<DevicesDto> {
     let mut studio = state.studio.lock().expect("studio");
     studio.select_input(&id)?;
+    remember_devices(&state, &studio);
+    Ok(snapshot(&studio))
+}
+
+#[tauri::command]
+fn select_output(state: State<AppState>, id: String) -> Res<DevicesDto> {
+    let mut studio = state.studio.lock().expect("studio");
+    studio.select_output(&id)?;
+    remember_devices(&state, &studio);
     Ok(snapshot(&studio))
 }
 
@@ -122,6 +142,7 @@ fn select_input(state: State<AppState>, id: String) -> Res<DevicesDto> {
 fn set_monitor(state: State<AppState>, enabled: bool, id: Option<String>) -> Res<DevicesDto> {
     let mut studio = state.studio.lock().expect("studio");
     studio.set_monitor(enabled, id.as_deref())?;
+    remember_devices(&state, &studio);
     Ok(snapshot(&studio))
 }
 
@@ -218,7 +239,9 @@ fn change_analysis(state: State<AppState>, ceiling: f32, threshold: f32, relativ
         relative_limit: HarmonicRelativeLimit::new(relative_limit)?,
         lpc_order: LpcOrder::new(lpc_order)?,
     };
-    Ok(state.studio.lock().expect("studio").change_analysis(analysis)?)
+    state.studio.lock().expect("studio").change_analysis(analysis)?;
+    let _ = state.preferences.remember_analysis(RememberedAnalysis { ceiling, threshold, relative_limit, lpc_order });
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -354,8 +377,27 @@ pub fn run() {
                 pipeline = pipeline.with_input_samples(samples);
             }
             let devices = TestSourceDevices { inner: CpalDevices, test_source };
-            let studio = VoiceStudio::new(devices, pipeline).map_err(|e| e.to_string())?;
+            let mut studio = VoiceStudio::new(devices, pipeline).map_err(|e| e.to_string())?;
             let config_dir = app.path().app_config_dir()?;
+            // 前に選んだ機器と分析の設定を戻す（一覧に無い機器や範囲の外の値は、既定のまま）
+            let prefs = PreferencesStore::new(config_dir.clone()).load();
+            if !test_source {
+                studio.restore_devices(
+                    prefs.devices.input.as_deref(),
+                    prefs.devices.output.as_deref(),
+                    prefs.devices.monitor.as_deref(),
+                );
+            }
+            if let Some(a) = prefs.analysis {
+                if let (Ok(ceiling), Ok(threshold), Ok(relative_limit), Ok(lpc_order)) = (
+                    FormantCeiling::new(a.ceiling),
+                    HarmonicThreshold::new(a.threshold),
+                    HarmonicRelativeLimit::new(a.relative_limit),
+                    LpcOrder::new(a.lpc_order),
+                ) {
+                    let _ = studio.change_analysis(AnalysisSettings { ceiling, threshold, relative_limit, lpc_order });
+                }
+            }
             app.manage(AppState {
                 studio: Mutex::new(studio),
                 publisher,
@@ -373,6 +415,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_devices,
             select_input,
+            select_output,
             set_monitor,
             set_monitor_volume,
             set_routing,

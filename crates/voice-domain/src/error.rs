@@ -27,10 +27,12 @@ pub enum DomainError {
     UnknownDevice(String),
     #[error("出力の先（VB-CABLE）の録音側は入力に選べません")]
     CableRecordingAsInput,
-    #[error("出力の先（VB-CABLE）の再生側はモニターに選べません")]
-    CablePlaybackAsMonitor,
-    #[error("出力の先（VB-CABLE）が見つからないので開始できません")]
-    NoVirtualCable,
+    #[error("モニターに、出力と同じ機器は選べません")]
+    MonitorSameAsOutput,
+    #[error("出力の機器を選んでください")]
+    NoOutputDevice,
+    #[error("動いている間は出力の機器を替えられません")]
+    OutputChangeWhileRunning,
     #[error("入力の機器が選ばれていないので開始できません")]
     NoInputDevice,
     #[error("モニターを入れるには、モニターの機器を選んでください")]

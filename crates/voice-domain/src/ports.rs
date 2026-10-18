@@ -2,7 +2,7 @@
 
 use crate::{
     AnalysisFrame, AnalysisPair, AnalysisSettings, DeviceId, DeviceList, Formant, Frequency, Harmonic,
-    MonitorSettings, Routing, SampleRate, ShiftSettings, VirtualCable,
+    MonitorSettings, Routing, SampleRate, ShiftSettings,
 };
 
 /// 声を変える処理。音声のスレッドから呼ばれるので、`process` の中でメモリを確保しない。
@@ -54,7 +54,7 @@ pub trait AudioDevices {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PipelineConfig {
     pub input: DeviceId,
-    pub output: VirtualCable,
+    pub output: DeviceId,
     pub monitor: MonitorSettings,
     pub routing: Routing,
     pub shift: ShiftSettings,

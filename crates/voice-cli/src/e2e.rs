@@ -76,7 +76,7 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
     let placeholder_input = list.id(cable.recording.raw(), DeviceDirection::Input).map_err(|e| e.to_string())?;
     let config = PipelineConfig {
         input: placeholder_input,
-        output: cable.clone(),
+        output: cable.playback.clone(),
         monitor: MonitorSettings { enabled: false, device: None, volume: MonitorVolume::DEFAULT },
         routing: Default::default(),
         shift,

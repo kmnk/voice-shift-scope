@@ -21,10 +21,13 @@ impl From<&DeviceInfo> for DeviceDto {
 #[serde(rename_all = "camelCase")]
 pub struct DevicesDto {
     pub inputs: Vec<DeviceDto>,
+    pub outputs: Vec<DeviceDto>,
+    /// 出力と同じ機器を外した、モニターの一覧
     pub monitors: Vec<DeviceDto>,
     /// 見つかった VB-CABLE の再生側と録音側の名前。見つからなければ null。
     pub cable: Option<CableDto>,
     pub selected_input: Option<String>,
+    pub selected_output: Option<String>,
     pub selected_monitor: Option<String>,
     pub monitor_enabled: bool,
     pub monitor_volume: f32,
@@ -32,6 +35,15 @@ pub struct DevicesDto {
     pub output_source: &'static str,
     pub monitor_source: &'static str,
     pub running: bool,
+    pub analysis: AnalysisDto,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalysisDto {
+    pub ceiling: f32,
+    pub threshold: f32,
+    pub relative_limit: f32,
 }
 
 #[derive(Serialize)]
@@ -49,17 +61,26 @@ fn source_name(s: voice_domain::AudioSource) -> &'static str {
 }
 
 pub fn devices_dto(list: &DeviceList, session: &VoiceSession, names: impl Fn(&str) -> String) -> DevicesDto {
+    let output = session.output().map(|d| d.raw().to_string());
+    let analysis = session.analysis();
     DevicesDto {
         inputs: list.inputs().map(DeviceDto::from).collect(),
-        monitors: list.monitors().map(DeviceDto::from).collect(),
+        outputs: list.outputs().map(DeviceDto::from).collect(),
+        monitors: list.outputs().filter(|d| Some(&d.raw_id) != output.as_ref()).map(DeviceDto::from).collect(),
         cable: list.cable().map(|c| CableDto { playback: names(c.playback.raw()), recording: names(c.recording.raw()) }),
         selected_input: session.input().map(|d| d.raw().to_string()),
+        selected_output: output.clone(),
         selected_monitor: session.monitor().device.as_ref().map(|d| d.raw().to_string()),
         monitor_enabled: session.monitor().enabled,
         monitor_volume: session.monitor().volume.get(),
         output_source: source_name(session.routing().output),
         monitor_source: source_name(session.routing().monitor),
         running: session.state() == voice_domain::SessionState::Running,
+        analysis: AnalysisDto {
+            ceiling: analysis.ceiling.hz(),
+            threshold: analysis.threshold.db(),
+            relative_limit: analysis.relative_limit.db(),
+        },
     }
 }
 

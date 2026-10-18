@@ -54,6 +54,9 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         if self.session.state() == SessionState::Stopped {
             let previous = self.session.clone();
             let mut session = VoiceSession::new(&list);
+            if let Some(output) = previous.output().and_then(|d| list.id(d.raw(), DeviceDirection::Output).ok()) {
+                let _ = session.select_output(output);
+            }
             if let Some(input) = previous.input().and_then(|d| list.id(d.raw(), DeviceDirection::Input).ok()) {
                 let _ = session.select_input(input);
             }
@@ -68,6 +71,25 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         }
         self.list = list;
         Ok(&self.list)
+    }
+
+    pub fn select_output(&mut self, raw_id: &str) -> Result<(), AppError> {
+        let id = self.list.id(raw_id, DeviceDirection::Output)?;
+        Ok(self.session.select_output(id)?)
+    }
+
+    /// 前に選んだ機器を戻す。一覧に無い機器や規則に合わない機器は飛ばし、既定のままにする。
+    pub fn restore_devices(&mut self, input: Option<&str>, output: Option<&str>, monitor: Option<&str>) {
+        if let Some(id) = output.and_then(|r| self.list.id(r, DeviceDirection::Output).ok()) {
+            let _ = self.session.select_output(id);
+        }
+        if let Some(id) = input.and_then(|r| self.list.id(r, DeviceDirection::Input).ok()) {
+            let _ = self.session.select_input(id);
+        }
+        if let Some(id) = monitor.and_then(|r| self.list.id(r, DeviceDirection::Output).ok()) {
+            let enabled = self.session.monitor().enabled;
+            let _ = self.session.set_monitor(enabled, Some(id));
+        }
     }
 
     pub fn select_input(&mut self, raw_id: &str) -> Result<(), AppError> {
@@ -119,7 +141,7 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         next.start()?;
         let config = PipelineConfig {
             input: next.input().cloned().ok_or(DomainError::NoInputDevice)?,
-            output: next.output().cloned().ok_or(DomainError::NoVirtualCable)?,
+            output: next.output().cloned().ok_or(DomainError::NoOutputDevice)?,
             monitor: next.monitor().clone(),
             routing: next.routing(),
             shift: next.shift(),
@@ -257,18 +279,31 @@ mod tests {
         match &calls.borrow()[0] {
             Call::Start(c) => {
                 assert_eq!(c.input.raw(), "usb-mic");
-                assert_eq!(c.output.playback.raw(), "cable-play");
+                assert_eq!(c.output.raw(), "cable-play");
             }
             other => panic!("{other:?}"),
         }
     }
 
-    /// C4: VB-CABLE が無ければ開始せず、pipeline も呼ばない。
+    /// C4: VB-CABLE が無く出力を選んでいなければ開始せず、pipeline も呼ばない。
     #[test]
-    fn start_without_cable_fails_before_pipeline() {
+    fn start_without_output_fails_before_pipeline() {
         let (mut s, calls, _) = studio(false);
-        assert!(matches!(s.start(), Err(AppError::Domain(DomainError::NoVirtualCable))));
+        assert!(matches!(s.start(), Err(AppError::Domain(DomainError::NoOutputDevice))));
         assert!(calls.borrow().is_empty());
+    }
+
+    /// 覚えた機器を戻す。一覧に無い機器は飛ばして既定のままにする。
+    #[test]
+    fn restore_devices_applies_known_ids_and_ignores_missing() {
+        let (mut s, _, _) = studio(true);
+        s.restore_devices(Some("usb-mic"), Some("phones"), Some("gone"));
+        assert_eq!(s.session().input().map(|d| d.raw()), Some("usb-mic"));
+        assert_eq!(s.session().output().map(|d| d.raw()), Some("phones"));
+        // モニターの既定は phones だったが、出力と同じなので外れ、覚えた gone は一覧に無いので空のまま
+        assert!(s.session().monitor().device.is_none());
+        s.restore_devices(Some("missing"), None, None);
+        assert_eq!(s.session().input().map(|d| d.raw()), Some("usb-mic"));
     }
 
     /// 画面から来た一覧に無い文字列は、use case まで届いても機器にならない。
@@ -334,6 +369,7 @@ mod tests {
         );
         s.list_devices().unwrap();
         assert_eq!(s.session().input().map(|d| d.raw()), Some("mic"));
+        // 出力の VB-CABLE が消えたので、出力は空になる
         assert!(s.session().output().is_none());
     }
 }
