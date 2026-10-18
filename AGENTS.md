@@ -43,9 +43,11 @@ uv run scripts/compare_praat.py /tmp/v100.wav --expect 700,1200,2600,3500 --form
 
 ## 検証
 
-作りかけ。今あるのは次のとおり。`voice-cli check`（基準の判定）と画面の試験（`windows-ui.yml`）はまだ無い。
+作りかけ。今あるのは次のとおり。画面の試験（`windows-ui.yml`）はまだ無い。
 
-- `cargo test --workspace`: 試験用の信号（`synth`）と、VB-CABLE を driver の名前で見つける処理の試験
+- `cargo test --workspace`: 値の型と `VoiceSession` の規則、use case、分析の部品、試験用の信号（`synth`）、VB-CABLE を driver の名前で見つける処理の試験
+- `cargo run --release -p voice-cli -- check --criteria B1,B3 [--json]`: spec の受け入れの基準を、試験用の信号で判定する。FAIL があれば終了コード 1。今あるのは B1・B3（B1 は F0 150 Hz の F1 で FAIL する。Praat も同じ値を出す）
+- `voice-cli analyze <wav>` の CSV を `scripts/compare_praat.py <wav> --compare <csv>` に渡すと、Praat との差を出す
 - `scripts/compare_praat.py`: Praat の推定値との突き合わせ（上の「build と test」）
 - `windows-e2e.yml`（Windows のランナー）: VB-CABLE を入れたランナーで `voice-cli loopback` を動かし、合成の母音を VB-CABLE に流して録り返す。成功すると artifact `e2e-report` の `e2e-report.json` に `"signal_detected": true` と遅れ（`latency_ms`）が出る。VB-CABLE の無いランナーでは終了コード 2 を確かめる
   - 動かし方: `gh workflow run windows-e2e.yml`、待つのは `gh run watch <id> --exit-status`、結果は `gh run download <id> -n e2e-report`

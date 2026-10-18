@@ -1,5 +1,7 @@
 //! 開発で確かめるための CLI。アプリの機能ではない。
 
+mod analysis;
+mod check;
 mod synth;
 
 use std::path::PathBuf;
@@ -37,6 +39,29 @@ enum Command {
         #[arg(long)]
         out_wav: Option<PathBuf>,
     },
+    /// wav を分析し、10 ms ごとの F0・F1〜F4・倍音を CSV で標準出力に書く（開発で確かめるための道具）
+    Analyze {
+        wav: PathBuf,
+        /// フォルマントの上限（Hz）
+        #[arg(long, default_value_t = 5500.0)]
+        ceiling: f32,
+        /// LPC の次数（フォルマントの数の 2 倍）
+        #[arg(long, default_value_t = 10)]
+        lpc_order: u32,
+    },
+    /// 受け入れの基準を試験用の信号で判定する。FAIL があれば終了コード 1
+    Check {
+        /// 判定する基準（カンマ区切り。今あるのは B1・B3）
+        #[arg(long, value_delimiter = ',', default_value = "B1,B3")]
+        criteria: Vec<String>,
+        #[arg(long, default_value_t = 5500.0)]
+        ceiling: f32,
+        #[arg(long, default_value_t = 10)]
+        lpc_order: u32,
+        /// 結果を JSON で出す
+        #[arg(long)]
+        json: bool,
+    },
     /// 答えの分かる試験用の信号を wav（48 kHz、mono、32-bit float）で書く
     Synth {
         #[command(subcommand)]
@@ -46,7 +71,7 @@ enum Command {
 
 #[derive(Subcommand)]
 enum Signal {
-    /// spec の合成の母音（F1 700・F2 1200・F3 2600・F4 3500 Hz）
+    /// spec の合成の母音（F1 700・F2 1200・F3 2600・F4 3500 Hz に F5 4500 Hz を足したもの）
     Vowel {
         /// 基本周波数（Hz）
         #[arg(long)]
@@ -80,11 +105,13 @@ const SAMPLE_RATE: u32 = 48_000;
 fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Devices => devices(),
+        Command::Analyze { wav, ceiling, lpc_order } => run_analyze(&wav, ceiling, lpc_order),
+        Command::Check { criteria, ceiling, lpc_order, json } => run_check(&criteria, ceiling, lpc_order, json),
         Command::Loopback { input_wav, lead, out_wav } => run_loopback(&input_wav, lead, out_wav.as_deref()),
         Command::Synth { signal } => {
             let (samples, out) = match signal {
                 Signal::Vowel { f0, seconds, out } => (
-                    synth::vowel(f0, &synth::SPEC_VOWEL, SAMPLE_RATE as f64, seconds, 0.5),
+                    synth::vowel(f0, &synth::SYNTH_VOWEL, SAMPLE_RATE as f64, seconds, 0.5),
                     out,
                 ),
                 Signal::Harmonics { f0, count, noise_below_db, seconds, out } => (
@@ -239,4 +266,63 @@ fn run_loopback(input_wav: &std::path::Path, lead: f64, out_wav: Option<&std::pa
     });
     println!("{}", serde_json::to_string_pretty(&out).expect("JSON にできる"));
     if recorded_onset.is_some() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+}
+
+fn analysis_settings(ceiling: f32, lpc_order: u32) -> Result<voice_domain::AnalysisSettings, voice_domain::DomainError> {
+    Ok(voice_domain::AnalysisSettings {
+        ceiling: voice_domain::FormantCeiling::new(ceiling)?,
+        lpc_order: voice_domain::LpcOrder::new(lpc_order)?,
+        ..Default::default()
+    })
+}
+
+fn run_analyze(wav: &std::path::Path, ceiling: f32, lpc_order: u32) -> ExitCode {
+    let settings = match analysis_settings(ceiling, lpc_order) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let (x, rate) = match read_wav(wav) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("{} を読めませんでした: {e}", wav.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    println!("{}", analysis::csv_header());
+    for (t, f) in analysis::analyze_signal(&x, rate, &settings) {
+        println!("{}", analysis::csv_row(t, &f));
+    }
+    ExitCode::SUCCESS
+}
+
+fn run_check(criteria: &[String], ceiling: f32, lpc_order: u32, as_json: bool) -> ExitCode {
+    let settings = match analysis_settings(ceiling, lpc_order) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let outcomes = match check::run(criteria, &settings) {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if as_json {
+        let v: Vec<_> = outcomes
+            .iter()
+            .map(|o| json!({ "criterion": o.criterion, "case": o.case, "result": if o.pass { "PASS" } else { "FAIL" }, "detail": o.detail }))
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&v).expect("JSON にできる"));
+    } else {
+        for o in &outcomes {
+            println!("{}\t{}\t{}\t{}", o.criterion, o.case, if o.pass { "PASS" } else { "FAIL" }, o.detail);
+        }
+    }
+    if outcomes.iter().all(|o| o.pass) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }

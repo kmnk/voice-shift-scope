@@ -21,6 +21,17 @@ pub const SPEC_VOWEL: [Resonance; 4] = [
     Resonance { frequency: 3500.0, bandwidth: 120.0 },
 ];
 
+/// 合成の母音に使う共鳴。spec の F1〜F4 に、F5（4500 Hz）を足す。
+/// 実際の声は上限（5500 Hz）までに 5 つ前後の共鳴を持ち、Praat と同じ既定（5 個・5500 Hz）の LPC は
+/// それを前提にしている。F1〜F4 だけの信号では、F2 と F3 の間に無い共鳴を置いてしまう。
+pub const SYNTH_VOWEL: [Resonance; 5] = [
+    SPEC_VOWEL[0],
+    SPEC_VOWEL[1],
+    SPEC_VOWEL[2],
+    SPEC_VOWEL[3],
+    Resonance { frequency: 4500.0, bandwidth: 150.0 },
+];
+
 impl Resonance {
     /// 差分方程式 y[n] = g x[n] + a1 y[n-1] + a2 y[n-2] の係数。
     /// g は 0 Hz の利得を 1 にする。
@@ -33,8 +44,8 @@ impl Resonance {
         (g, a1, a2)
     }
 
-    /// 周波数 `f` での振幅の応答。`check`（フェーズ 2）でも使う。
-    #[allow(dead_code)]
+    /// 周波数 `f` での振幅の応答。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn magnitude(&self, f: f64, sample_rate: f64) -> f64 {
         let (g, a1, a2) = self.coefficients(sample_rate);
         let w = 2.0 * PI * f / sample_rate;
@@ -109,7 +120,7 @@ impl XorShift {
     }
 }
 
-#[allow(dead_code)] // `check`（フェーズ 2）でも使う
+#[cfg_attr(not(test), allow(dead_code))]
 /// Hann の窓を掛けた、周波数 `f` での振幅（Goertzel と同じ値を直に計算する）。
 pub fn amplitude_at(x: &[f32], f: f64, sample_rate: f64) -> f64 {
     let n = x.len();
@@ -135,9 +146,9 @@ mod tests {
     #[test]
     fn vowel_harmonics_follow_resonance_response() {
         for f0 in [100.0, 150.0, 220.0] {
-            let x = vowel(f0, &SPEC_VOWEL, SR, 1.5, 0.5);
+            let x = vowel(f0, &SYNTH_VOWEL, SR, 1.5, 0.5);
             let steady = &x[(0.5 * SR) as usize..];
-            let response = |f: f64| SPEC_VOWEL.iter().map(|r| r.magnitude(f, SR)).product::<f64>();
+            let response = |f: f64| SYNTH_VOWEL.iter().map(|r| r.magnitude(f, SR)).product::<f64>();
             let measured_h1 = amplitude_at(steady, f0, SR);
             let mut k = 2;
             while (k as f64) * f0 < 4000.0 {
