@@ -1,5 +1,6 @@
 // 止めた画面を 1 枚の PNG に描き直す。
 
+import { t } from "./i18n";
 import { tableRows } from "./render";
 import type { SideView } from "./store";
 
@@ -9,9 +10,19 @@ export function fileName(now: Date): string {
 }
 
 function sideLine(label: string, v: SideView | null): string {
-  if (!v) return `${label}: 表示なし`;
+  if (!v) return t("png.side.none", { label });
   const s = v.settings;
-  return `${label}: ${v.frozen ? "止めている" : "保存した瞬間"}・時刻 ${v.time.toFixed(2)} 秒・ピッチ ${s.semitones.toFixed(1)} 半音・フォルマント ${s.formant.toFixed(2)} 倍・上限 ${s.ceiling.toFixed(0)} Hz（後は ${s.afterCeiling.toFixed(0)} Hz）・倍音は床から ${s.threshold.toFixed(0)} dB 以上、最も強いものから ${s.relativeLimit.toFixed(0)} dB 以内`;
+  return t("png.side", {
+    label,
+    state: v.frozen ? t("png.held") : t("png.live"),
+    t: v.time.toFixed(2),
+    st: s.semitones.toFixed(1),
+    fm: s.formant.toFixed(2),
+    ceil: s.ceiling.toFixed(0),
+    aceil: s.afterCeiling.toFixed(0),
+    th: s.threshold.toFixed(0),
+    rl: s.relativeLimit.toFixed(0),
+  });
 }
 
 export async function composePng(
@@ -40,20 +51,20 @@ export async function composePng(
   c.fillRect(0, 0, width, height);
   c.fillStyle = "#1d1d1b";
   c.font = "13px system-ui";
-  c.fillText(`voice-shift-scope　保存した日時 ${now.toLocaleString("ja-JP")}`, 10, 18);
+  c.fillText(t("png.title", { date: now.toLocaleString(document.documentElement.lang === "ja" ? "ja-JP" : "en-US") }), 10, 18);
   c.font = "12px system-ui";
-  c.fillText(sideLine("変える前", before), 10, 38);
-  c.fillText(sideLine("変えた後", after), 10, 56);
+  c.fillText(sideLine(t("original"), before), 10, 38);
+  c.fillText(sideLine(t("shifted"), after), 10, 56);
   c.font = "bold 12px system-ui";
-  c.fillText("変える前", 10, header - 6);
-  c.fillText("変えた後", gw + 20, header - 6);
+  c.fillText(t("original"), 10, header - 6);
+  c.fillText(t("shifted"), gw + 20, header - 6);
   c.font = "12px system-ui";
   c.drawImage(grams[0], 10, header, gw, gh);
   c.drawImage(grams[1], gw + 20, header, gw, gh);
   const lowerTop = header + gh + 20;
   c.drawImage(spectrum, 10, lowerTop, sw, sh);
   c.font = "12px system-ui";
-  const colX = [gw + 20, gw + 150, gw + 310, gw + 470];
+  const colX = [gw + 20, gw + 170, gw + 350];
   rows.forEach((r, i) => {
     r.forEach((cell, j) => c.fillText(cell, colX[j], lowerTop + 12 + i * 16));
   });

@@ -23,6 +23,7 @@ pub struct VoiceStudio<D: AudioDevices, P: AudioPipeline> {
     pipeline: P,
     list: DeviceList,
     session: VoiceSession,
+    analysis_display: bool,
 }
 
 impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
@@ -30,7 +31,7 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
     pub fn new(devices: D, pipeline: P) -> Result<Self, AppError> {
         let list = devices.list().map_err(|e| AppError::Devices(Box::new(e)))?;
         let session = VoiceSession::new(&list);
-        Ok(Self { devices, pipeline, list, session })
+        Ok(Self { devices, pipeline, list, session, analysis_display: true })
     }
 
     pub fn session(&self) -> &VoiceSession {
@@ -104,6 +105,15 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         Ok(())
     }
 
+    /// 表示のための分析を動かすか（簡易表示では止める）。止まっている間も覚えておき、開始のときに渡す。
+    pub fn set_analysis_display(&mut self, active: bool) -> Result<(), AppError> {
+        self.analysis_display = active;
+        if self.session.state() == SessionState::Running {
+            self.pipeline.set_analysis_display(active).map_err(|e| AppError::Pipeline(Box::new(e)))?;
+        }
+        Ok(())
+    }
+
     pub fn start(&mut self) -> Result<(), AppError> {
         let mut next = self.session.clone();
         next.start()?;
@@ -116,6 +126,9 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
             analysis: next.analysis(),
         };
         self.pipeline.start(config).map_err(|e| AppError::Pipeline(Box::new(e)))?;
+        if !self.analysis_display {
+            self.pipeline.set_analysis_display(false).map_err(|e| AppError::Pipeline(Box::new(e)))?;
+        }
         self.session = next;
         Ok(())
     }
@@ -205,6 +218,9 @@ mod tests {
         }
         fn set_routing(&mut self, r: Routing) -> Result<(), FakeError> {
             self.calls.borrow_mut().push(Call::Routing(r));
+            Ok(())
+        }
+        fn set_analysis_display(&mut self, _active: bool) -> Result<(), FakeError> {
             Ok(())
         }
     }

@@ -26,6 +26,8 @@ pub struct Shared {
     /// true なら変える前の音を流す（声を変える処理の遅れだけ遅らせて、切り替えても時刻が跳ばないように）。
     pub output_original: AtomicBool,
     pub monitor_original: AtomicBool,
+    /// false の間、分析のスレッドは F0 の目安だけを求め、表示の分析と送り出しをしない。
+    pub analysis_display: AtomicBool,
     /// 処理した入力の標本の数。
     pub processed: AtomicU64,
     pub output_underruns: AtomicU64,
@@ -52,6 +54,7 @@ impl Shared {
         s.set_shift(shift);
         s.monitor_volume.store(monitor_volume.to_bits(), Ordering::Relaxed);
         s.monitor_enabled.store(monitor_enabled, Ordering::Relaxed);
+        s.analysis_display.store(true, Ordering::Relaxed);
         s
     }
 

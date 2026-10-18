@@ -1,6 +1,6 @@
 // 画面の通しの試験（`--ui-selftest <dir>` で起動したときだけ動く）。
 // 利用者と同じ操作（ボタンを押す・値を入れる）を DOM で順に行い、画面に出たものを読んで判定する。
-// spec の B4〜B8、C4、C5 の一部に当たる。結果は <dir>/ui-report.json に書き、アプリは終わる。
+// 言葉に依らないように、文ではなく data-* の印で状態を読む。結果は <dir>/ui-report.json に書き、アプリは終わる。
 
 import { invoke } from "@tauri-apps/api/core";
 
@@ -10,8 +10,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const q = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const click = (testid: string) => q<HTMLButtonElement>(`[data-testid="${testid}"]`).click();
 const disabled = (testid: string) => q<HTMLButtonElement>(`[data-testid="${testid}"]`).disabled;
-const state = (side: string) => q(`#${side}-state`).textContent ?? "";
+const frozen = (side: string) => q(`#${side}-state`).dataset.frozen === "true";
+const stateText = (side: string) => q(`#${side}-state`).textContent ?? "";
 const near = (v: number, target: number, pct: number) => Math.abs(v / target - 1) * 100 <= pct;
+const pressed = (testid: string) => q(`[data-testid="${testid}"]`).getAttribute("aria-pressed") === "true";
 
 function setNumber(id: string, value: number): void {
   const e = q<HTMLInputElement>(`#${id}`);
@@ -40,12 +42,35 @@ export async function runSelftest(dir: string): Promise<void> {
   const record = (criterion: string, pass: boolean, detail: unknown) =>
     results.push({ criterion, result: pass ? "PASS" : "FAIL", detail });
   try {
-    await waitFor(() => (q("#cable").textContent ?? "").length > 0, 10_000);
-    const cable = q("#cable").textContent ?? "";
-    if (cable.includes("見つかりません")) {
-      record("C4", disabled("start"), { cable, startDisabled: disabled("start") });
+    await waitFor(() => q("#cable").dataset.found !== undefined, 10_000);
+    // 言葉の切り替え: 文が替わり、もう一度で戻る（選んだ言葉は試験の設定のディレクトリに覚える）
+    const startEn = q("#start").textContent;
+    const langBefore = document.documentElement.lang;
+    click("lang-toggle");
+    await sleep(200);
+    const startOther = q("#start").textContent;
+    const langOther = document.documentElement.lang;
+    click("lang-toggle");
+    await sleep(200);
+    record("language-toggle", langBefore !== langOther && startEn !== startOther && q("#start").textContent === startEn, {
+      langBefore,
+      langOther,
+      startEn,
+      startOther,
+    });
+    // 簡易表示: 右の表示と分析・一時停止の欄が消え、もう一度で戻る
+    click("view-toggle");
+    await sleep(500);
+    const compactHidden = getComputedStyle(q("#screen")).display === "none";
+    const saveHidden = q<HTMLElement>("#save").offsetParent === null;
+    click("view-toggle");
+    await sleep(800);
+    record("compact-view", compactHidden && saveHidden && getComputedStyle(q("#screen")).display !== "none", { compactHidden, saveHidden });
+
+    if (q("#cable").dataset.found === "false") {
+      record("C4", disabled("start"), { cable: q("#cable").textContent, startDisabled: disabled("start") });
     } else {
-      record("cable-found", cable.startsWith("出力の先"), { cable });
+      record("cable-found", true, { cable: q("#cable").textContent });
       click("start");
       await sleep(5000);
       const stats = JSON.parse(q("#test-stats").textContent || "{}");
@@ -62,32 +87,33 @@ export async function runSelftest(dir: string): Promise<void> {
       record("B4-shift", near(b, 150, 1) && near(a, 150 * 2 ** (5 / 12), 1.5), { before: b, after: a });
 
       click("freeze-all");
-      const frozen = [state("before"), state("after")];
+      const held = [stateText("before"), stateText("after")];
       await sleep(1500);
-      const still = [state("before"), state("after")];
+      const still = [stateText("before"), stateText("after")];
       const saveEnabled = !disabled("save");
-      record("B5-freeze", frozen.every((s) => s.startsWith("止めている")) && JSON.stringify(frozen) === JSON.stringify(still), { frozen, still });
+      record("B5-freeze", frozen("before") && frozen("after") && JSON.stringify(held) === JSON.stringify(still), { held, still });
 
       click("save");
-      const saved = await waitFor(() => (q("#message").textContent ?? "").startsWith("保存しました"), 10_000);
+      const saved = await waitFor(() => q("#message").dataset.kind === "saved", 10_000);
       record("C5-save", saveEnabled && saved, { saveEnabled, message: q("#message").textContent });
 
       click("freeze-all");
       await sleep(300);
-      record("B5-resume", state("before") === "" && state("after") === "" && disabled("save"), {});
+      record("B5-resume", !frozen("before") && !frozen("after") && disabled("save"), {});
 
       click("freeze-after");
       setNumber("pitch-num", 7);
       await sleep(3000);
       [b, a] = f0Row();
-      const header = q('[data-testid="numbers"] tr').textContent ?? "";
-      record("B7", near(a, 150 * 2 ** (5 / 12), 1.5) && near(b, 150, 1) && header.includes("時刻が違う"), { before: b, after: a, header });
+      const differ = q("#times-differ").dataset.differ === "true";
+      record("B7", near(a, 150 * 2 ** (5 / 12), 1.5) && near(b, 150, 1) && differ, { before: b, after: a, differ });
 
       click("freeze-all");
-      const both = [state("before"), state("after")];
+      const both = frozen("before") && frozen("after");
       click("freeze-all");
-      const none = [state("before"), state("after")];
-      record("B8", both.every((s) => s.startsWith("止めている")) && none.every((s) => s === ""), { both, none });
+      const none = !frozen("before") && !frozen("after");
+      record("B8", both && none, { both, none });
+
       // 決まった幅で上げ下げするボタンと、元に戻すボタン
       const value = (id: string) => q<HTMLInputElement>(`#${id}`).value;
       q<HTMLButtonElement>('button.reset[data-target="pitch"]').click();
@@ -105,17 +131,18 @@ export async function runSelftest(dir: string): Promise<void> {
         formant,
         formantReset: value("formant-num"),
       });
-      // 出力とモニターに流す音の切り替え
+
+      // 出力とモニターに流す音の切り替え（続けて押しても前の押した分を失わない）
       click("output-original");
-      await sleep(500);
-      const outOriginal = q('[data-testid="output-original"]').getAttribute("aria-pressed");
+      await sleep(300);
+      const outOriginal = pressed("output-original");
       click("monitor-original");
-      await sleep(500);
-      const monOriginal = q('[data-testid="monitor-original"]').getAttribute("aria-pressed");
+      await sleep(300);
+      const monOriginal = pressed("monitor-original");
       click("output-shifted");
       click("monitor-shifted");
-      await sleep(500);
-      record("routing", outOriginal === "true" && monOriginal === "true" && q('[data-testid="output-shifted"]').getAttribute("aria-pressed") === "true", {
+      await sleep(800);
+      record("routing", outOriginal && monOriginal && pressed("output-shifted") && pressed("monitor-shifted"), {
         outOriginal,
         monOriginal,
         message: q("#message").textContent,

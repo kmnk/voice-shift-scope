@@ -34,6 +34,10 @@ impl Analyzer for DefaultAnalyzer {
         frame.spectrum = display_spectrum(&self.harmonics, rate, settings);
         frame
     }
+
+    fn pitch_only(&mut self, window: &[f32], rate: SampleRate, _settings: &AnalysisSettings) -> Option<voice_domain::Frequency> {
+        self.pitch.estimate(window, rate)
+    }
 }
 
 /// 0〜上限を `DISPLAY_POINTS` に分け、各区間の最大の振幅（dB）を取る。

@@ -38,6 +38,10 @@ pub trait HarmonicPicker: Send {
 /// 窓の samples から `AnalysisFrame` を作る（domain service の口）。
 pub trait Analyzer: Send {
     fn analyze(&mut self, window: &[f32], rate: SampleRate, settings: &AnalysisSettings) -> AnalysisFrame;
+    /// F0 だけを求める（表示をしない間、声を変える処理に渡す目安のため）。
+    fn pitch_only(&mut self, window: &[f32], rate: SampleRate, settings: &AnalysisSettings) -> Option<Frequency> {
+        self.analyze(window, rate, settings).f0
+    }
 }
 
 /// 機器の一覧。呼ぶたびに今の一覧を取り直す。
@@ -66,6 +70,8 @@ pub trait AudioPipeline {
     fn set_analysis(&mut self, analysis: AnalysisSettings) -> Result<(), Self::Error>;
     fn set_monitor(&mut self, monitor: MonitorSettings) -> Result<(), Self::Error>;
     fn set_routing(&mut self, routing: Routing) -> Result<(), Self::Error>;
+    /// 表示のための分析（フォルマント・倍音・結果の送り出し）を動かすか。止めても F0 の目安は求め続ける。
+    fn set_analysis_display(&mut self, active: bool) -> Result<(), Self::Error>;
 }
 
 /// 分析の結果の行き先。

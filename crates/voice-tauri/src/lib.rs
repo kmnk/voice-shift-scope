@@ -65,28 +65,36 @@ struct AppState {
 #[derive(Debug, Serialize)]
 pub struct CommandError {
     kind: &'static str,
+    /// 画面が言葉を替えて出すための印（domain の誤りの名前）。無ければ message をそのまま出す
+    code: Option<String>,
     message: String,
+}
+
+/// domain の誤りの名前（`InvalidPitchShift { .. }` なら `InvalidPitchShift`）。
+fn error_code(e: &DomainError) -> String {
+    let s = format!("{e:?}");
+    s.split(|c: char| !c.is_alphanumeric()).next().unwrap_or_default().to_string()
 }
 
 impl From<AppError> for CommandError {
     fn from(e: AppError) -> Self {
-        let kind = match &e {
-            AppError::Domain(_) => "rule",
-            AppError::Devices(_) => "devices",
-            AppError::Pipeline(_) => "audio",
+        let (kind, code) = match &e {
+            AppError::Domain(d) => ("rule", Some(error_code(d))),
+            AppError::Devices(_) => ("devices", None),
+            AppError::Pipeline(_) => ("audio", None),
         };
-        Self { kind, message: e.to_string() }
+        Self { kind, code, message: e.to_string() }
     }
 }
 
 impl From<DomainError> for CommandError {
     fn from(e: DomainError) -> Self {
-        Self { kind: "invalid", message: e.to_string() }
+        Self { kind: "invalid", code: Some(error_code(&e)), message: e.to_string() }
     }
 }
 
 fn io_error(e: impl std::fmt::Display) -> CommandError {
-    CommandError { kind: "io", message: e.to_string() }
+    CommandError { kind: "io", code: None, message: e.to_string() }
 }
 
 type Res<T> = Result<T, CommandError>;
@@ -127,8 +135,49 @@ fn parse_source(s: &str) -> Res<voice_domain::AudioSource> {
     match s {
         "shifted" => Ok(voice_domain::AudioSource::Shifted),
         "original" => Ok(voice_domain::AudioSource::Original),
-        other => Err(CommandError { kind: "invalid", message: format!("流す音は shifted か original です（{other}）") }),
+        other => Err(CommandError { kind: "invalid", code: None, message: format!("流す音は shifted か original です（{other}）") }),
     }
+}
+
+#[derive(Serialize)]
+struct UiPrefsDto {
+    language: &'static str,
+    view: &'static str,
+}
+
+/// 画面の言葉（"en" か "ja"、初めては英語）と表示（"full" か "compact"、初めては全体）。
+#[tauri::command]
+fn get_ui_prefs(state: State<AppState>) -> UiPrefsDto {
+    UiPrefsDto { language: state.preferences.language(), view: state.preferences.view() }
+}
+
+/// 窓の大きさ（論理の px）。簡易表示は左の列だけが入る大きさにする。
+const FULL_SIZE: (f64, f64) = (1280.0, 860.0);
+const COMPACT_SIZE: (f64, f64) = (300.0, 640.0);
+
+/// 表示を全体か簡易に替えて覚え、窓の大きさを合わせる。
+#[tauri::command]
+fn set_view(app: tauri::AppHandle, state: State<AppState>, view: String) -> Res<()> {
+    state.preferences.remember_view(&view).map_err(io_error)?;
+    state.studio.lock().expect("studio").set_analysis_display(view != "compact")?;
+    apply_view(&app, &view);
+    Ok(())
+}
+
+fn apply_view(app: &tauri::AppHandle, view: &str) {
+    if let Some(window) = app.get_webview_window("main") {
+        let compact = view == "compact";
+        let (w, h) = if compact { COMPACT_SIZE } else { FULL_SIZE };
+        let (min_w, min_h) = if compact { (260.0, 480.0) } else { (960.0, 640.0) };
+        let _ = window.set_min_size(Some(tauri::LogicalSize::new(min_w, min_h)));
+        let _ = window.unmaximize();
+        let _ = window.set_size(tauri::LogicalSize::new(w, h));
+    }
+}
+
+#[tauri::command]
+fn set_language(state: State<AppState>, language: String) -> Res<()> {
+    state.preferences.remember_language(&language).map_err(io_error)
 }
 
 /// 出力とモニターに、変える前と後のどちらの音を流すか。
@@ -313,6 +362,11 @@ pub fn run() {
                 preferences: PreferencesStore::new(config_dir),
                 selftest_dir: arg_value("--ui-selftest").map(PathBuf::from),
             });
+            let view = app.state::<AppState>().preferences.view();
+            if view == "compact" {
+                let _ = app.state::<AppState>().studio.lock().expect("studio").set_analysis_display(false);
+                apply_view(app.handle(), view);
+            }
             selftest_log("setup を終えた");
             Ok(())
         })
@@ -322,6 +376,9 @@ pub fn run() {
             set_monitor,
             set_monitor_volume,
             set_routing,
+            get_ui_prefs,
+            set_language,
+            set_view,
             start,
             stop,
             change_shift,

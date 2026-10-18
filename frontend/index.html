@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,25 +8,29 @@
   </head>
   <body>
     <aside class="controls">
+      <div class="row topbar">
+        <button id="view-toggle" data-testid="view-toggle"></button>
+        <button id="lang-toggle" data-testid="lang-toggle" data-i18n="lang.toggle" data-i18n-title="lang.toggle.title"></button>
+      </div>
       <section class="group">
-        <h2>機器</h2>
-        <label>入力 <select id="input"></select></label>
+        <h2 data-i18n="sec.devices"></h2>
+        <label><span data-i18n="input"></span> <select id="input"></select></label>
         <p id="cable" class="cable" data-testid="cable-status"></p>
-        <div class="row toggle" role="group" aria-label="出力する音">
-          <span>出力</span>
-          <button data-route="output" data-source="shifted" data-testid="output-shifted">変えた後</button>
-          <button data-route="output" data-source="original" data-testid="output-original">変える前</button>
+        <div class="row toggle" role="group">
+          <span class="toggle-label" data-i18n="route.output"></span>
+          <button data-route="output" data-source="original" data-testid="output-original" data-i18n="original"></button>
+          <button data-route="output" data-source="shifted" data-testid="output-shifted" data-i18n="shifted"></button>
         </div>
         <div class="row">
-          <button id="start" data-testid="start">開始</button>
-          <button id="stop" data-testid="stop" disabled>停止</button>
+          <button id="start" data-testid="start" data-i18n="start"></button>
+          <button id="stop" data-testid="stop" data-i18n="stop" disabled></button>
         </div>
       </section>
       <section class="group">
-        <h2>ピッチ（半音）</h2>
+        <h2 data-i18n="sec.pitch"></h2>
         <div class="row">
           <input id="pitch-num" type="number" min="-24" max="24" step="0.1" value="0" />
-          <button class="reset" data-target="pitch" title="0 に戻す">元に戻す</button>
+          <button class="reset" data-target="pitch" data-i18n="reset" data-i18n-title="reset.title.pitch"></button>
         </div>
         <input id="pitch" type="range" min="-24" max="24" step="0.1" value="0" />
         <div class="row steps">
@@ -37,10 +41,10 @@
         </div>
       </section>
       <section class="group">
-        <h2>フォルマント（倍）</h2>
+        <h2 data-i18n="sec.formant"></h2>
         <div class="row">
           <input id="formant-num" type="number" min="0.5" max="2" step="0.01" value="1" />
-          <button class="reset" data-target="formant" title="1.00 に戻す">元に戻す</button>
+          <button class="reset" data-target="formant" data-i18n="reset" data-i18n-title="reset.title.formant"></button>
         </div>
         <input id="formant" type="range" min="0.5" max="2" step="0.01" value="1" />
         <div class="row steps">
@@ -50,51 +54,54 @@
           <button data-target="formant" data-step="0.05">+0.05</button>
         </div>
       </section>
-      <section class="group">
-        <h2>分析</h2>
-        <label>フォルマントの上限 <input id="ceiling" type="number" min="3000" max="8000" step="100" value="5500" /> Hz</label>
-        <p class="note">変えた後はフォルマントの倍率だけ上げて分析する（<span id="after-ceiling">5500</span> Hz）</p>
-        <label>倍音: 雑音の床から <input id="threshold" type="number" min="0" max="40" step="1" value="10" /> dB 以上</label>
-        <label>倍音: 最も強い倍音から <input id="relative-limit" type="number" min="10" max="100" step="5" value="40" /> dB 以内</label>
+      <section class="group full-only">
+        <h2 data-i18n="sec.analysis"></h2>
+        <label><span data-i18n="ceiling"></span> <input id="ceiling" type="number" min="3000" max="8000" step="100" value="5500" /></label>
+        <p id="ceiling-note" class="note"></p>
+        <label data-i18n-title="harm.floor.title"><span data-i18n="harm.floor"></span> <input id="threshold" type="number" min="0" max="40" step="1" value="10" /></label>
+        <label data-i18n-title="harm.range.title"><span data-i18n="harm.range"></span> <input id="relative-limit" type="number" min="10" max="100" step="5" value="40" /></label>
       </section>
       <section class="group">
-        <h2>モニター</h2>
-        <label><input id="monitor-on" type="checkbox" /> 聞く</label>
-        <div class="row toggle" role="group" aria-label="モニターで聞く音">
-          <button data-route="monitor" data-source="shifted" data-testid="monitor-shifted">変えた後</button>
-          <button data-route="monitor" data-source="original" data-testid="monitor-original">変える前</button>
+        <h2 data-i18n="sec.monitor"></h2>
+        <div class="row">
+          <label><input id="monitor-on" type="checkbox" /> <span data-i18n="monitor.on"></span></label>
+          <select id="monitor"></select>
         </div>
-        <select id="monitor"></select>
-        <label>音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
+        <div class="row toggle" role="group">
+          <span class="toggle-label" data-i18n="route.monitor"></span>
+          <button data-route="monitor" data-source="original" data-testid="monitor-original" data-i18n="original"></button>
+          <button data-route="monitor" data-source="shifted" data-testid="monitor-shifted" data-i18n="shifted"></button>
+        </div>
+        <label><span data-i18n="volume"></span> <input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
       </section>
-      <section class="group">
-        <h2>表示を止める</h2>
+      <section class="group full-only">
+        <h2 data-i18n="sec.hold"></h2>
         <div class="row">
-          <button id="freeze-all" data-testid="freeze-all" title="Space">全体を止める</button>
+          <button id="freeze-all" data-testid="freeze-all" data-i18n-title="hold.title.all"></button>
         </div>
         <div class="row">
-          <button id="freeze-before" data-testid="freeze-before" title="1">前を止める</button>
-          <button id="freeze-after" data-testid="freeze-after" title="2">後を止める</button>
+          <button id="freeze-before" data-testid="freeze-before" data-i18n-title="hold.title.original"></button>
+          <button id="freeze-after" data-testid="freeze-after" data-i18n-title="hold.title.shifted"></button>
         </div>
-        <button id="save" data-testid="save" disabled>画像を保存</button>
+        <button id="save" data-testid="save" data-i18n="snapshot" data-i18n-title="snapshot.title" disabled></button>
       </section>
       <p id="message" class="message" role="status"></p>
     </aside>
-    <main id="screen" class="screen">
-      <figure class="panel gram">
-        <figcaption>変える前 <span id="before-state" class="state"></span></figcaption>
+    <main id="screen" class="screen full-only">
+      <figure class="panel gram-before">
+        <figcaption><span data-i18n="original"></span> <span id="before-state" class="state"></span></figcaption>
         <div class="canvas-box"><canvas id="before-gram"></canvas></div>
       </figure>
-      <figure class="panel gram">
-        <figcaption>変えた後 <span id="after-state" class="state"></span></figcaption>
+      <figure class="panel gram-after">
+        <figcaption><span data-i18n="shifted"></span> <span id="after-state" class="state"></span></figcaption>
         <div class="canvas-box"><canvas id="after-gram"></canvas></div>
       </figure>
-      <figure class="panel">
-        <figcaption>今の瞬間のスペクトル（灰色の破線が前、青が後）</figcaption>
+      <figure class="panel spectrum-panel">
+        <figcaption data-i18n="panel.spectrum"></figcaption>
         <div class="canvas-box"><canvas id="spectrum"></canvas></div>
       </figure>
       <figure class="panel table-panel">
-        <figcaption>数値（直近 250 ms の中央値）</figcaption>
+        <figcaption><span data-i18n="panel.values"></span> <span id="times-differ" class="differs" data-testid="times-differ"></span></figcaption>
         <div class="table-box"><table id="numbers" data-testid="numbers"></table></div>
       </figure>
     </main>

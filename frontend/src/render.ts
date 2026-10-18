@@ -1,5 +1,6 @@
 // 描画の部品。store の値を読むだけで、状態を持たない（スペクトログラムの過去の画像だけを canvas に持つ）。
 
+import { t } from "./i18n";
 import type { Frame } from "./types";
 import type { SideView } from "./store";
 import type { Summary } from "./summary";
@@ -155,47 +156,32 @@ function fmt(v: number | null | undefined, digits = 0): string {
   return v === null || v === undefined ? "—" : v.toFixed(digits);
 }
 
-function ratio(a: number | null | undefined, b: number | null | undefined): string {
-  return a && b ? (a / b).toFixed(2) : "—";
-}
-
-/// 数値の表の行（PNG にも同じ行を描く）。フォルマントは「周波数（帯域幅）」を 1 行にする。
+/// 数値の表の行（PNG にも同じ行を描く）。前を左、後を右に置く。比の列は持たない（変えた量は設定で分かるため）。
 export function tableRows(before: Summary | null, after: Summary | null): string[][] {
-  const rows: string[][] = [["", "前", "後", "後/前"]];
-  rows.push(["F0 (Hz)", fmt(before?.f0, 1), fmt(after?.f0, 1), ratio(after?.f0, before?.f0)]);
+  const rows: string[][] = [["", t("original"), t("shifted")]];
+  rows.push([t("row.f0"), fmt(before?.f0, 1), fmt(after?.f0, 1)]);
   for (let i = 0; i < 4; i++) {
-    const b = before?.formants[i];
-    const a = after?.formants[i];
-    const cell = (f: typeof b) => (f ? `${f.frequency.toFixed(0)} (${f.bandwidth.toFixed(0)})` : "—");
-    rows.push([`F${i + 1} Hz (帯域幅)`, cell(b), cell(a), ratio(a?.frequency, b?.frequency)]);
+    const cell = (f: { frequency: number; bandwidth: number } | null | undefined) =>
+      f ? `${f.frequency.toFixed(0)} (${f.bandwidth.toFixed(0)})` : "—";
+    rows.push([t("row.formant", { n: i + 1 }), cell(before?.formants[i]), cell(after?.formants[i])]);
   }
   for (let k = 0; k < 10; k++) {
-    const b = before?.harmonics[k];
-    const a = after?.harmonics[k];
-    const cell = (h: typeof b) => (h ? `${h.frequency.toFixed(0)} / ${h.level.toFixed(0)} dB${h.observed ? "" : " ×"}` : "—");
-    rows.push([`H${k + 1}`, cell(b), cell(a), ratio(a?.frequency, b?.frequency)]);
+    const cell = (h: { frequency: number; level: number; observed: boolean } | null | undefined) =>
+      h ? `${h.frequency.toFixed(0)} / ${h.level.toFixed(0)} dB${h.observed ? "" : " ×"}` : "—";
+    rows.push([`H${k + 1}`, cell(before?.harmonics[k]), cell(after?.harmonics[k])]);
   }
-  rows.push(["観測できた倍音の数", fmt(before?.observedHarmonics), fmt(after?.observedHarmonics), ""]);
+  rows.push([t("row.observed"), fmt(before?.observedHarmonics), fmt(after?.observedHarmonics)]);
   return rows;
 }
 
-export function renderTable(table: HTMLTableElement, before: SideView | null, after: SideView | null, timesDiffer: boolean): void {
+export function renderTable(table: HTMLTableElement, before: SideView | null, after: SideView | null): void {
   const rows = tableRows(before?.summary ?? null, after?.summary ?? null);
   const stale = [before?.summary?.stale, after?.summary?.stale];
   table.innerHTML = rows
     .map((r, i) => {
       const tag = i === 0 ? "th" : "td";
       return `<tr>${r
-        .map((cell, j) => {
-          const cls = [
-            j > 0 && j < 3 && stale[j - 1] ? "stale" : "",
-            j === 3 && timesDiffer && cell && cell !== "—" ? "differs" : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          const mark = j === 3 && i === 0 && timesDiffer ? " ※時刻が違う" : "";
-          return `<${tag}${cls ? ` class="${cls}"` : ""}>${cell}${mark}</${tag}>`;
-        })
+        .map((cell, j) => `<${tag}${j > 0 && stale[j - 1] ? ' class="stale"' : ""}>${cell}</${tag}>`)
         .join("")}</tr>`;
     })
     .join("");

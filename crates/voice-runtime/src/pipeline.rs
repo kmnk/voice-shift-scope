@@ -433,6 +433,12 @@ impl AudioPipeline for RuntimePipeline {
                         position += BLOCK as u64;
                     }
                     let analysis = *settings.lock().expect("分析の設定");
+                    if !shared.analysis_display.load(Ordering::Relaxed) {
+                        // 簡易表示: 声を変える処理に渡す F0 の目安だけを求める
+                        let hint = before_an.pitch_only(&before, rate, &analysis).map(|f| f.hz()).unwrap_or(0.0);
+                        shared.pitch_hint.store(hint.to_bits(), Ordering::Relaxed);
+                        continue;
+                    }
                     let shift = shared_shift(&shared);
                     let b = before_an.analyze(&before, rate, &analysis);
                     // 変えた後は、フォルマントを上げた分だけ上限も上げて分析する
@@ -491,6 +497,13 @@ impl AudioPipeline for RuntimePipeline {
     fn set_analysis(&mut self, analysis: AnalysisSettings) -> Result<(), RuntimeError> {
         if let Some(r) = &self.running {
             *r.analysis_settings.lock().expect("分析の設定") = analysis;
+        }
+        Ok(())
+    }
+
+    fn set_analysis_display(&mut self, active: bool) -> Result<(), RuntimeError> {
+        if let Some(r) = &self.running {
+            r.shared.analysis_display.store(active, Ordering::Relaxed);
         }
         Ok(())
     }
