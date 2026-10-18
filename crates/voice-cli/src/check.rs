@@ -78,10 +78,6 @@ pub fn b3(settings: &AnalysisSettings) -> Vec<Outcome> {
     }]
 }
 
-/// フォルマントの包絡を求めるときに Signalsmith Stretch に渡す F0 の目安を、入力の F0 の何倍にするか。
-/// F0 そのものより半分の方が、F0 100・150 Hz の合成の母音でフォルマントのずれが小さかった。
-pub const FORMANT_BASE_RATIO: f32 = 0.5;
-
 /// 試験用の信号を、音声のスレッドと同じ 10 ms のブロックで声を変える処理に通す。
 /// `input_f0` は入力の F0（Hz）で、フォルマントの包絡の目安に使う。
 /// 返すのは、遅れの分を前から除いた出力と、その遅れ（標本）。
@@ -89,7 +85,7 @@ pub fn shift_signal(x: &[f32], settings: ShiftSettings, input_f0: Option<f32>) -
     let block = *BLOCK_SECONDS.get().unwrap_or(&DEFAULT_BLOCK_SECONDS);
     let mut shifter = SignalsmithShifter::with_block(RATE, block, block / 4.0);
     if let Some(f0) = input_f0 {
-        shifter.set_formant_base_hz(f0 * FORMANT_BASE_RATIO);
+        shifter.set_pitch_hint(f0);
     }
     shifter.set(settings);
     let latency = shifter.latency();

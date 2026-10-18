@@ -2,6 +2,7 @@
 
 mod analysis;
 mod check;
+mod e2e;
 mod synth;
 
 use std::path::PathBuf;
@@ -65,6 +66,18 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// 音声の実行を、入力だけ wav（省くと F0 150 Hz の合成の母音）に替えて本物の機器で通し、
+    /// VB-CABLE から録り返して A1・A5・A6 を判定する。VB-CABLE が無ければ終了コード 2
+    E2e {
+        #[arg(long)]
+        input_wav: Option<PathBuf>,
+        /// 動かす長さ（秒）
+        #[arg(long, default_value_t = 10.0)]
+        seconds: f64,
+        /// ピッチの変化（半音）
+        #[arg(long, default_value_t = 5.0, allow_hyphen_values = true)]
+        semitones: f32,
+    },
     /// 答えの分かる試験用の信号を wav（48 kHz、mono、32-bit float）で書く
     Synth {
         #[command(subcommand)]
@@ -108,6 +121,7 @@ const SAMPLE_RATE: u32 = 48_000;
 fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Devices => devices(),
+        Command::E2e { input_wav, seconds, semitones } => run_e2e(input_wav.as_deref(), seconds, semitones),
         Command::Analyze { wav, ceiling, lpc_order } => run_analyze(&wav, ceiling, lpc_order),
         Command::Check { criteria, ceiling, lpc_order, block_ms, json } => {
             if let Some(ms) = block_ms {
@@ -333,4 +347,37 @@ fn run_check(criteria: &[String], ceiling: f32, lpc_order: u32, as_json: bool) -
         }
     }
     if outcomes.iter().all(|o| o.pass) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+}
+
+fn run_e2e(input_wav: Option<&std::path::Path>, seconds: f64, semitones: f32) -> ExitCode {
+    let (signal, input_f0) = match input_wav {
+        Some(path) => match read_wav(path) {
+            Ok((x, rate)) if rate == check::RATE => (x, None),
+            Ok((_, rate)) => {
+                eprintln!("{} は {rate} Hz です。{} Hz の wav を渡してください", path.display(), check::RATE);
+                return ExitCode::FAILURE;
+            }
+            Err(e) => {
+                eprintln!("{} を読めませんでした: {e}", path.display());
+                return ExitCode::FAILURE;
+            }
+        },
+        None => (synth::vowel(150.0, &synth::SYNTH_VOWEL, check::RATE as f64, 2.0, 0.5), Some(150.0)),
+    };
+    match e2e::run(&signal, input_f0, semitones, seconds) {
+        Ok(o) => {
+            println!("{}", serde_json::to_string_pretty(&o.report).expect("JSON にできる"));
+            if o.no_cable {
+                ExitCode::from(2)
+            } else if o.pass {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(e) => {
+            eprintln!("e2e に失敗しました: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }

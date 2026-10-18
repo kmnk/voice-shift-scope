@@ -10,4 +10,4 @@ pub mod shifter;
 pub mod yin;
 
 pub use analyzer::{ANALYSIS_WINDOW, DefaultAnalyzer};
-pub use shifter::{DEFAULT_BLOCK_SECONDS, SignalsmithShifter};
+pub use shifter::{DEFAULT_BLOCK_SECONDS, FORMANT_BASE_RATIO, SignalsmithShifter};

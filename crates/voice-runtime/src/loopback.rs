@@ -132,6 +132,43 @@ pub fn resample_linear(x: &[f32], from: u32, to: u32) -> Vec<f32> {
         .collect()
 }
 
+/// 録音の機器から録り続ける。`stop` で止めて、録った標本（1 番目の channel）と機器の速さを返す。
+pub struct Recorder {
+    stream: cpal::Stream,
+    recorded: Arc<Mutex<Vec<f32>>>,
+    rate: u32,
+}
+
+impl Recorder {
+    pub fn start(recording_id: &str) -> Result<Self, LoopbackError> {
+        let input = find_device(recording_id)?;
+        let config = input.default_input_config()?;
+        if config.sample_format() != cpal::SampleFormat::F32 {
+            return Err(LoopbackError::UnsupportedFormat(config.sample_format()));
+        }
+        let channels = config.channels() as usize;
+        let recorded = Arc::new(Mutex::new(Vec::<f32>::new()));
+        let sink = recorded.clone();
+        let stream = input.build_input_stream(
+            config.config(),
+            move |data: &[f32], _| {
+                let mut r = sink.lock().expect("録音の buffer");
+                r.extend(data.chunks(channels).map(|frame| frame[0]));
+            },
+            |e| eprintln!("録音の誤り: {e}"),
+            None,
+        )?;
+        stream.play()?;
+        Ok(Self { stream, recorded, rate: config.sample_rate() })
+    }
+
+    pub fn stop(self) -> (Vec<f32>, u32) {
+        drop(self.stream);
+        let samples = self.recorded.lock().expect("録音の buffer").clone();
+        (samples, self.rate)
+    }
+}
+
 /// 振幅が `threshold` を最初に超えた位置。
 pub fn onset(x: &[f32], threshold: f32) -> Option<usize> {
     x.iter().position(|v| v.abs() > threshold)

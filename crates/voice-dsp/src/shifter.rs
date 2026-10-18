@@ -25,6 +25,9 @@ unsafe extern "C" {
 /// 50 ms では F0 100 Hz の声で崩れた（voice-cli check --block-ms で比べた）。
 pub const DEFAULT_BLOCK_SECONDS: f32 = 0.07;
 
+/// フォルマントの包絡の目安に渡す F0 の比。入力の F0 の半分が、F0 100・150 Hz の試験用の母音でずれが一番小さかった。
+pub const FORMANT_BASE_RATIO: f32 = 0.5;
+
 pub struct SignalsmithShifter {
     raw: *mut RawStretch,
     sample_rate: u32,
@@ -96,5 +99,12 @@ impl VoiceShifter for SignalsmithShifter {
 
     fn latency(&self) -> usize {
         unsafe { (vss_stretch_input_latency(self.raw) + vss_stretch_output_latency(self.raw)) as usize }
+    }
+
+    /// 入力の F0 の半分を、フォルマントの包絡の目安として渡す（試験用の母音で一番ずれが小さかった比）。
+    fn set_pitch_hint(&mut self, f0: f32) {
+        if f0 > 0.0 {
+            self.set_formant_base_hz(f0 * FORMANT_BASE_RATIO);
+        }
     }
 }

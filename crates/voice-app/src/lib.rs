@@ -37,6 +37,11 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         &self.session
     }
 
+    /// 組み立てた adapter の中を見る（試験と画面の状態の表示に使う）。
+    pub fn pipeline(&self) -> &P {
+        &self.pipeline
+    }
+
     /// 機器の一覧を取り直す。止まっている間だけ、選んでいる機器を新しい一覧に合わせ直す。
     pub fn list_devices(&mut self) -> Result<&DeviceList, AppError> {
         let list = self.devices.list().map_err(|e| AppError::Devices(Box::new(e)))?;

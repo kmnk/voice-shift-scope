@@ -1,7 +1,7 @@
 name: windows-e2e
 
 # Windows のランナーに VB-CABLE を入れ、本物の WASAPI の経路を通して確かめる。
-# 今は声を変える処理を通さない loopback だけ。音声の実行（voice-runtime）ができたら e2e に替える。
+# loopback は声を変える処理を通さずに VB-CABLE の経路だけを、e2e は音声の実行（voice-runtime）を wav の音源で通す。
 # ランナーは毎回作り直されるので、利用者の機器や設定には触れない。
 on:
   workflow_dispatch:
@@ -43,6 +43,16 @@ jobs:
         run: |
           target/release/voice-cli loopback --input-wav vowel150.wav --out-wav recorded.wav | Tee-Object -FilePath e2e-report.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run the audio runtime through VB-CABLE (+5 semitones, 20 s)
+        shell: pwsh
+        run: |
+          target/release/voice-cli e2e --seconds 20 --semitones 5 | Tee-Object -FilePath e2e-runtime.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run the audio runtime for 5 minutes (A6)
+        shell: pwsh
+        run: |
+          target/release/voice-cli e2e --seconds 300 --semitones -5 | Tee-Object -FilePath e2e-runtime-5min.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -50,6 +60,8 @@ jobs:
           path: |
             e2e-report.json
             recorded.wav
+            e2e-runtime.json
+            e2e-runtime-5min.json
 
   without-vb-cable:
     runs-on: windows-latest
@@ -66,5 +78,7 @@ jobs:
         shell: pwsh
         run: |
           target/release/voice-cli loopback --input-wav vowel150.wav
-          if ($LASTEXITCODE -ne 2) { Write-Error "expected exit code 2, got $LASTEXITCODE"; exit 1 }
+          if ($LASTEXITCODE -ne 2) { Write-Error "loopback: expected exit code 2, got $LASTEXITCODE"; exit 1 }
+          target/release/voice-cli e2e --seconds 1
+          if ($LASTEXITCODE -ne 2) { Write-Error "e2e: expected exit code 2, got $LASTEXITCODE"; exit 1 }
           exit 0

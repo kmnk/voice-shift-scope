@@ -11,6 +11,9 @@ pub trait VoiceShifter: Send {
     fn process(&mut self, input: &[f32], output: &mut [f32]);
     /// 入力から出力までの遅れ（標本の数）。
     fn latency(&self) -> usize;
+    /// 入力の F0 の目安（Hz）。フォルマントの包絡を求めるのに使う方式だけが使う。
+    /// 音声のスレッドから呼ばれるので、メモリを確保しない。
+    fn set_pitch_hint(&mut self, _f0: f32) {}
 }
 
 pub trait PitchEstimator: Send {
