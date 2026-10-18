@@ -39,10 +39,13 @@ jobs:
           Copy-Item docs\windows-checklist.md "dist\$name\" -ErrorAction SilentlyContinue
           Compress-Archive -Path "dist\$name" -DestinationPath "dist\$name.zip"
           "ZIP=dist\$name.zip" >> $env:GITHUB_ENV
+          "FOLDER=dist\$name" >> $env:GITHUB_ENV
+          "NAME=$name" >> $env:GITHUB_ENV
+      # artifact は落とすときに GitHub が zip に包むので、zip ではなくフォルダーを上げる
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-zip
-          path: ${{ env.ZIP }}
+          name: ${{ env.NAME }}
+          path: ${{ env.FOLDER }}
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
