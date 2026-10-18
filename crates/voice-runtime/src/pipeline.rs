@@ -358,8 +358,12 @@ impl AudioPipeline for RuntimePipeline {
                     },
                     move |e| {
                         if e.kind() == cpal::ErrorKind::Xrun {
-                            // 録音の取りこぼしは数えて、画面には回数として出す
+                            // 録音の取りこぼしは数えて、画面には回数として出す。
+                            // 録音を始めた瞬間（まだ 1 ブロックも処理していない間）の印は、音の途切れではないので数えない
                             let at = xrun_shared.processed.load(Ordering::Relaxed);
+                            if at == 0 {
+                                return;
+                            }
                             xrun_shared.input_xruns.fetch_add(1, Ordering::Relaxed);
                             xrun_shared.last_input_xrun_at.store(at, Ordering::Relaxed);
                         } else if let Ok(mut errs) = errors.lock() {
