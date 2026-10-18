@@ -6,7 +6,7 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "lib": ["ES2022", "DOM", "ESNext.Disposable"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "ESNext.Disposable"]
   },
   "include": ["src"]
 }

@@ -30,6 +30,8 @@ struct AppState {
     studio: Mutex<Studio>,
     publisher: Arc<ChannelPublisher>,
     preferences: PreferencesStore,
+    /// `--ui-selftest <dir>` のときの結果の置き場。試験のための入口で、画面からは選べない。
+    selftest_dir: Option<PathBuf>,
 }
 
 /// 画面に返す誤り。
@@ -174,11 +176,33 @@ async fn save_png(app: tauri::AppHandle, bytes: Vec<u8>, file_name: String) -> R
     Ok(Some(path.display().to_string()))
 }
 
+/// 画面の通しの試験: 画面の側が、利用者と同じ操作（ボタンを押す・値を入れる）を順に行い、結果を書いて終わる。
+#[tauri::command]
+fn selftest_config(state: State<AppState>) -> Option<String> {
+    state.selftest_dir.as_ref().map(|d| d.display().to_string())
+}
+
+#[tauri::command]
+fn finish_selftest(app: tauri::AppHandle, state: State<AppState>, report: String, passed: bool) -> Res<()> {
+    let Some(dir) = state.selftest_dir.clone() else { return Err(io_error("試験の入口で起動していません")) };
+    std::fs::create_dir_all(&dir).map_err(io_error)?;
+    std::fs::write(dir.join("ui-report.json"), report).map_err(io_error)?;
+    if let Ok(mut studio) = state.studio.lock() {
+        let _ = studio.stop();
+    }
+    app.exit(if passed { 0 } else { 1 });
+    Ok(())
+}
+
+fn arg_value(name: &str) -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
+}
+
 /// 開発と試験のための `--input-wav <path>`。48 kHz の wav を入力の機器の代わりに流す。画面からは選べない。
 fn input_wav_from_args() -> Option<Vec<f32>> {
-    let args: Vec<String> = std::env::args().collect();
-    let path = args.iter().position(|a| a == "--input-wav").and_then(|i| args.get(i + 1))?;
-    let mut reader = hound::WavReader::open(path).ok()?;
+    let path = arg_value("--input-wav")?;
+    let mut reader = hound::WavReader::open(&path).ok()?;
     let spec = reader.spec();
     if spec.sample_rate != 48_000 {
         eprintln!("--input-wav は 48 kHz の wav にしてください（{} Hz）", spec.sample_rate);
@@ -210,7 +234,12 @@ pub fn run() {
             }
             let studio = VoiceStudio::new(CpalDevices, pipeline).map_err(|e| e.to_string())?;
             let config_dir = app.path().app_config_dir()?;
-            app.manage(AppState { studio: Mutex::new(studio), publisher, preferences: PreferencesStore::new(config_dir) });
+            app.manage(AppState {
+                studio: Mutex::new(studio),
+                publisher,
+                preferences: PreferencesStore::new(config_dir),
+                selftest_dir: arg_value("--ui-selftest").map(PathBuf::from),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -224,6 +253,8 @@ pub fn run() {
             change_analysis,
             status,
             save_png,
+            selftest_config,
+            finish_selftest,
         ])
         .run(tauri::generate_context!())
         .expect("アプリを起動できませんでした");

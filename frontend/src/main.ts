@@ -2,6 +2,7 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { composePng, fileName } from "./png";
+import { runSelftest } from "./selftest";
 import { Spectrogram, drawSpectrum, renderTable } from "./render";
 import { FreezeStore } from "./store";
 import type { Devices, Pair, Side } from "./types";
@@ -222,3 +223,6 @@ wire();
 updateFreezeButtons();
 void call<Devices>("list_devices").then((d) => d && showDevices(d));
 requestAnimationFrame(loop);
+void invoke<string | null>("selftest_config").then((dir) => {
+  if (dir) void runSelftest(dir);
+});
