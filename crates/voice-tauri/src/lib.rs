@@ -24,7 +24,34 @@ use crate::dto::{DevicesDto, PairDto, devices_dto};
 use crate::preferences::PreferencesStore;
 use crate::publisher::ChannelPublisher;
 
-type Studio = VoiceStudio<CpalDevices, RuntimePipeline>;
+type Studio = VoiceStudio<TestSourceDevices, RuntimePipeline>;
+
+/// `--input-wav` のときだけ、一覧の入力に「試験の音源」を足す `AudioDevices`。
+/// 音声の実行は入力の機器の代わりに wav を流すので、この機器の値は使われない。
+/// use case の規則（入力を選ばないと開始できない）はそのまま通す。
+struct TestSourceDevices {
+    inner: CpalDevices,
+    test_source: bool,
+}
+
+const TEST_SOURCE_ID: &str = "test:input-wav";
+
+impl voice_domain::ports::AudioDevices for TestSourceDevices {
+    type Error = voice_runtime::RuntimeError;
+
+    fn list(&self) -> Result<voice_domain::DeviceList, Self::Error> {
+        let list = self.inner.list()?;
+        if !self.test_source {
+            return Ok(list);
+        }
+        Ok(list.with_extra_input(voice_domain::DeviceInfo {
+            raw_id: TEST_SOURCE_ID.into(),
+            name: "試験の音源（--input-wav）".into(),
+            direction: voice_domain::DeviceDirection::Input,
+            is_default: true,
+        }))
+    }
+}
 
 struct AppState {
     studio: Mutex<Studio>,
@@ -239,15 +266,18 @@ pub fn run() {
         .setup(|app| {
             selftest_log("setup を始めた");
             let publisher = Arc::new(ChannelPublisher::default());
+            let test_samples = input_wav_from_args();
             let mut pipeline = RuntimePipeline::new(
                 Box::new(|rate| Box::new(SignalsmithShifter::new(rate))),
                 Box::new(|| Box::new(DefaultAnalyzer::default())),
                 publisher.clone(),
             );
-            if let Some(samples) = input_wav_from_args() {
+            let test_source = test_samples.is_some();
+            if let Some(samples) = test_samples {
                 pipeline = pipeline.with_input_samples(samples);
             }
-            let studio = VoiceStudio::new(CpalDevices, pipeline).map_err(|e| e.to_string())?;
+            let devices = TestSourceDevices { inner: CpalDevices, test_source };
+            let studio = VoiceStudio::new(devices, pipeline).map_err(|e| e.to_string())?;
             let config_dir = app.path().app_config_dir()?;
             app.manage(AppState {
                 studio: Mutex::new(studio),

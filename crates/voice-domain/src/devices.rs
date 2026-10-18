@@ -62,6 +62,17 @@ impl DeviceList {
         list
     }
 
+    /// 入力の機器を 1 つ足した一覧（試験の音源のため）。既定の入力は足したものにする。
+    pub fn with_extra_input(mut self, info: DeviceInfo) -> Self {
+        if info.is_default {
+            for d in self.devices.iter_mut().filter(|d| d.direction == DeviceDirection::Input) {
+                d.is_default = false;
+            }
+        }
+        self.devices.push(info);
+        self
+    }
+
     /// `raw_id` の機器の名前。
     pub fn name(&self, raw_id: &str) -> Option<&str> {
         self.devices.iter().find(|d| d.raw_id == raw_id).map(|d| d.name.as_str())
