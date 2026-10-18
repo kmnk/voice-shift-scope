@@ -67,6 +67,9 @@ export async function runSelftest(dir: string): Promise<void> {
     const messageCleared = (q("#message").textContent ?? "") === "";
     // 窓が左の列の中身の高さに合い、下に大きな余白が残らない
     const spare = window.innerHeight - q(".controls").getBoundingClientRect().bottom;
+    // 横にもはみ出さない（長い機器の名前でも）
+    const overflowX = document.documentElement.scrollWidth - window.innerWidth;
+    const controlsRight = q(".controls").getBoundingClientRect().right;
     const controlsRect = q(".controls").getBoundingClientRect();
     const compactDetail = {
       innerHeight: window.innerHeight,
@@ -78,11 +81,13 @@ export async function runSelftest(dir: string): Promise<void> {
     };
     click("view-toggle");
     await sleep(1500);
-    record("compact-view", compactHidden && saveHidden && messageCleared && spare >= -2 && spare < 40 && getComputedStyle(q("#screen")).display !== "none", {
+    record("compact-view", compactHidden && saveHidden && messageCleared && spare >= -2 && spare < 40 && overflowX <= 0 && controlsRight <= window.innerWidth && getComputedStyle(q("#screen")).display !== "none", {
       compactHidden,
       saveHidden,
       messageCleared,
       spare,
+      overflowX,
+      controlsRight,
       ...compactDetail,
     });
 
