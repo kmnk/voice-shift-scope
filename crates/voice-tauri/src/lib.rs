@@ -187,17 +187,26 @@ fn set_view(app: tauri::AppHandle, state: State<AppState>, view: String, content
 }
 
 fn apply_view(app: &tauri::AppHandle, view: &str, content_height: Option<f64>) {
-    if let Some(window) = app.get_webview_window("main") {
-        let compact = view == "compact";
-        let (w, h) = if compact {
-            (COMPACT_SIZE.0, content_height.map(|h| h.clamp(320.0, 900.0)).unwrap_or(COMPACT_SIZE.1))
-        } else {
-            FULL_SIZE
-        };
-        let (min_w, min_h) = if compact { (260.0, 480.0) } else { (960.0, 640.0) };
-        let _ = window.set_min_size(Some(tauri::LogicalSize::new(min_w, min_h)));
-        let _ = window.unmaximize();
-        let _ = window.set_size(tauri::LogicalSize::new(w, h));
+    let Some(window) = app.get_webview_window("main") else { return };
+    let compact = view == "compact";
+    let (w, h) = if compact {
+        (COMPACT_SIZE.0, content_height.map(|h| h.clamp(200.0, 900.0)).unwrap_or(COMPACT_SIZE.1))
+    } else {
+        FULL_SIZE
+    };
+    let (min_w, min_h) = if compact { (260.0, 200.0) } else { (960.0, 640.0) };
+    let _ = window.set_min_size(Some(tauri::LogicalSize::new(min_w, min_h)));
+    let _ = window.unmaximize();
+    let _ = window.set_size(tauri::LogicalSize::new(w, h));
+    // 窓の中の高さが求めた高さにならなかったとき（窓の縁を含めて決まる場合など）は、その差だけ直す
+    if compact {
+        if let (Ok(inner), Ok(scale)) = (window.inner_size(), window.scale_factor()) {
+            let actual = inner.height as f64 / scale;
+            let diff = h - actual;
+            if diff.abs() > 1.0 {
+                let _ = window.set_size(tauri::LogicalSize::new(w, h + diff));
+            }
+        }
     }
 }
 
