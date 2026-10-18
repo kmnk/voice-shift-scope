@@ -42,15 +42,15 @@ function message(text: string, kind = "error"): void {
   if (kind === "saved") messageTimer = window.setTimeout(() => message(""), 5000);
 }
 
-/// 簡易表示で窓の高さを決めたあと、実際の窓の中の高さと中身がずれていれば（窓の縁の分など）、その差だけ直す。
-/// 何度も直し続けないよう、1 回の切り替えにつき 2 回まで。
+/// 簡易表示で、左の列の中身の高さが変わったら（窓が狭くなって文が折り返すなど）、窓の高さを合わせ直す。
+/// 窓の縁の分は Rust の側が直す。何度も直し続けないよう、1 回の切り替えにつき 4 回まで。
 let compactFixes = 0;
 function fitCompactWindow(): void {
-  if (view !== "compact" || compactFixes >= 2) return;
-  const diff = compactContentHeight() - window.innerHeight;
-  if (Math.abs(diff) <= 2) return;
+  if (view !== "compact" || compactFixes >= 4) return;
+  const wanted = compactContentHeight();
+  if (Math.abs(wanted - window.innerHeight) <= 2) return;
   compactFixes++;
-  void call("set_view", { view: "compact", contentHeight: compactContentHeight() + diff });
+  void call("set_view", { view: "compact", contentHeight: wanted });
 }
 
 /// 簡易表示の窓の高さ: 左の列の中身の高さに、body の上下の余白を足したもの
@@ -352,6 +352,7 @@ function wire(): void {
     applyView(next);
     void call("set_view", { view: next, contentHeight: next === "compact" ? compactContentHeight() : null });
   });
+  new ResizeObserver(() => fitCompactWindow()).observe(document.querySelector(".controls") as HTMLElement);
   window.addEventListener("resize", () => {
     if (view === "compact") {
       fitCompactWindow();
