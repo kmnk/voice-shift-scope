@@ -205,12 +205,15 @@ function wire(): void {
   $("volume").addEventListener("input", (e) => void call("set_monitor_volume", { volume: Number((e.target as HTMLInputElement).value) }));
   link("pitch", "pitch-num");
   link("formant", "formant-num");
+  // 続けて押しても前の押した分を失わないよう、選んでいる音は画面の側で先に替えてから送る
   document.querySelectorAll<HTMLButtonElement>("button[data-route]").forEach((b) =>
     b.addEventListener("click", async () => {
       if (!devices) return;
-      const output = b.dataset.route === "output" ? b.dataset.source : devices.outputSource;
-      const monitor = b.dataset.route === "monitor" ? b.dataset.source : devices.monitorSource;
-      const d = await call<Devices>("set_routing", { output, monitor });
+      const source = b.dataset.source as Devices["outputSource"];
+      if (b.dataset.route === "output") devices.outputSource = source;
+      else devices.monitorSource = source;
+      showDevices(devices);
+      const d = await call<Devices>("set_routing", { output: devices.outputSource, monitor: devices.monitorSource });
       if (d) showDevices(d);
     }),
   );
