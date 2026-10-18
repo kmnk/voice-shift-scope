@@ -137,6 +137,7 @@ pub struct Recorder {
     stream: cpal::Stream,
     recorded: Arc<Mutex<Vec<f32>>>,
     rate: u32,
+    first_callback: Arc<Mutex<Option<std::time::Instant>>>,
 }
 
 impl Recorder {
@@ -149,17 +150,31 @@ impl Recorder {
         let channels = config.channels() as usize;
         let recorded = Arc::new(Mutex::new(Vec::<f32>::new()));
         let sink = recorded.clone();
+        let first_callback = Arc::new(Mutex::new(None));
+        let first = first_callback.clone();
+        let rate = config.sample_rate();
         let stream = input.build_input_stream(
             config.config(),
             move |data: &[f32], _| {
                 let mut r = sink.lock().expect("録音の buffer");
+                if r.is_empty() {
+                    // 最初のコールバックが届いた時刻から、届いた分の長さを引いたものを、最初の標本の時刻とみなす
+                    let frames = data.len() / channels;
+                    let span = Duration::from_secs_f64(frames as f64 / rate as f64);
+                    *first.lock().expect("時刻") = std::time::Instant::now().checked_sub(span);
+                }
                 r.extend(data.chunks(channels).map(|frame| frame[0]));
             },
             |e| eprintln!("録音の誤り: {e}"),
             None,
         )?;
         stream.play()?;
-        Ok(Self { stream, recorded, rate: config.sample_rate() })
+        Ok(Self { stream, recorded, rate, first_callback })
+    }
+
+    /// 録った最初の標本のおよその時刻（最初のコールバックから求める）。
+    pub fn first_sample_at(&self) -> Option<std::time::Instant> {
+        *self.first_callback.lock().expect("時刻")
     }
 
     pub fn stop(self) -> (Vec<f32>, u32) {

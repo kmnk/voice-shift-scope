@@ -4,6 +4,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+
 use serde_json::{Value, json};
 use voice_domain::ports::{AnalysisPublisher, AudioDevices, AudioPipeline, PipelineConfig};
 use voice_domain::{AnalysisPair, DeviceDirection, FormantShift, MonitorSettings, MonitorVolume, PitchShift, ShiftSettings};
@@ -85,13 +86,24 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
     pipeline.start(config).map_err(|e| e.to_string())?;
     std::thread::sleep(Duration::from_secs_f64(seconds + 1.5));
     let stats = pipeline.stats();
+    let source_started = pipeline.source_started();
+    let recording_started = recorder.first_sample_at();
     pipeline.stop().map_err(|e| e.to_string())?;
     let (recorded, rec_rate) = recorder.stop();
     let recorded = resample_linear(&recorded, rec_rate, RATE);
 
     let peak = signal.iter().fold(0.0f32, |m, v| m.max(v.abs()));
-    let latency_ms = match (onset(&played, peak * 0.1), onset(&recorded, peak * 0.1)) {
-        (Some(s), Some(r)) => Some((r as f64 - s as f64) * 1000.0 / RATE as f64),
+    // 録音と音源は別々に始まるので、それぞれが始まった時刻の差を足す
+    let start_offset_ms = match (source_started, recording_started) {
+        (Some(src), Some(rec)) => Some(if rec >= src {
+            (rec - src).as_secs_f64() * 1000.0
+        } else {
+            -((src - rec).as_secs_f64() * 1000.0)
+        }),
+        _ => None,
+    };
+    let latency_ms = match (onset(&played, peak * 0.1), onset(&recorded, peak * 0.1), start_offset_ms) {
+        (Some(s), Some(r), Some(offset)) => Some((r as f64 - s as f64) * 1000.0 / RATE as f64 + offset),
         _ => None,
     };
     let frames = analyze_signal(&recorded, RATE, &Default::default());
@@ -114,7 +126,7 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
         "seconds": seconds,
         "recording_rate": rec_rate,
         "A1": { "result": pass_str(a1), "input_f0": input_f0, "expected_f0": expected_f0, "recorded_f0": recorded_f0, "diff_percent": f0_diff },
-        "A5": if measure_latency { json!({ "result": pass_str(a5), "latency_ms": latency_ms, "limit_ms": 150, "note": "wav の音源から CABLE Output まで。マイクの入力のバッファを含まない" }) } else { json!({ "result": "SKIP", "note": "--semitones 0 のときだけ測る" }) },
+        "A5": if measure_latency { json!({ "result": pass_str(a5), "latency_ms": latency_ms, "recording_minus_source_start_ms": start_offset_ms, "limit_ms": 150, "note": "wav の音源から CABLE Output まで。マイクの入力のバッファを含まない" }) } else { json!({ "result": "SKIP", "note": "--semitones 0 のときだけ測る" }) },
         "A6": { "result": pass_str(a6), "output_underruns": stats.output_underruns, "output_underrun_events": stats.output_underrun_events, "first_underrun_seconds": stats.first_underrun_seconds, "last_underrun_seconds": stats.last_underrun_seconds, "dropped_input": stats.dropped_input },
         "analysis": { "result": pass_str(analysis_ok), "published_pairs": stats.published_pairs, "before_f0_median": before_f0, "after_f0_median": after_f0 },
         "shifter_latency_samples": stats.shifter_latency,

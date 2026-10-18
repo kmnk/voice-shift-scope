@@ -57,6 +57,14 @@ jobs:
         run: |
           target/release/voice-cli e2e --seconds 300 --semitones -5 | Tee-Object -FilePath e2e-runtime-5min.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Same 5 minutes with a 60 ms output buffer (diagnosis of underruns on the runner)
+        if: always()
+        shell: pwsh
+        env:
+          VOICE_SHIFT_SCOPE_OUTPUT_BUFFER_MS: "60"
+        run: |
+          target/release/voice-cli e2e --seconds 300 --semitones -5 | Tee-Object -FilePath e2e-runtime-5min-60ms.json
+          exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -67,6 +75,7 @@ jobs:
             e2e-latency.json
             e2e-runtime.json
             e2e-runtime-5min.json
+            e2e-runtime-5min-60ms.json
 
   without-vb-cable:
     runs-on: windows-latest

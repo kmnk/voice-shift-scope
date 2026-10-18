@@ -89,6 +89,7 @@ struct Running {
     analysis_settings: Arc<Mutex<AnalysisSettings>>,
     published: Arc<std::sync::atomic::AtomicU64>,
     shifter_latency: usize,
+    source_started: Arc<Mutex<Option<std::time::Instant>>>,
 }
 
 pub struct RuntimePipeline {
@@ -120,8 +121,18 @@ fn f32_config(device: &cpal::Device, input: bool) -> Result<cpal::SupportedStrea
     Ok(config)
 }
 
-/// 出力とモニターの ring buffer に溜めておく量（中核の速さで 30 ms）。
-const OUTPUT_TARGET: usize = 1440;
+/// 出力とモニターの ring buffer に溜めておく量の既定（30 ms）。
+/// 試験で替えるときは `VOICE_SHIFT_SCOPE_OUTPUT_BUFFER_MS`（画面からは替えられない）。
+const DEFAULT_OUTPUT_BUFFER_MS: usize = 30;
+
+fn output_target() -> usize {
+    let ms = std::env::var("VOICE_SHIFT_SCOPE_OUTPUT_BUFFER_MS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|ms| (5..=500).contains(ms))
+        .unwrap_or(DEFAULT_OUTPUT_BUFFER_MS);
+    ms * CORE_RATE as usize / 1000
+}
 
 impl RuntimePipeline {
     pub fn new(
@@ -136,6 +147,11 @@ impl RuntimePipeline {
     pub fn with_input_samples(mut self, samples: Vec<f32>) -> Self {
         self.input_override = Some(Arc::new(samples));
         self
+    }
+
+    /// 試験用: wav の音源を流し始めた時刻（入力の機器を使うときは `None`）。
+    pub fn source_started(&self) -> Option<std::time::Instant> {
+        self.running.as_ref().and_then(|r| *r.source_started.lock().expect("始めた時刻"))
     }
 
     pub fn stats(&self) -> PipelineStats {
@@ -263,11 +279,11 @@ impl AudioPipeline for RuntimePipeline {
         let out_reader = Arc::new(Mutex::new(None));
         let (output, out_rate) =
             self.open_output(config.output.playback.raw(), out_reader.clone(), shared.clone(), false)?;
-        *out_reader.lock().expect("読み手") = Some(AdaptiveReader::new(out_cons, CORE_RATE, out_rate, OUTPUT_TARGET));
+        *out_reader.lock().expect("読み手") = Some(AdaptiveReader::new(out_cons, CORE_RATE, out_rate, output_target()));
 
         // モニター: 読み手は始めに作って残し、機器のストリームだけを開け閉めする
         let monitor_reader =
-            Arc::new(Mutex::new(Some(AdaptiveReader::new(mon_cons, CORE_RATE, CORE_RATE, OUTPUT_TARGET))));
+            Arc::new(Mutex::new(Some(AdaptiveReader::new(mon_cons, CORE_RATE, CORE_RATE, output_target()))));
         let mut monitor = None;
         let mut monitor_device = None;
         if let (true, Some(device)) = (config.monitor.enabled, config.monitor.device.as_ref()) {
@@ -278,11 +294,14 @@ impl AudioPipeline for RuntimePipeline {
         let mut processor = InputProcessor::new(shifter, shared.clone(), out_prod, mon_prod, before_prod, after_prod);
 
         // 入力
+        let source_started = Arc::new(Mutex::new(None));
         let (input, feeder) = match self.input_override.clone() {
             Some(samples) => {
                 let shared = shared.clone();
+                let started = source_started.clone();
                 let handle = std::thread::spawn(move || {
                     let start = std::time::Instant::now();
+                    *started.lock().expect("始めた時刻") = Some(start);
                     let silence = vec![0.0f32; BLOCK];
                     let mut sent = 0usize;
                     while !shared.stop.load(Ordering::Relaxed) {
@@ -400,6 +419,7 @@ impl AudioPipeline for RuntimePipeline {
             analysis_settings,
             published,
             shifter_latency,
+            source_started,
         });
         Ok(())
     }

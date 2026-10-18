@@ -57,6 +57,18 @@ jobs:
             Set-ItemProperty -Path "$key\NonPackaged" -Name Value -Value Allow
           }
       - run: target/release/voice-cli synth vowel --f0 150 --seconds 60 --out vowel150.wav
+      - name: Start the app alone for 10 seconds (diagnosis)
+        shell: pwsh
+        env:
+          RUST_BACKTRACE: "1"
+          VOICE_SHIFT_SCOPE_CONFIG_DIR: ${{ github.workspace }}\ui-out\config
+        run: |
+          New-Item -ItemType Directory -Force ui-out | Out-Null
+          $p = Start-Process target\release\voice-shift-scope.exe -ArgumentList '--input-wav', 'vowel150.wav' -PassThru -RedirectStandardOutput ui-out\app-stdout.txt -RedirectStandardError ui-out\app-stderr.txt
+          Start-Sleep -Seconds 10
+          "alive after 10 s: $(-not $p.HasExited)  exit code: $($p.ExitCode)" | Tee-Object -FilePath ui-out\app-alive.txt
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Get-Content ui-out\app-stdout.txt, ui-out\app-stderr.txt -ErrorAction SilentlyContinue
       - name: Run the UI test
         shell: pwsh
         env:
