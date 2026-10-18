@@ -65,6 +65,10 @@ pub struct PipelineStats {
     pub processed_samples: u64,
     pub output_underruns: u64,
     pub monitor_underruns: u64,
+    pub output_underrun_events: u64,
+    /// 最初と最後に出力が足りなくなったときの、処理していた入力の秒数。
+    pub first_underrun_seconds: f64,
+    pub last_underrun_seconds: f64,
     pub dropped_input: u64,
     pub published_pairs: u64,
     pub shifter_latency: usize,
@@ -140,6 +144,9 @@ impl RuntimePipeline {
                 processed_samples: r.shared.processed.load(Ordering::Relaxed),
                 output_underruns: r.shared.output_underruns.load(Ordering::Relaxed),
                 monitor_underruns: r.shared.monitor_underruns.load(Ordering::Relaxed),
+                output_underrun_events: r.shared.output_underrun_events.load(Ordering::Relaxed),
+                first_underrun_seconds: r.shared.first_underrun_at.load(Ordering::Relaxed) as f64 / CORE_RATE as f64,
+                last_underrun_seconds: r.shared.last_underrun_at.load(Ordering::Relaxed) as f64 / CORE_RATE as f64,
                 dropped_input: r.shared.dropped_input.load(Ordering::Relaxed),
                 published_pairs: r.published.load(Ordering::Relaxed),
                 shifter_latency: r.shifter_latency,
@@ -184,6 +191,13 @@ impl RuntimePipeline {
                 if missing > 0 {
                     let counter = if is_monitor { &shared.monitor_underruns } else { &shared.output_underruns };
                     counter.fetch_add(missing as u64, Ordering::Relaxed);
+                    if !is_monitor {
+                        let at = shared.processed.load(Ordering::Relaxed);
+                        if shared.output_underrun_events.fetch_add(1, Ordering::Relaxed) == 0 {
+                            shared.first_underrun_at.store(at, Ordering::Relaxed);
+                        }
+                        shared.last_underrun_at.store(at, Ordering::Relaxed);
+                    }
                 }
                 for (frame, v) in data.chunks_mut(channels).zip(mono.iter()) {
                     frame.fill(v * gain);

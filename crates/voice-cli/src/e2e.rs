@@ -103,7 +103,9 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
     let after_f0 = median(collect.after_f0.lock().expect("集計").clone());
 
     let a1 = f0_diff.is_some_and(|d| d.abs() <= 1.0);
+    // 遅れは、声を変える処理がほぼ素通しになる 0 半音のときだけ、波形の立ち上がりで測れる
     let a5 = latency_ms.is_some_and(|l| l <= 150.0);
+    let measure_latency = semitones == 0.0;
     let a6 = stats.output_underruns == 0 && stats.dropped_input == 0;
     let analysis_ok = stats.published_pairs as f64 >= seconds * 80.0;
     let report = json!({
@@ -112,14 +114,14 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
         "seconds": seconds,
         "recording_rate": rec_rate,
         "A1": { "result": pass_str(a1), "input_f0": input_f0, "expected_f0": expected_f0, "recorded_f0": recorded_f0, "diff_percent": f0_diff },
-        "A5": { "result": pass_str(a5), "latency_ms": latency_ms, "limit_ms": 150, "note": "wav の音源から CABLE Output まで。マイクの入力のバッファを含まない" },
-        "A6": { "result": pass_str(a6), "output_underruns": stats.output_underruns, "dropped_input": stats.dropped_input },
+        "A5": if measure_latency { json!({ "result": pass_str(a5), "latency_ms": latency_ms, "limit_ms": 150, "note": "wav の音源から CABLE Output まで。マイクの入力のバッファを含まない" }) } else { json!({ "result": "SKIP", "note": "--semitones 0 のときだけ測る" }) },
+        "A6": { "result": pass_str(a6), "output_underruns": stats.output_underruns, "output_underrun_events": stats.output_underrun_events, "first_underrun_seconds": stats.first_underrun_seconds, "last_underrun_seconds": stats.last_underrun_seconds, "dropped_input": stats.dropped_input },
         "analysis": { "result": pass_str(analysis_ok), "published_pairs": stats.published_pairs, "before_f0_median": before_f0, "after_f0_median": after_f0 },
         "shifter_latency_samples": stats.shifter_latency,
         "processed_samples": stats.processed_samples,
         "errors": stats.errors,
     });
-    Ok(E2eOutcome { report, pass: a1 && a5 && a6 && analysis_ok && stats.errors.is_empty(), no_cable: false })
+    Ok(E2eOutcome { report, pass: a1 && (a5 || !measure_latency) && a6 && analysis_ok && stats.errors.is_empty(), no_cable: false })
 }
 
 fn pass_str(ok: bool) -> &'static str {

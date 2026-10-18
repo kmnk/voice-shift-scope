@@ -26,6 +26,10 @@ pub struct Shared {
     /// 処理した入力の標本の数。
     pub processed: AtomicU64,
     pub output_underruns: AtomicU64,
+    /// 出力が足りなくなった回数と、最初と最後のときに処理していた入力の標本の数。
+    pub output_underrun_events: AtomicU64,
+    pub first_underrun_at: AtomicU64,
+    pub last_underrun_at: AtomicU64,
     pub monitor_underruns: AtomicU64,
     pub dropped_input: AtomicU64,
     pub stop: AtomicBool,
