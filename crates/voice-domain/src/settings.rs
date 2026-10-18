@@ -120,6 +120,30 @@ impl HarmonicThreshold {
     }
 }
 
+/// 倍音を「観測できた」とみなす、最も強い倍音からの差の上限（dB）。既定 40 は仮置き。
+/// 雑音の床との差だけでは、静かな部屋で裏声の弱い高い倍音まで数えてしまうので、2 つ目の条件として置く。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HarmonicRelativeLimit(f32);
+
+impl HarmonicRelativeLimit {
+    pub const MIN: f32 = 10.0;
+    pub const MAX: f32 = 100.0;
+    pub const DEFAULT: Self = Self(40.0);
+
+    pub fn new(db: f32) -> Result<Self, DomainError> {
+        let v = finite(db)?;
+        if (Self::MIN..=Self::MAX).contains(&v) {
+            Ok(Self(v))
+        } else {
+            Err(DomainError::InvalidHarmonicRelativeLimit { value: v, min: Self::MIN, max: Self::MAX })
+        }
+    }
+
+    pub fn db(self) -> f32 {
+        self.0
+    }
+}
+
 /// LPC の次数（極の数）。Praat と同じく、フォルマントの数の 2 倍。既定 10（5 個）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LpcOrder(u32);
@@ -147,7 +171,17 @@ impl LpcOrder {
 pub struct AnalysisSettings {
     pub ceiling: FormantCeiling,
     pub threshold: HarmonicThreshold,
+    pub relative_limit: HarmonicRelativeLimit,
     pub lpc_order: LpcOrder,
+}
+
+impl AnalysisSettings {
+    /// 変えた後の声を分析するときの設定。フォルマントを上げた分だけ上限も上げる（上限の範囲で止める）。
+    /// 上限のままだと、上がった上の方の共鳴が上限を超え、無い所にフォルマントを置いてしまう。
+    pub fn for_shifted(self, formant: crate::FormantShift) -> Self {
+        let scaled = (self.ceiling.hz() * formant.ratio()).clamp(FormantCeiling::MIN, FormantCeiling::MAX);
+        Self { ceiling: FormantCeiling(scaled), ..self }
+    }
 }
 
 impl Default for AnalysisSettings {
@@ -155,6 +189,7 @@ impl Default for AnalysisSettings {
         Self {
             ceiling: FormantCeiling::DEFAULT,
             threshold: HarmonicThreshold::DEFAULT,
+            relative_limit: HarmonicRelativeLimit::DEFAULT,
             lpc_order: LpcOrder::DEFAULT,
         }
     }
@@ -179,6 +214,14 @@ mod tests {
         assert!(FormantShift::new(1.4).is_ok());
         assert!(FormantShift::new(0.49).is_err());
         assert!(FormantShift::new(f32::INFINITY).is_err());
+    }
+
+    #[test]
+    fn shifted_analysis_raises_ceiling_with_formant_ratio() {
+        let base = AnalysisSettings::default();
+        assert!((base.for_shifted(FormantShift::new(1.2).unwrap()).ceiling.hz() - 6600.0).abs() < 0.01);
+        assert_eq!(base.for_shifted(FormantShift::new(1.5).unwrap()).ceiling.hz(), FormantCeiling::MAX);
+        assert_eq!(base.for_shifted(FormantShift::new(0.5).unwrap()).ceiling.hz(), FormantCeiling::MIN);
     }
 
     #[test]

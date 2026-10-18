@@ -137,8 +137,6 @@ impl HarmonicPicker for SpectralHarmonics {
         let f0 = self.refine_f0(fs, f0.hz(), upto);
         let bin = self.spectrum.bin_hz(fs);
         let mut harmonics = Vec::new();
-        let mut observed_count = 0u32;
-        let mut still_counting = true;
         for k in 1..=MAX_HARMONICS {
             let target = k as f32 * f0;
             if target >= upto.min(fs / 2.0) {
@@ -148,15 +146,18 @@ impl HarmonicPicker for SpectralHarmonics {
             let floor = self.floor(target, f0, fs);
             let observed =
                 level - floor > settings.threshold.db() && (freq - target).abs() <= PEAK_TOLERANCE * f0;
-            if still_counting && observed {
-                observed_count += 1;
-            } else {
-                still_counting = false;
-            }
             if let (Ok(frequency), Ok(level)) = (Frequency::new(freq), Decibels::new(level)) {
                 harmonics.push(Harmonic { number: k as u32, frequency, level, observed });
             }
         }
+        // 2 つ目の条件: 観測できた倍音のうち最も強いものから、差の上限より弱いものは数えない
+        let strongest = harmonics.iter().filter(|h| h.observed).map(|h| h.level.db()).fold(f32::NEG_INFINITY, f32::max);
+        for h in harmonics.iter_mut() {
+            if h.level.db() < strongest - settings.relative_limit.db() {
+                h.observed = false;
+            }
+        }
+        let observed_count = harmonics.iter().take_while(|h| h.observed).count() as u32;
         (harmonics, observed_count)
     }
 }
@@ -169,6 +170,32 @@ mod tests {
         (0..n)
             .map(|i| (1..=count).map(|k| 0.1 * (2.0 * std::f32::consts::PI * k as f32 * f0 * i as f32 / fs).cos()).sum())
             .collect()
+    }
+
+    /// 高い倍音ほど弱い声（1 oct で −24 dB、裏声のような傾き）では、最も強い倍音から 40 dB より弱いものを数えない。
+    /// 傾きが緩い声（−12 dB/oct）では、ずっと多く数える。
+    #[test]
+    fn relative_limit_counts_fewer_harmonics_for_steep_spectra() {
+        let rate = SampleRate::new(48_000).unwrap();
+        let tone = |slope_db_per_octave: f32| -> Vec<f32> {
+            (0..4096)
+                .map(|i| {
+                    (1..=30)
+                        .map(|k| {
+                            let a = 10f32.powf(slope_db_per_octave * (k as f32).log2() / 20.0);
+                            0.1 * a * (2.0 * std::f32::consts::PI * k as f32 * 150.0 * i as f32 / 48_000.0).cos()
+                        })
+                        .sum()
+                })
+                .collect()
+        };
+        let mut picker = SpectralHarmonics::default();
+        let settings = AnalysisSettings::default();
+        let (_, steep) = picker.pick(&tone(-24.0), rate, Frequency::new(150.0).unwrap(), &settings);
+        let (_, gentle) = picker.pick(&tone(-12.0), rate, Frequency::new(150.0).unwrap(), &settings);
+        // 40 dB の差は、−24 dB/oct では 2^(40/24) ≈ 3.2 倍、−12 dB/oct では 2^(40/12) ≈ 10 倍の周波数
+        assert_eq!(steep, 3, "steep");
+        assert_eq!(gentle, 10, "gentle");
     }
 
     #[test]

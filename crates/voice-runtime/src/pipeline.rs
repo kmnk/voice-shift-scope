@@ -430,11 +430,12 @@ impl AudioPipeline for RuntimePipeline {
                         position += BLOCK as u64;
                     }
                     let analysis = *settings.lock().expect("分析の設定");
+                    let shift = shared_shift(&shared);
                     let b = before_an.analyze(&before, rate, &analysis);
-                    let a = after_an.analyze(&after, rate, &analysis);
+                    // 変えた後は、フォルマントを上げた分だけ上限も上げて分析する
+                    let a = after_an.analyze(&after, rate, &analysis.for_shifted(shift.formant));
                     let hint = b.f0.map(|f| f.hz()).unwrap_or(0.0);
                     shared.pitch_hint.store(hint.to_bits(), Ordering::Relaxed);
-                    let shift = shared_shift(&shared);
                     publisher.publish(&AnalysisPair {
                         position: SamplePosition(position),
                         before: b,

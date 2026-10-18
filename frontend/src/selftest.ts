@@ -88,6 +88,27 @@ export async function runSelftest(dir: string): Promise<void> {
       click("freeze-all");
       const none = [state("before"), state("after")];
       record("B8", both.every((s) => s.startsWith("止めている")) && none.every((s) => s === ""), { both, none });
+      // 決まった幅で上げ下げするボタンと、元に戻すボタン
+      const value = (id: string) => q<HTMLInputElement>(`#${id}`).value;
+      q<HTMLButtonElement>('button.reset[data-target="pitch"]').click();
+      const afterReset = value("pitch-num");
+      q<HTMLButtonElement>('button[data-target="pitch"][data-step="1"]').click();
+      q<HTMLButtonElement>('button[data-target="pitch"][data-step="0.1"]').click();
+      const afterSteps = value("pitch-num");
+      q<HTMLButtonElement>('button[data-target="formant"][data-step="0.05"]').click();
+      q<HTMLButtonElement>('button[data-target="formant"][data-step="-0.01"]').click();
+      const formant = value("formant-num");
+      q<HTMLButtonElement>('button.reset[data-target="formant"]').click();
+      record("step-buttons", afterReset === "0.0" && afterSteps === "1.1" && formant === "1.04" && value("formant-num") === "1.00", {
+        afterReset,
+        afterSteps,
+        formant,
+        formantReset: value("formant-num"),
+      });
+      // 画面に収まり、縦に流さなくてよい
+      const root = document.documentElement;
+      record("fits-window", root.scrollHeight <= window.innerHeight + 1, { scrollHeight: root.scrollHeight, innerHeight: window.innerHeight });
+
       click("stop");
       await sleep(500);
     }

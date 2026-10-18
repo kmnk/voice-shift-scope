@@ -11,7 +11,7 @@ export function fileName(now: Date): string {
 function sideLine(label: string, v: SideView | null): string {
   if (!v) return `${label}: 表示なし`;
   const s = v.settings;
-  return `${label}: ${v.frozen ? "止めている" : "保存した瞬間"}・時刻 ${v.time.toFixed(2)} 秒・ピッチ ${s.semitones.toFixed(1)} 半音・フォルマント ${s.formant.toFixed(2)} 倍・上限 ${s.ceiling.toFixed(0)} Hz・しきい値 ${s.threshold.toFixed(0)} dB`;
+  return `${label}: ${v.frozen ? "止めている" : "保存した瞬間"}・時刻 ${v.time.toFixed(2)} 秒・ピッチ ${s.semitones.toFixed(1)} 半音・フォルマント ${s.formant.toFixed(2)} 倍・上限 ${s.ceiling.toFixed(0)} Hz（後は ${s.afterCeiling.toFixed(0)} Hz）・倍音は床から ${s.threshold.toFixed(0)} dB 以上、最も強いものから ${s.relativeLimit.toFixed(0)} dB 以内`;
 }
 
 export async function composePng(
@@ -22,12 +22,15 @@ export async function composePng(
   now: Date,
 ): Promise<Uint8Array> {
   const dpr = window.devicePixelRatio || 1;
-  const gw = grams[0].width;
-  const gh = grams[0].height;
+  // canvas は画素数が画面の拡大率倍になっているので、表示の大きさ（CSS の px）で並べる
+  const gw = grams[0].clientWidth;
+  const gh = grams[0].clientHeight;
+  const sw = spectrum.clientWidth;
+  const sh = spectrum.clientHeight;
   const rows = tableRows(before?.summary ?? null, after?.summary ?? null);
-  const width = gw * 2 + 30;
+  const width = Math.max(gw * 2 + 30, gw + 560);
   const header = 70;
-  const height = header + gh + 20 + Math.max(spectrum.height, rows.length * 16 + 10) + 20;
+  const height = header + gh + 20 + Math.max(sh, rows.length * 16 + 10) + 20;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
@@ -46,9 +49,9 @@ export async function composePng(
   c.drawImage(grams[0], 10, header, gw, gh);
   c.drawImage(grams[1], gw + 20, header, gw, gh);
   const lowerTop = header + gh + 20;
-  c.drawImage(spectrum, 10, lowerTop, spectrum.width, spectrum.height);
+  c.drawImage(spectrum, 10, lowerTop, sw, sh);
   c.font = "12px system-ui";
-  const colX = [gw + 20, gw + 170, gw + 330, gw + 500];
+  const colX = [gw + 20, gw + 150, gw + 310, gw + 470];
   rows.forEach((r, i) => {
     r.forEach((cell, j) => c.fillText(cell, colX[j], lowerTop + 12 + i * 16));
   });

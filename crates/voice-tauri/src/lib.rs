@@ -14,7 +14,7 @@ use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use voice_app::{AppError, VoiceStudio};
 use voice_domain::{
-    AnalysisSettings, DomainError, FormantCeiling, FormantShift, HarmonicThreshold, LpcOrder, MonitorVolume,
+    AnalysisSettings, DomainError, FormantCeiling, FormantShift, HarmonicRelativeLimit, HarmonicThreshold, LpcOrder, MonitorVolume,
     PitchShift, ShiftSettings,
 };
 use voice_dsp::{DefaultAnalyzer, SignalsmithShifter};
@@ -145,10 +145,11 @@ fn change_shift(state: State<AppState>, semitones: f32, formant: f32) -> Res<()>
 }
 
 #[tauri::command]
-fn change_analysis(state: State<AppState>, ceiling: f32, threshold: f32, lpc_order: u32) -> Res<()> {
+fn change_analysis(state: State<AppState>, ceiling: f32, threshold: f32, relative_limit: f32, lpc_order: u32) -> Res<()> {
     let analysis = AnalysisSettings {
         ceiling: FormantCeiling::new(ceiling)?,
         threshold: HarmonicThreshold::new(threshold)?,
+        relative_limit: HarmonicRelativeLimit::new(relative_limit)?,
         lpc_order: LpcOrder::new(lpc_order)?,
     };
     Ok(state.studio.lock().expect("studio").change_analysis(analysis)?)

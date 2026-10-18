@@ -12,7 +12,8 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const store = new FreezeStore();
 const grams = { before: new Spectrogram($("before-gram")), after: new Spectrogram($("after-gram")) };
 let pending: Pair[] = [];
-let ceiling = 5500;
+/// 2 つの図とスペクトルの縦（周波数）の範囲。前と後の上限の大きい方にそろえる
+let axisMax = 5500;
 let devices: Devices | null = null;
 
 function message(text: string): void {
@@ -79,7 +80,7 @@ function toggle(side: Side | "all"): void {
 function draw(): void {
   const before = store.view("before");
   const after = store.view("after");
-  drawSpectrum($("spectrum"), before, after, ceiling);
+  drawSpectrum($("spectrum"), before, after, axisMax);
   renderTable($("numbers"), before, after, store.timesDiffer());
 }
 
@@ -92,9 +93,11 @@ function loop(now: number): void {
     pending = [];
     for (const pair of batch) {
       store.receive(pair);
-      ceiling = pair.settings.ceiling;
+      axisMax = Math.max(pair.settings.ceiling, pair.settings.afterCeiling);
+      $("after-ceiling").textContent = pair.settings.afterCeiling.toFixed(0);
       for (const side of ["before", "after"] as const) {
-        if (!store.isFrozen(side)) grams[side].push(pair[side], ceiling);
+        grams[side].prepare(axisMax);
+        if (!store.isFrozen(side)) grams[side].push(pair[side]);
       }
     }
     const arrived = (batch[batch.length - 1] as Pair & { arrivedAt: number }).arrivedAt;
@@ -141,6 +144,7 @@ async function sendAnalysis(): Promise<void> {
   await call("change_analysis", {
     ceiling: Number(($("ceiling") as HTMLInputElement).value),
     threshold: Number(($("threshold") as HTMLInputElement).value),
+    relativeLimit: Number(($("relative-limit") as HTMLInputElement).value),
     lpcOrder: 10,
   });
 }
@@ -197,8 +201,34 @@ function wire(): void {
   $("volume").addEventListener("input", (e) => void call("set_monitor_volume", { volume: Number((e.target as HTMLInputElement).value) }));
   link("pitch", "pitch-num");
   link("formant", "formant-num");
+  // 細かく合わせるための、決まった幅で上げ下げするボタンと、元に戻すボタン
+  const defaults: Record<string, number> = { pitch: 0, formant: 1 };
+  const decimals: Record<string, number> = { pitch: 1, formant: 2 };
+  const setValue = (target: string, value: number) => {
+    const r = $(target) as HTMLInputElement;
+    const n = $(`${target}-num`) as HTMLInputElement;
+    const clamped = Math.min(Number(r.max), Math.max(Number(r.min), value));
+    n.value = clamped.toFixed(decimals[target]);
+    r.value = n.value;
+    void sendShift();
+  };
+  document.querySelectorAll<HTMLButtonElement>("button[data-step]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const target = b.dataset.target!;
+      setValue(target, Number(($(`${target}-num`) as HTMLInputElement).value) + Number(b.dataset.step));
+    }),
+  );
+  document.querySelectorAll<HTMLButtonElement>("button.reset").forEach((b) =>
+    b.addEventListener("click", () => setValue(b.dataset.target!, defaults[b.dataset.target!])),
+  );
   $("ceiling").addEventListener("change", () => void sendAnalysis());
   $("threshold").addEventListener("change", () => void sendAnalysis());
+  $("relative-limit").addEventListener("change", () => void sendAnalysis());
+  window.addEventListener("resize", () => {
+    grams.before.prepare(axisMax);
+    grams.after.prepare(axisMax);
+    draw();
+  });
   $("freeze-all").addEventListener("click", () => toggle("all"));
   $("freeze-before").addEventListener("click", () => toggle("before"));
   $("freeze-after").addEventListener("click", () => toggle("after"));
@@ -236,6 +266,9 @@ function wire(): void {
 
 wire();
 updateFreezeButtons();
+grams.before.prepare(axisMax);
+grams.after.prepare(axisMax);
+draw();
 void call<Devices>("list_devices").then((d) => d && showDevices(d));
 requestAnimationFrame(loop);
 void invoke<string | null>("selftest_config").then((dir) => {

@@ -107,8 +107,12 @@ impl From<&AnalysisFrame> for FrameDto {
 pub struct SettingsDto {
     pub semitones: f32,
     pub formant: f32,
+    /// 変える前の分析の上限（Hz）。変える前のスペクトルは 0〜この値。
     pub ceiling: f32,
+    /// 変えた後の分析の上限（Hz）。フォルマントの倍率だけ上げたもの。変えた後のスペクトルは 0〜この値。
+    pub after_ceiling: f32,
     pub threshold: f32,
+    pub relative_limit: f32,
 }
 
 #[derive(Serialize, Clone)]
@@ -131,7 +135,9 @@ impl From<&AnalysisPair> for PairDto {
                 semitones: p.shift.pitch.semitones(),
                 formant: p.shift.formant.ratio(),
                 ceiling: p.analysis.ceiling.hz(),
+                after_ceiling: p.analysis.for_shifted(p.shift.formant).ceiling.hz(),
                 threshold: p.analysis.threshold.db(),
+                relative_limit: p.analysis.relative_limit.db(),
             },
         }
     }

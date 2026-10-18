@@ -14,5 +14,5 @@ pub use devices::{DeviceDirection, DeviceId, DeviceInfo, DeviceList, VirtualCabl
 pub use error::DomainError;
 pub use session::{MonitorSettings, MonitorVolume, SessionState, VoiceSession};
 pub use settings::{
-    AnalysisSettings, FormantCeiling, FormantShift, HarmonicThreshold, LpcOrder, PitchShift, ShiftSettings,
+    AnalysisSettings, FormantCeiling, FormantShift, HarmonicRelativeLimit, HarmonicThreshold, LpcOrder, PitchShift, ShiftSettings,
 };

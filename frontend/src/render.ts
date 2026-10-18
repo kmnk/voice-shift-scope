@@ -5,98 +5,127 @@ import type { SideView } from "./store";
 import type { Summary } from "./summary";
 
 export const FORMANT_COLORS = ["#1f77b4", "#e4572e", "#2a9d8f", "#e9b10a"];
-const AXIS = 40;
-/// dB を濃さに直す範囲
+const AXIS = 34;
 const DB_FLOOR = -100;
-const DB_TOP = -20;
 
-function shade(db: number): number {
-  const t = Math.min(1, Math.max(0, (db - DB_FLOOR) / (DB_TOP - DB_FLOOR)));
-  return Math.round(255 * (1 - t));
+/// canvas の画素数を、表示の大きさと画面の拡大率に合わせる。変わったら true。
+export function fitCanvas(canvas: HTMLCanvasElement): boolean {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
+  const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width === w && canvas.height === h) return false;
+  canvas.width = w;
+  canvas.height = h;
+  return true;
 }
 
-/// 狭帯域のスペクトログラム。1 列が分析の 1 フレーム（10 ms）。右から左へ流れる。
+/// フォルマントと倍音の位置を、時間とともに右から左へ流す図。
+/// 1 列が分析の 1 フレーム（10 ms）。倍音は点（観測できたものは濃く、そうでないものは薄く）、F1〜F4 は色の点。
+/// 音の強さの濃淡は描かない（今の瞬間のスペクトルで見る）。
 export class Spectrogram {
   private ctx: CanvasRenderingContext2D;
+  private axisMax = 0;
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
-    this.clear(5500);
   }
 
-  clear(ceiling: number): void {
-    const { width, height } = this.canvas;
-    this.ctx.fillStyle = "#fff";
-    this.ctx.fillRect(0, 0, width, height);
-    this.drawAxis(ceiling);
+  /// 大きさか縦の範囲が変わったら描き直す（過去の点は消える）。
+  prepare(axisMax: number): void {
+    if (fitCanvas(this.canvas) || axisMax !== this.axisMax) {
+      this.axisMax = axisMax;
+      const { width, height } = this.canvas;
+      this.ctx.fillStyle = "#fff";
+      this.ctx.fillRect(0, 0, width, height);
+      this.drawAxis();
+    }
   }
 
-  private drawAxis(ceiling: number): void {
+  private drawAxis(): void {
     const { height } = this.canvas;
+    const dpr = window.devicePixelRatio || 1;
     const c = this.ctx;
+    const axis = AXIS * dpr;
     c.fillStyle = "#fff";
-    c.fillRect(0, 0, AXIS, height);
+    c.fillRect(0, 0, axis, height);
     c.fillStyle = "#6b6b66";
-    c.font = "10px system-ui";
+    c.font = `${10 * dpr}px system-ui`;
     c.textAlign = "right";
-    for (let f = 0; f <= ceiling; f += 1000) {
-      const y = height - (f / ceiling) * height;
-      c.fillText(`${f / 1000}k`, AXIS - 4, Math.min(height - 2, Math.max(10, y + 3)));
+    c.strokeStyle = "#f0f0ee";
+    for (let f = 0; f <= this.axisMax; f += 1000) {
+      const y = height - (f / this.axisMax) * height;
+      c.fillText(`${f / 1000}k`, axis - 4 * dpr, Math.min(height - 2, Math.max(10 * dpr, y + 3 * dpr)));
     }
   }
 
-  push(frame: Frame, ceiling: number): void {
+  push(frame: Frame): void {
     const { width, height } = this.canvas;
+    const dpr = window.devicePixelRatio || 1;
+    const axis = Math.round(AXIS * dpr);
+    const step = Math.max(1, Math.round(dpr));
     const c = this.ctx;
-    c.drawImage(this.canvas, AXIS + 1, 0, width - AXIS - 1, height, AXIS, 0, width - AXIS - 1, height);
-    const x = width - 1;
-    const column = c.createImageData(1, height);
-    const n = frame.spectrum.length;
-    for (let y = 0; y < height; y++) {
-      const idx = Math.min(n - 1, Math.floor(((height - 1 - y) / height) * n));
-      const v = n > 0 ? shade(frame.spectrum[idx]) : 255;
-      column.data.set([v, v, v, 255], y * 4);
-    }
-    c.putImageData(column, x, 0);
+    c.drawImage(this.canvas, axis + step, 0, width - axis - step, height, axis, 0, width - axis - step, height);
+    const x = width - step;
+    c.fillStyle = "#fff";
+    c.fillRect(x, 0, step, height);
+    // 1 kHz ごとの薄い横線
+    c.fillStyle = "#eeeeec";
+    for (let f = 1000; f < this.axisMax; f += 1000) c.fillRect(x, Math.round(height - (f / this.axisMax) * height), step, 1);
     if (frame.voiced) {
+      const dot = Math.max(2, Math.round(2 * dpr));
+      for (const h of frame.harmonics) {
+        const y = height - (h.frequency / this.axisMax) * height;
+        c.fillStyle = h.observed ? "#55554f" : "#d4d4cf";
+        c.fillRect(x, y - dot / 2, step, dot);
+      }
       frame.formants.forEach((f, i) => {
         if (!f) return;
-        const y = height - (f.frequency / ceiling) * height;
+        const y = height - (f.frequency / this.axisMax) * height;
         c.fillStyle = FORMANT_COLORS[i];
-        c.fillRect(x - 1, y - 1, 2, 3);
+        c.fillRect(x - step, y - dot, step * 2, dot * 2);
       });
     }
-    this.drawAxis(ceiling);
   }
 }
 
-/// 今の瞬間のスペクトル。横が周波数、縦が dB。前を灰色、後を青で重ねる。
-export function drawSpectrum(canvas: HTMLCanvasElement, before: SideView | null, after: SideView | null, ceiling: number): void {
+/// 今の瞬間のスペクトル。横が周波数、縦が dB。前を灰色の破線、後を青で重ねる。
+/// 前と後でスペクトルの範囲（上限）が違うので、それぞれの範囲で横の位置を決める。
+export function drawSpectrum(
+  canvas: HTMLCanvasElement,
+  before: SideView | null,
+  after: SideView | null,
+  axisMax: number,
+): void {
+  fitCanvas(canvas);
   const c = canvas.getContext("2d")!;
   const { width, height } = canvas;
-  const plotH = height - 18;
+  const dpr = window.devicePixelRatio || 1;
+  const plotH = height - 16 * dpr;
   c.fillStyle = "#fff";
   c.fillRect(0, 0, width, height);
   c.strokeStyle = "#eee";
   c.fillStyle = "#6b6b66";
-  c.font = "10px system-ui";
+  c.font = `${10 * dpr}px system-ui`;
   c.textAlign = "center";
-  for (let f = 0; f <= ceiling; f += 1000) {
-    const x = (f / ceiling) * width;
+  for (let f = 0; f <= axisMax; f += 1000) {
+    const x = (f / axisMax) * width;
     c.beginPath();
     c.moveTo(x, 0);
     c.lineTo(x, plotH);
     c.stroke();
-    c.fillText(`${f / 1000}k`, Math.min(width - 10, Math.max(10, x)), height - 4);
+    c.fillText(`${f / 1000}k`, Math.min(width - 10 * dpr, Math.max(10 * dpr, x)), height - 4 * dpr);
   }
   const yOf = (db: number) => plotH - ((Math.max(DB_FLOOR, Math.min(0, db)) - DB_FLOOR) / -DB_FLOOR) * plotH;
-  const draw = (view: SideView | null, color: string, dash: number[]) => {
+  const draw = (view: SideView | null, side: "before" | "after", color: string, dash: number[]) => {
     if (!view) return;
     const s = view.frame.spectrum;
+    const maxHz = side === "before" ? view.settings.ceiling : view.settings.afterCeiling;
+    const xOf = (hz: number) => (hz / axisMax) * width;
     c.strokeStyle = color;
-    c.setLineDash(dash);
+    c.lineWidth = dpr;
+    c.setLineDash(dash.map((d) => d * dpr));
     c.beginPath();
     s.forEach((db, i) => {
-      const x = (i / (s.length - 1)) * width;
+      const x = xOf(((i + 0.5) / s.length) * maxHz);
       if (i === 0) c.moveTo(x, yOf(db));
       else c.lineTo(x, yOf(db));
     });
@@ -104,22 +133,20 @@ export function drawSpectrum(canvas: HTMLCanvasElement, before: SideView | null,
     c.setLineDash([]);
     view.frame.formants.forEach((f, i) => {
       if (!f || !view.frame.voiced) return;
-      const x = (f.frequency / ceiling) * width;
       c.fillStyle = FORMANT_COLORS[i];
-      c.fillRect(x - 1, plotH - 10, 3, 10);
+      c.fillRect(xOf(f.frequency) - dpr, plotH - 10 * dpr, 3 * dpr, 10 * dpr);
     });
     view.frame.harmonics.forEach((h) => {
-      const x = (h.frequency / ceiling) * width;
       c.beginPath();
-      c.arc(x, yOf(h.level), 2.5, 0, Math.PI * 2);
+      c.arc(xOf(h.frequency), yOf(h.level), 2.5 * dpr, 0, Math.PI * 2);
       c.fillStyle = color;
       c.strokeStyle = color;
       if (h.observed) c.fill();
       else c.stroke();
     });
   };
-  draw(before, "#8a8a85", [4, 2]);
-  draw(after, "#1f6fd1", []);
+  draw(before, "before", "#8a8a85", [4, 2]);
+  draw(after, "after", "#1f6fd1", []);
 }
 
 function fmt(v: number | null | undefined, digits = 0): string {
@@ -130,15 +157,15 @@ function ratio(a: number | null | undefined, b: number | null | undefined): stri
   return a && b ? (a / b).toFixed(2) : "—";
 }
 
-/// 数値の表の行（PNG にも同じ行を描く）。
+/// 数値の表の行（PNG にも同じ行を描く）。フォルマントは「周波数（帯域幅）」を 1 行にする。
 export function tableRows(before: Summary | null, after: Summary | null): string[][] {
   const rows: string[][] = [["", "前", "後", "後/前"]];
   rows.push(["F0 (Hz)", fmt(before?.f0, 1), fmt(after?.f0, 1), ratio(after?.f0, before?.f0)]);
   for (let i = 0; i < 4; i++) {
     const b = before?.formants[i];
     const a = after?.formants[i];
-    rows.push([`F${i + 1} (Hz)`, fmt(b?.frequency), fmt(a?.frequency), ratio(a?.frequency, b?.frequency)]);
-    rows.push([`  帯域幅`, fmt(b?.bandwidth), fmt(a?.bandwidth), ""]);
+    const cell = (f: typeof b) => (f ? `${f.frequency.toFixed(0)} (${f.bandwidth.toFixed(0)})` : "—");
+    rows.push([`F${i + 1} Hz (帯域幅)`, cell(b), cell(a), ratio(a?.frequency, b?.frequency)]);
   }
   for (let k = 0; k < 10; k++) {
     const b = before?.harmonics[k];

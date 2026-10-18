@@ -7,57 +7,87 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <header class="controls">
+    <aside class="controls">
       <section class="group">
+        <h2>機器</h2>
         <label>入力 <select id="input"></select></label>
-        <span id="cable" class="cable" data-testid="cable-status"></span>
-        <button id="start" data-testid="start">開始</button>
-        <button id="stop" data-testid="stop" disabled>停止</button>
+        <p id="cable" class="cable" data-testid="cable-status"></p>
+        <div class="row">
+          <button id="start" data-testid="start">開始</button>
+          <button id="stop" data-testid="stop" disabled>停止</button>
+        </div>
       </section>
       <section class="group">
-        <label>ピッチ <input id="pitch" type="range" min="-24" max="24" step="0.1" value="0" />
-          <input id="pitch-num" type="number" min="-24" max="24" step="0.1" value="0" /> 半音</label>
-        <label>フォルマント <input id="formant" type="range" min="0.5" max="2" step="0.01" value="1" />
-          <input id="formant-num" type="number" min="0.5" max="2" step="0.01" value="1" /> 倍</label>
+        <h2>ピッチ（半音）</h2>
+        <div class="row">
+          <input id="pitch-num" type="number" min="-24" max="24" step="0.1" value="0" />
+          <button class="reset" data-target="pitch" title="0 に戻す">元に戻す</button>
+        </div>
+        <input id="pitch" type="range" min="-24" max="24" step="0.1" value="0" />
+        <div class="row steps">
+          <button data-target="pitch" data-step="-1">−1</button>
+          <button data-target="pitch" data-step="-0.1">−0.1</button>
+          <button data-target="pitch" data-step="0.1">+0.1</button>
+          <button data-target="pitch" data-step="1">+1</button>
+        </div>
       </section>
       <section class="group">
-        <label>上限 <input id="ceiling" type="number" min="3000" max="8000" step="100" value="5500" /> Hz</label>
-        <label>倍音のしきい値 <input id="threshold" type="number" min="0" max="40" step="1" value="10" /> dB</label>
+        <h2>フォルマント（倍）</h2>
+        <div class="row">
+          <input id="formant-num" type="number" min="0.5" max="2" step="0.01" value="1" />
+          <button class="reset" data-target="formant" title="1.00 に戻す">元に戻す</button>
+        </div>
+        <input id="formant" type="range" min="0.5" max="2" step="0.01" value="1" />
+        <div class="row steps">
+          <button data-target="formant" data-step="-0.05">−0.05</button>
+          <button data-target="formant" data-step="-0.01">−0.01</button>
+          <button data-target="formant" data-step="0.01">+0.01</button>
+          <button data-target="formant" data-step="0.05">+0.05</button>
+        </div>
       </section>
       <section class="group">
-        <label><input id="monitor-on" type="checkbox" /> モニター</label>
+        <h2>分析</h2>
+        <label>フォルマントの上限 <input id="ceiling" type="number" min="3000" max="8000" step="100" value="5500" /> Hz</label>
+        <p class="note">変えた後はフォルマントの倍率だけ上げて分析する（<span id="after-ceiling">5500</span> Hz）</p>
+        <label>倍音: 雑音の床から <input id="threshold" type="number" min="0" max="40" step="1" value="10" /> dB 以上</label>
+        <label>倍音: 最も強い倍音から <input id="relative-limit" type="number" min="10" max="100" step="5" value="40" /> dB 以内</label>
+      </section>
+      <section class="group">
+        <h2>モニター</h2>
+        <label><input id="monitor-on" type="checkbox" /> 聞く</label>
         <select id="monitor"></select>
         <label>音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
       </section>
       <section class="group">
-        <button id="freeze-all" data-testid="freeze-all" title="Space">全体を止める</button>
-        <button id="freeze-before" data-testid="freeze-before" title="1">前を止める</button>
-        <button id="freeze-after" data-testid="freeze-after" title="2">後を止める</button>
+        <h2>表示を止める</h2>
+        <div class="row">
+          <button id="freeze-all" data-testid="freeze-all" title="Space">全体を止める</button>
+        </div>
+        <div class="row">
+          <button id="freeze-before" data-testid="freeze-before" title="1">前を止める</button>
+          <button id="freeze-after" data-testid="freeze-after" title="2">後を止める</button>
+        </div>
         <button id="save" data-testid="save" disabled>画像を保存</button>
       </section>
       <p id="message" class="message" role="status"></p>
-    </header>
+    </aside>
     <main id="screen" class="screen">
-      <div class="spectrograms">
-        <figure class="panel">
-          <figcaption>変える前 <span id="before-state" class="state"></span></figcaption>
-          <canvas id="before-gram" width="560" height="320"></canvas>
-        </figure>
-        <figure class="panel">
-          <figcaption>変えた後 <span id="after-state" class="state"></span></figcaption>
-          <canvas id="after-gram" width="560" height="320"></canvas>
-        </figure>
-      </div>
-      <div class="lower">
-        <figure class="panel">
-          <figcaption>今の瞬間のスペクトル（灰色が前、青が後）</figcaption>
-          <canvas id="spectrum" width="560" height="240"></canvas>
-        </figure>
-        <figure class="panel table-panel">
-          <figcaption>数値（直近 250 ms の中央値）</figcaption>
-          <table id="numbers" data-testid="numbers"></table>
-        </figure>
-      </div>
+      <figure class="panel gram">
+        <figcaption>変える前 <span id="before-state" class="state"></span></figcaption>
+        <div class="canvas-box"><canvas id="before-gram"></canvas></div>
+      </figure>
+      <figure class="panel gram">
+        <figcaption>変えた後 <span id="after-state" class="state"></span></figcaption>
+        <div class="canvas-box"><canvas id="after-gram"></canvas></div>
+      </figure>
+      <figure class="panel">
+        <figcaption>今の瞬間のスペクトル（灰色の破線が前、青が後）</figcaption>
+        <div class="canvas-box"><canvas id="spectrum"></canvas></div>
+      </figure>
+      <figure class="panel table-panel">
+        <figcaption>数値（直近 250 ms の中央値）</figcaption>
+        <div class="table-box"><table id="numbers" data-testid="numbers"></table></div>
+      </figure>
     </main>
     <output id="test-stats" data-testid="test-stats" hidden></output>
     <script type="module" src="/src/main.ts"></script>

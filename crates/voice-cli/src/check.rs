@@ -174,11 +174,8 @@ pub fn a3(settings: &AnalysisSettings) -> Vec<Outcome> {
         let before_fm = formant_medians(&before, SKIP);
         for ratio in [0.8f32, 0.9, 1.1, 1.2] {
             let (y, _) = shift_signal(&x, shift(0.0, ratio), before_f0);
-            // フォルマントを上げた声は、上限も同じ倍率で上げて分析する（spec の要件 9 で上限を変えられる）
-            let mut after_settings = *settings;
-            after_settings.ceiling = voice_domain::FormantCeiling::new((settings.ceiling.hz() * ratio.max(1.0)).min(voice_domain::FormantCeiling::MAX))
-                .expect("範囲内");
-            let after = analyze_signal(&y, RATE, &after_settings);
+            // アプリと同じく、変えた後はフォルマントの倍率だけ上限も変えて分析する
+            let after = analyze_signal(&y, RATE, &settings.for_shifted(FormantShift::new(ratio).expect("範囲内")));
             let after_f0 = f0_median(&after, 0.5);
             let f0_diff = after_f0.zip(before_f0).map(|(a, b)| (a / b - 1.0) * 100.0);
             let mut pass = f0_diff.is_some_and(|d| d.abs() <= 1.0);

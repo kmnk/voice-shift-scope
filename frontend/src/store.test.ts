@@ -18,7 +18,7 @@ function pair(time: number, beforeF0: number, afterF0: number, semitones = 0): P
     time,
     before: frame(beforeF0, 700),
     after: frame(afterF0, 700),
-    settings: { semitones, formant: 1, ceiling: 5500, threshold: 10 },
+    settings: { semitones, formant: 1, ceiling: 5500, afterCeiling: 5500, threshold: 10, relativeLimit: 40 },
   };
 }
 

@@ -11,6 +11,8 @@ pub enum DomainError {
     InvalidFormantCeiling { value: f32, min: f32, max: f32 },
     #[error("倍音のしきい値は {min}〜{max} dB の範囲で指定してください（{value}）")]
     InvalidHarmonicThreshold { value: f32, min: f32, max: f32 },
+    #[error("最も強い倍音からの差は {min}〜{max} dB の範囲で指定してください（{value}）")]
+    InvalidHarmonicRelativeLimit { value: f32, min: f32, max: f32 },
     #[error("LPC の次数は {min}〜{max} の偶数で指定してください（{value}）")]
     InvalidLpcOrder { value: u32, min: u32, max: u32 },
     #[error("モニターの音量は 0〜1 の範囲で指定してください（{value}）")]

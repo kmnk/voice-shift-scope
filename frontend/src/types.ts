@@ -24,8 +24,12 @@ export interface Frame {
 export interface Settings {
   semitones: number;
   formant: number;
+  /// 変える前の分析の上限（Hz）
   ceiling: number;
+  /// 変えた後の分析の上限（Hz）。フォルマントの倍率だけ上げたもの
+  afterCeiling: number;
   threshold: number;
+  relativeLimit: number;
 }
 
 export interface Pair {
