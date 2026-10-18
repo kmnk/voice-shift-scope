@@ -177,18 +177,23 @@ const FULL_SIZE: (f64, f64) = (1280.0, 860.0);
 const COMPACT_SIZE: (f64, f64) = (300.0, 640.0);
 
 /// 表示を全体か簡易に替えて覚え、窓の大きさを合わせる。
+/// 簡易表示では、画面が測った左の列の中身の高さ（`content_height`、論理の px）に窓を合わせる。
 #[tauri::command]
-fn set_view(app: tauri::AppHandle, state: State<AppState>, view: String) -> Res<()> {
+fn set_view(app: tauri::AppHandle, state: State<AppState>, view: String, content_height: Option<f64>) -> Res<()> {
     state.preferences.remember_view(&view).map_err(io_error)?;
     state.studio.lock().expect("studio").set_analysis_display(view != "compact")?;
-    apply_view(&app, &view);
+    apply_view(&app, &view, content_height);
     Ok(())
 }
 
-fn apply_view(app: &tauri::AppHandle, view: &str) {
+fn apply_view(app: &tauri::AppHandle, view: &str, content_height: Option<f64>) {
     if let Some(window) = app.get_webview_window("main") {
         let compact = view == "compact";
-        let (w, h) = if compact { COMPACT_SIZE } else { FULL_SIZE };
+        let (w, h) = if compact {
+            (COMPACT_SIZE.0, content_height.map(|h| h.clamp(320.0, 900.0)).unwrap_or(COMPACT_SIZE.1))
+        } else {
+            FULL_SIZE
+        };
         let (min_w, min_h) = if compact { (260.0, 480.0) } else { (960.0, 640.0) };
         let _ = window.set_min_size(Some(tauri::LogicalSize::new(min_w, min_h)));
         let _ = window.unmaximize();
@@ -407,7 +412,7 @@ pub fn run() {
             let view = app.state::<AppState>().preferences.view();
             if view == "compact" {
                 let _ = app.state::<AppState>().studio.lock().expect("studio").set_analysis_display(false);
-                apply_view(app.handle(), view);
+                apply_view(app.handle(), view, None);
             }
             selftest_log("setup を終えた");
             Ok(())

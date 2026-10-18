@@ -32,10 +32,21 @@ interface Status {
 }
 
 /// 画面の下の知らせ。種類（data-kind）は試験が言葉に依らず読むためのもの。
+let messageTimer: number | undefined;
 function message(text: string, kind = "error"): void {
   const m = $("message");
   m.textContent = text;
   m.dataset.kind = text ? kind : "";
+  // 「保存しました」は数秒で消す（誤りと取りこぼしは、続いている間は出し続ける）
+  window.clearTimeout(messageTimer);
+  if (kind === "saved") messageTimer = window.setTimeout(() => message(""), 5000);
+}
+
+/// 簡易表示の窓の高さ: 左の列の中身の高さに、body の上下の余白を足したもの
+function compactContentHeight(): number {
+  const controls = document.querySelector(".controls") as HTMLElement;
+  const style = getComputedStyle(document.body);
+  return Math.ceil(controls.scrollHeight + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + 2);
 }
 
 /// command の誤りを、今の言葉で出す（domain の誤りは名前で引き、無ければ届いた文のまま）。
@@ -324,8 +335,10 @@ function wire(): void {
   });
   $("view-toggle").addEventListener("click", () => {
     const next: View = view === "full" ? "compact" : "full";
+    // 前の表示の知らせ（保存しましたなど）は持ち越さない
+    message("");
     applyView(next);
-    void call("set_view", { view: next });
+    void call("set_view", { view: next, contentHeight: next === "compact" ? compactContentHeight() : null });
   });
   window.addEventListener("resize", () => {
     if (view !== "full") return;
@@ -354,6 +367,8 @@ async function boot(): Promise<void> {
   const prefs = await invoke<{ language: Lang; view: View }>("get_ui_prefs").catch(() => ({ language: "en" as Lang, view: "full" as View }));
   setLang(prefs.language);
   applyView(prefs.view);
+  // 簡易表示で起動したときも、中身の高さに窓を合わせる
+  if (prefs.view === "compact") void call("set_view", { view: "compact", contentHeight: compactContentHeight() });
   const d = await call<Devices>("list_devices");
   if (d) {
     showDevices(d);

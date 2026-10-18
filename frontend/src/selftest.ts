@@ -59,13 +59,22 @@ export async function runSelftest(dir: string): Promise<void> {
       startOther,
     });
     // 簡易表示: 右の表示と分析・一時停止の欄が消え、もう一度で戻る
+    q("#message").textContent = "leftover";
     click("view-toggle");
-    await sleep(500);
+    await sleep(1500);
     const compactHidden = getComputedStyle(q("#screen")).display === "none";
     const saveHidden = q<HTMLElement>("#save").offsetParent === null;
+    const messageCleared = (q("#message").textContent ?? "") === "";
+    // 窓が左の列の中身の高さに合い、下に大きな余白が残らない
+    const spare = window.innerHeight - q(".controls").getBoundingClientRect().bottom;
     click("view-toggle");
-    await sleep(800);
-    record("compact-view", compactHidden && saveHidden && getComputedStyle(q("#screen")).display !== "none", { compactHidden, saveHidden });
+    await sleep(1500);
+    record("compact-view", compactHidden && saveHidden && messageCleared && spare < 40 && getComputedStyle(q("#screen")).display !== "none", {
+      compactHidden,
+      saveHidden,
+      messageCleared,
+      spare,
+    });
 
     if (q("#cable").dataset.found === "false") {
       // VB-CABLE が無いときは、出力が空で開始できず、知らせが出る
