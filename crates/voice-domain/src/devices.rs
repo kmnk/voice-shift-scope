@@ -62,6 +62,11 @@ impl DeviceList {
         list
     }
 
+    /// `raw_id` の機器の名前。
+    pub fn name(&self, raw_id: &str) -> Option<&str> {
+        self.devices.iter().find(|d| d.raw_id == raw_id).map(|d| d.name.as_str())
+    }
+
     pub fn cable(&self) -> Option<&VirtualCable> {
         self.cable.as_ref()
     }

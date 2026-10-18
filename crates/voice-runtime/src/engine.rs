@@ -187,6 +187,13 @@ impl AdaptiveReader {
             }
             self.primed = true;
         }
+        // 始めや詰まった後に溜まりすぎていたら、余分を一度に捨てて遅れを戻す（±0.1% の補正では戻るのに何十秒もかかる）
+        if fill > self.target * 2.0 {
+            let excess = (fill - self.target) as usize;
+            self.source.skip(excess);
+            self.smoothed_fill = self.target;
+        }
+        let fill = self.source.occupied_len() as f64;
         self.smoothed_fill += (fill - self.smoothed_fill) * 0.01;
         let correction =
             ((self.smoothed_fill - self.target) / self.target * 0.01).clamp(-Self::MAX_CORRECTION, Self::MAX_CORRECTION);

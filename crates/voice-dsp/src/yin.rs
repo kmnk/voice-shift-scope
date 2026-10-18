@@ -1,5 +1,9 @@
 //! YIN による F0 の推定（de Cheveigné & Kawahara 2002）。
 
+use std::sync::Arc;
+
+use rustfft::num_complex::Complex32;
+use rustfft::{Fft, FftPlanner};
 use voice_domain::ports::PitchEstimator;
 use voice_domain::{Frequency, SampleRate};
 
@@ -11,11 +15,69 @@ pub struct Yin {
     /// これより小さい RMS（dBFS）は無声とする。
     pub silence_dbfs: f32,
     diff: Vec<f32>,
+    fft: Option<(usize, Arc<dyn Fft<f32>>, Arc<dyn Fft<f32>>)>,
+    a: Vec<Complex32>,
+    b: Vec<Complex32>,
+    square_prefix: Vec<f32>,
 }
 
 impl Default for Yin {
     fn default() -> Self {
-        Self { min_f0: 40.0, max_f0: 1000.0, threshold: 0.15, silence_dbfs: -55.0, diff: Vec::new() }
+        Self {
+            min_f0: 40.0,
+            max_f0: 1000.0,
+            threshold: 0.15,
+            silence_dbfs: -55.0,
+            diff: Vec::new(),
+            fft: None,
+            a: Vec::new(),
+            b: Vec::new(),
+            square_prefix: Vec::new(),
+        }
+    }
+}
+
+impl Yin {
+    /// d(τ) = Σ_{j<w} (x_j − x_{j+τ})² を、FFT の相互相関で求める（d = e₀ + e(τ) − 2 r(τ)）。
+    fn difference(&mut self, x: &[f32], w: usize, max_tau: usize) {
+        let n = (w + max_tau + 1).next_power_of_two() * 2;
+        if self.fft.as_ref().map(|f| f.0) != Some(n) {
+            let mut planner = FftPlanner::new();
+            self.fft = Some((n, planner.plan_fft_forward(n), planner.plan_fft_inverse(n)));
+        }
+        let (_, fwd, inv) = self.fft.as_ref().expect("用意した");
+        self.a.clear();
+        self.a.resize(n, Complex32::default());
+        self.b.clear();
+        self.b.resize(n, Complex32::default());
+        for j in 0..w {
+            self.a[j].re = x[j];
+        }
+        for (j, v) in x.iter().enumerate().take(w + max_tau) {
+            self.b[j].re = *v;
+        }
+        fwd.process(&mut self.a);
+        fwd.process(&mut self.b);
+        for (a, b) in self.a.iter_mut().zip(&self.b) {
+            *a = a.conj() * b;
+        }
+        inv.process(&mut self.a);
+        let scale = 1.0 / n as f32;
+        self.square_prefix.clear();
+        self.square_prefix.push(0.0);
+        let mut acc = 0.0f32;
+        for v in x.iter().take(w + max_tau) {
+            acc += v * v;
+            self.square_prefix.push(acc);
+        }
+        let e0 = self.square_prefix[w];
+        self.diff.clear();
+        self.diff.resize(max_tau + 1, 0.0);
+        for tau in 1..=max_tau {
+            let e_tau = self.square_prefix[tau + w] - self.square_prefix[tau];
+            let r = self.a[tau].re * scale;
+            self.diff[tau] = (e0 + e_tau - 2.0 * r).max(0.0);
+        }
     }
 }
 
@@ -32,16 +94,7 @@ impl PitchEstimator for Yin {
             return None;
         }
         let w = window.len() - tau_max - 1;
-        self.diff.clear();
-        self.diff.resize(tau_max + 2, 0.0);
-        for tau in 1..=tau_max + 1 {
-            let mut acc = 0.0f32;
-            for j in 0..w {
-                let d = window[j] - window[j + tau];
-                acc += d * d;
-            }
-            self.diff[tau] = acc;
-        }
+        self.difference(window, w, tau_max + 1);
         // 累積平均で正規化
         let mut running = 0.0f32;
         self.diff[0] = 1.0;

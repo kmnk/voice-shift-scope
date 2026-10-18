@@ -348,13 +348,17 @@ impl AudioPipeline for RuntimePipeline {
                         std::thread::sleep(Duration::from_millis(3));
                         continue;
                     }
-                    before_cons.pop_slice(&mut chunk_b);
-                    after_cons.pop_slice(&mut chunk_a);
-                    before.copy_within(BLOCK.., 0);
-                    after.copy_within(BLOCK.., 0);
-                    before[window - BLOCK..].copy_from_slice(&chunk_b);
-                    after[window - BLOCK..].copy_from_slice(&chunk_a);
-                    position += BLOCK as u64;
+                    // 分析が追いつかないときは、溜まったブロックを窓に流し込むだけにして、最新のブロックで分析する。
+                    // 前と後は同じ数ずつ取り出すので、時刻はそろったまま
+                    while before_cons.occupied_len() >= BLOCK && after_cons.occupied_len() >= BLOCK {
+                        before_cons.pop_slice(&mut chunk_b);
+                        after_cons.pop_slice(&mut chunk_a);
+                        before.copy_within(BLOCK.., 0);
+                        after.copy_within(BLOCK.., 0);
+                        before[window - BLOCK..].copy_from_slice(&chunk_b);
+                        after[window - BLOCK..].copy_from_slice(&chunk_a);
+                        position += BLOCK as u64;
+                    }
                     let analysis = *settings.lock().expect("分析の設定");
                     let b = before_an.analyze(&before, rate, &analysis);
                     let a = after_an.analyze(&after, rate, &analysis);

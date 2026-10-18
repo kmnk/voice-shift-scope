@@ -12,9 +12,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Point bindgen at LLVM
-        shell: pwsh
-        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - name: Install VB-CABLE
         uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
       - name: Show audio endpoints seen by Windows

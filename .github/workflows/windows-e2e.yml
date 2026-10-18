@@ -19,9 +19,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Point bindgen at LLVM
-        shell: pwsh
-        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - name: Install VB-CABLE
         uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
       - name: Allow desktop apps to use the microphone
@@ -77,9 +74,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Point bindgen at LLVM
-        shell: pwsh
-        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - run: cargo build --release -p voice-cli
       - run: target/release/voice-cli synth vowel --f0 150 --seconds 1 --out vowel150.wav
       - name: Expect exit code 2 when VB-CABLE is missing

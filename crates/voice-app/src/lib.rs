@@ -37,6 +37,11 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         &self.session
     }
 
+    /// 最後に取った機器の一覧。
+    pub fn devices(&self) -> &DeviceList {
+        &self.list
+    }
+
     /// 組み立てた adapter の中を見る（試験と画面の状態の表示に使う）。
     pub fn pipeline(&self) -> &P {
         &self.pipeline
