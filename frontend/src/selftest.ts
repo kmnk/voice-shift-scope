@@ -67,6 +67,15 @@ export async function runSelftest(dir: string): Promise<void> {
     const messageCleared = (q("#message").textContent ?? "") === "";
     // 窓が左の列の中身の高さに合い、下に大きな余白が残らない
     const spare = window.innerHeight - q(".controls").getBoundingClientRect().bottom;
+    const controlsRect = q(".controls").getBoundingClientRect();
+    const compactDetail = {
+      innerHeight: window.innerHeight,
+      outerHeight: window.outerHeight,
+      controlsTop: controlsRect.top,
+      controlsHeight: controlsRect.height,
+      controlsScroll: q(".controls").scrollHeight,
+      lastMessage: q("#message").textContent,
+    };
     click("view-toggle");
     await sleep(1500);
     record("compact-view", compactHidden && saveHidden && messageCleared && spare >= -2 && spare < 40 && getComputedStyle(q("#screen")).display !== "none", {
@@ -74,6 +83,7 @@ export async function runSelftest(dir: string): Promise<void> {
       saveHidden,
       messageCleared,
       spare,
+      ...compactDetail,
     });
 
     if (q("#cable").dataset.found === "false") {
