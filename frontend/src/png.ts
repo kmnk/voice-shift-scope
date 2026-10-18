@@ -29,7 +29,7 @@ export async function composePng(
   const sh = spectrum.clientHeight;
   const rows = tableRows(before?.summary ?? null, after?.summary ?? null);
   const width = Math.max(gw * 2 + 30, gw + 560);
-  const header = 70;
+  const header = 86;
   const height = header + gh + 20 + Math.max(sh, rows.length * 16 + 10) + 20;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(width * dpr);
@@ -44,8 +44,10 @@ export async function composePng(
   c.font = "12px system-ui";
   c.fillText(sideLine("変える前", before), 10, 38);
   c.fillText(sideLine("変えた後", after), 10, 56);
-  c.fillText("変える前", 10, header - 2);
-  c.fillText("変えた後", gw + 20, header - 2);
+  c.font = "bold 12px system-ui";
+  c.fillText("変える前", 10, header - 6);
+  c.fillText("変えた後", gw + 20, header - 6);
+  c.font = "12px system-ui";
   c.drawImage(grams[0], 10, header, gw, gh);
   c.drawImage(grams[1], gw + 20, header, gw, gh);
   const lowerTop = header + gh + 20;

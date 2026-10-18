@@ -73,7 +73,7 @@ pub struct FrameDto {
     pub f0: Option<f32>,
     pub voiced: bool,
     pub formants: Vec<Option<FormantDto>>,
-    /// H1〜H10 まで。
+    /// 上限までの倍音すべて（流れる図に点で描く。数値の表は H1〜H10 だけを出す）。
     pub harmonics: Vec<HarmonicDto>,
     pub observed_harmonics: u32,
     /// 0〜上限を 256 に分けた振幅（dB、小数 1 桁に丸める）。
@@ -93,7 +93,6 @@ impl From<&AnalysisFrame> for FrameDto {
             harmonics: f
                 .harmonics
                 .iter()
-                .take(10)
                 .map(|h| HarmonicDto { number: h.number, frequency: h.frequency.hz(), level: h.level.db(), observed: h.observed })
                 .collect(),
             observed_harmonics: f.observed_harmonics,
