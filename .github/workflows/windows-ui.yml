@@ -1,0 +1,78 @@
+name: windows-ui
+
+# 画面の通しの試験。tauri-driver（WebDriver）でアプリの画面を操作する。
+# 入力は --input-wav の試験用の母音、設定と画像の保存先はランナーの一時的な場所。ランナーは毎回作り直される。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "crates/**"
+      - "scripts/ui-test.mjs"
+      - ".github/workflows/windows-ui.yml"
+
+jobs:
+  ui:
+    strategy:
+      fail-fast: false
+      matrix:
+        cable: [with-vb-cable, without-vb-cable]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - run: cargo build --release -p voice-tauri -p voice-cli
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --version 2.1.0 --locked
+      - name: Download msedgedriver for the installed WebView2
+        shell: pwsh
+        run: |
+          $v = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}').pv
+          Write-Host "WebView2 $v"
+          Invoke-WebRequest "https://msedgedriver.microsoft.com/$v/edgedriver_win64.zip" -OutFile edgedriver.zip
+          Expand-Archive edgedriver.zip -DestinationPath edgedriver
+      - name: Install VB-CABLE
+        if: matrix.cable == 'with-vb-cable'
+        uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
+      - name: Allow desktop apps to use the microphone
+        shell: pwsh
+        run: |
+          foreach ($root in 'HKLM:', 'HKCU:') {
+            $key = "$root\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"
+            New-Item -Path $key -Force | Out-Null
+            Set-ItemProperty -Path $key -Name Value -Value Allow
+            New-Item -Path "$key\NonPackaged" -Force | Out-Null
+            Set-ItemProperty -Path "$key\NonPackaged" -Name Value -Value Allow
+          }
+      - run: target/release/voice-cli synth vowel --f0 150 --seconds 60 --out vowel150.wav
+      - name: Run the UI test
+        shell: pwsh
+        env:
+          VOICE_SHIFT_SCOPE_CONFIG_DIR: ${{ github.workspace }}\ui-out\config
+          VOICE_SHIFT_SCOPE_TEST_SAVE_DIR: ${{ github.workspace }}\ui-out\saved
+        run: |
+          New-Item -ItemType Directory -Force ui-out\saved, ui-out\config | Out-Null
+          $driver = Start-Process tauri-driver -ArgumentList '--native-driver', "$PWD\edgedriver\msedgedriver.exe" -PassThru -NoNewWindow
+          Start-Sleep -Seconds 3
+          $extra = if ('${{ matrix.cable }}' -eq 'without-vb-cable') { '--expect-no-cable' } else { '' }
+          node scripts/ui-test.mjs --app target/release/voice-shift-scope.exe --input-wav vowel150.wav --out ui-out $extra
+          $code = $LASTEXITCODE
+          Stop-Process -Id $driver.Id -Force -ErrorAction SilentlyContinue
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-${{ matrix.cable }}
+          path: ui-out

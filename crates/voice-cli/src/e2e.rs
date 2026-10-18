@@ -118,6 +118,8 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
         "A6": { "result": pass_str(a6), "output_underruns": stats.output_underruns, "output_underrun_events": stats.output_underrun_events, "first_underrun_seconds": stats.first_underrun_seconds, "last_underrun_seconds": stats.last_underrun_seconds, "dropped_input": stats.dropped_input },
         "analysis": { "result": pass_str(analysis_ok), "published_pairs": stats.published_pairs, "before_f0_median": before_f0, "after_f0_median": after_f0 },
         "shifter_latency_samples": stats.shifter_latency,
+        "output_fill_ms": stats.output_fill_ms,
+        "output_correction_ppm": stats.output_correction_ppm,
         "processed_samples": stats.processed_samples,
         "errors": stats.errors,
     });

@@ -70,6 +70,8 @@ pub struct PipelineStats {
     pub first_underrun_seconds: f64,
     pub last_underrun_seconds: f64,
     pub dropped_input: u64,
+    pub output_fill_ms: f64,
+    pub output_correction_ppm: i64,
     pub published_pairs: u64,
     pub shifter_latency: usize,
     pub errors: Vec<String>,
@@ -148,6 +150,8 @@ impl RuntimePipeline {
                 first_underrun_seconds: r.shared.first_underrun_at.load(Ordering::Relaxed) as f64 / CORE_RATE as f64,
                 last_underrun_seconds: r.shared.last_underrun_at.load(Ordering::Relaxed) as f64 / CORE_RATE as f64,
                 dropped_input: r.shared.dropped_input.load(Ordering::Relaxed),
+                output_fill_ms: r.shared.output_fill.load(Ordering::Relaxed) as f64 * 1000.0 / CORE_RATE as f64,
+                output_correction_ppm: r.shared.output_correction_ppm.load(Ordering::Relaxed),
                 published_pairs: r.published.load(Ordering::Relaxed),
                 shifter_latency: r.shifter_latency,
                 errors,
@@ -176,7 +180,14 @@ impl RuntimePipeline {
                 // 読み手の入れ替えのときだけロックがある。待たずに、取れなければ無音にする
                 let missing = match reader.try_lock() {
                     Ok(mut guard) => match guard.as_mut() {
-                        Some(r) => r.read(mono),
+                        Some(r) => {
+                            let missing = r.read(mono);
+                            if !is_monitor {
+                                shared.output_fill.store(r.fill() as u64, Ordering::Relaxed);
+                                shared.output_correction_ppm.store((r.correction() * 1e6) as i64, Ordering::Relaxed);
+                            }
+                            missing
+                        }
                         None => {
                             mono.fill(0.0);
                             0

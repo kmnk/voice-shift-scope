@@ -26,6 +26,9 @@ pub struct Shared {
     /// 処理した入力の標本の数。
     pub processed: AtomicU64,
     pub output_underruns: AtomicU64,
+    /// 出力の ring buffer に溜まっている量（標本）と、掛けている補正（ppm）。試験と状態の表示のため。
+    pub output_fill: AtomicU64,
+    pub output_correction_ppm: std::sync::atomic::AtomicI64,
     /// 出力が足りなくなった回数と、最初と最後のときに処理していた入力の標本の数。
     pub output_underrun_events: AtomicU64,
     pub first_underrun_at: AtomicU64,
@@ -148,10 +151,15 @@ pub struct AdaptiveReader {
     a: f32,
     b: f32,
     primed: bool,
+    last_correction: f64,
 }
 
 impl AdaptiveReader {
-    pub const MAX_CORRECTION: f64 = 0.001;
+    /// 補正の比の上限。CI のランナーでは壁時計と機器の時計のずれが ±0.1% を超え、±0.1% では追いつかなかった。
+    /// 0.5% は音の高さで 9 cent ほどで、溜まった量が目標から外れている間だけ掛かる。
+    pub const MAX_CORRECTION: f64 = 0.005;
+    /// 目標よりこれだけ多く溜まったら、余分を一度に捨てる（中核の速さで 20 ms）。
+    pub const SNAP_EXCESS: usize = 960;
 
     pub fn new(source: HeapCons<f32>, core_rate: u32, device_rate: u32, target: usize) -> Self {
         Self {
@@ -163,7 +171,13 @@ impl AdaptiveReader {
             a: 0.0,
             b: 0.0,
             primed: false,
+            last_correction: 0.0,
         }
+    }
+
+    /// 直近に掛けた補正の比（試験と状態の表示のため）。
+    pub fn correction(&self) -> f64 {
+        self.last_correction
     }
 
     /// 機器を替えたときに、機器の速さを替えて、溜まるまで待ち直す。
@@ -188,7 +202,7 @@ impl AdaptiveReader {
             self.primed = true;
         }
         // 始めや詰まった後に溜まりすぎていたら、余分を一度に捨てて遅れを戻す（±0.1% の補正では戻るのに何十秒もかかる）
-        if fill > self.target * 2.0 {
+        if fill > self.target + Self::SNAP_EXCESS as f64 {
             let excess = (fill - self.target) as usize;
             self.source.skip(excess);
             self.smoothed_fill = self.target;
@@ -197,6 +211,7 @@ impl AdaptiveReader {
         self.smoothed_fill += (fill - self.smoothed_fill) * 0.01;
         let correction =
             ((self.smoothed_fill - self.target) / self.target * 0.01).clamp(-Self::MAX_CORRECTION, Self::MAX_CORRECTION);
+        self.last_correction = correction;
         let step = self.base_ratio * (1.0 + correction);
         let mut missing = 0;
         for o in out.iter_mut() {
@@ -293,6 +308,27 @@ mod tests {
         let max = *late.iter().max().unwrap();
         // 補正が無ければ、終わりには 960 + 12000 × 480 × 0.0005 ≈ 3840 まで溜まる
         assert!(max < 1500, "fill grew to {max}");
+    }
+
+    #[test]
+    fn adaptive_reader_follows_producer_slower_by_three_tenths_of_a_percent() {
+        // 生産の側が 0.3% 遅い（CI のランナーで見たような大きめのずれ）とき、始めの後は尽きない
+        let (mut prod, cons) = HeapRb::<f32>::new(48_000).split();
+        let mut reader = AdaptiveReader::new(cons, 48_000, 48_000, 1440);
+        let mut out = vec![0.0f32; 480];
+        let mut carry = 0.0f64;
+        let mut missing_after_warmup = 0;
+        for i in 0..30_000 {
+            carry += 480.0 * 0.997;
+            let n = carry as usize;
+            carry -= n as f64;
+            prod.push_slice(&vec![0.1f32; n]);
+            let missing = reader.read(&mut out);
+            if i > 3000 {
+                missing_after_warmup += missing;
+            }
+        }
+        assert_eq!(missing_after_warmup, 0);
     }
 
     #[test]
