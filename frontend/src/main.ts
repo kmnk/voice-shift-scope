@@ -42,6 +42,17 @@ function message(text: string, kind = "error"): void {
   if (kind === "saved") messageTimer = window.setTimeout(() => message(""), 5000);
 }
 
+/// 簡易表示で窓の高さを決めたあと、実際の窓の中の高さと中身がずれていれば（窓の縁の分など）、その差だけ直す。
+/// 何度も直し続けないよう、1 回の切り替えにつき 2 回まで。
+let compactFixes = 0;
+function fitCompactWindow(): void {
+  if (view !== "compact" || compactFixes >= 2) return;
+  const diff = compactContentHeight() - window.innerHeight;
+  if (Math.abs(diff) <= 2) return;
+  compactFixes++;
+  void call("set_view", { view: "compact", contentHeight: compactContentHeight() + diff });
+}
+
 /// 簡易表示の窓の高さ: 左の列の中身の高さに、body の上下の余白を足したもの
 function compactContentHeight(): number {
   const controls = document.querySelector(".controls") as HTMLElement;
@@ -337,11 +348,15 @@ function wire(): void {
     const next: View = view === "full" ? "compact" : "full";
     // 前の表示の知らせ（保存しましたなど）は持ち越さない
     message("");
+    compactFixes = 0;
     applyView(next);
     void call("set_view", { view: next, contentHeight: next === "compact" ? compactContentHeight() : null });
   });
   window.addEventListener("resize", () => {
-    if (view !== "full") return;
+    if (view === "compact") {
+      fitCompactWindow();
+      return;
+    }
     grams.before.prepare(axisMax);
     grams.after.prepare(axisMax);
     draw();

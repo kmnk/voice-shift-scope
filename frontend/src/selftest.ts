@@ -61,7 +61,7 @@ export async function runSelftest(dir: string): Promise<void> {
     // 簡易表示: 右の表示と分析・一時停止の欄が消え、もう一度で戻る
     q("#message").textContent = "leftover";
     click("view-toggle");
-    await sleep(1500);
+    await sleep(2500);
     const compactHidden = getComputedStyle(q("#screen")).display === "none";
     const saveHidden = q<HTMLElement>("#save").offsetParent === null;
     const messageCleared = (q("#message").textContent ?? "") === "";
@@ -69,7 +69,7 @@ export async function runSelftest(dir: string): Promise<void> {
     const spare = window.innerHeight - q(".controls").getBoundingClientRect().bottom;
     click("view-toggle");
     await sleep(1500);
-    record("compact-view", compactHidden && saveHidden && messageCleared && spare < 40 && getComputedStyle(q("#screen")).display !== "none", {
+    record("compact-view", compactHidden && saveHidden && messageCleared && spare >= -2 && spare < 40 && getComputedStyle(q("#screen")).display !== "none", {
       compactHidden,
       saveHidden,
       messageCleared,
