@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ringbuf::HeapRb;
-use ringbuf::traits::{Consumer, Observer, Split};
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use voice_domain::ports::{AnalysisPublisher, Analyzer, AudioDevices, AudioPipeline, PipelineConfig, VoiceShifter};
 use voice_domain::{
     AnalysisPair, AnalysisSettings, DeviceDirection as DomainDirection, DeviceInfo, DeviceList, MonitorSettings,
@@ -65,11 +65,16 @@ pub struct PipelineStats {
     pub processed_samples: u64,
     pub output_underruns: u64,
     pub monitor_underruns: u64,
+    pub output_xruns: u64,
+    pub monitor_xruns: u64,
     pub output_underrun_events: u64,
     /// 最初と最後に出力が足りなくなったときの、処理していた入力の秒数。
     pub first_underrun_seconds: f64,
     pub last_underrun_seconds: f64,
     pub dropped_input: u64,
+    /// Windows が録音の buffer を取りこぼした回数（cpal の Xrun）と、最後のときの秒数。
+    pub input_xruns: u64,
+    pub last_input_xrun_seconds: f64,
     pub output_fill_ms: f64,
     pub output_correction_ppm: i64,
     pub published_pairs: u64,
@@ -162,10 +167,14 @@ impl RuntimePipeline {
                 processed_samples: r.shared.processed.load(Ordering::Relaxed),
                 output_underruns: r.shared.output_underruns.load(Ordering::Relaxed),
                 monitor_underruns: r.shared.monitor_underruns.load(Ordering::Relaxed),
+                output_xruns: r.shared.output_xruns.load(Ordering::Relaxed),
+                monitor_xruns: r.shared.monitor_xruns.load(Ordering::Relaxed),
                 output_underrun_events: r.shared.output_underrun_events.load(Ordering::Relaxed),
                 first_underrun_seconds: r.shared.first_underrun_at.load(Ordering::Relaxed) as f64 / CORE_RATE as f64,
                 last_underrun_seconds: r.shared.last_underrun_at.load(Ordering::Relaxed) as f64 / CORE_RATE as f64,
                 dropped_input: r.shared.dropped_input.load(Ordering::Relaxed),
+                input_xruns: r.shared.input_xruns.load(Ordering::Relaxed),
+                last_input_xrun_seconds: r.shared.last_input_xrun_at.load(Ordering::Relaxed) as f64 / CORE_RATE as f64,
                 output_fill_ms: r.shared.output_fill.load(Ordering::Relaxed) as f64 * 1000.0 / CORE_RATE as f64,
                 output_correction_ppm: r.shared.output_correction_ppm.load(Ordering::Relaxed),
                 published_pairs: r.published.load(Ordering::Relaxed),
@@ -188,6 +197,7 @@ impl RuntimePipeline {
         let channels = config.channels() as usize;
         let errors = self.errors.clone();
         let mut mono = vec![0.0f32; 16_384];
+        let xrun_shared = shared.clone();
         let stream = device.build_output_stream(
             config.config(),
             move |data: &mut [f32], _| {
@@ -231,7 +241,10 @@ impl RuntimePipeline {
                 }
             },
             move |e| {
-                if let Ok(mut errs) = errors.lock() {
+                if e.kind() == cpal::ErrorKind::Xrun {
+                    let counter = if is_monitor { &xrun_shared.monitor_xruns } else { &xrun_shared.output_xruns };
+                    counter.fetch_add(1, Ordering::Relaxed);
+                } else if let Ok(mut errs) = errors.lock() {
                     errs.push(format!("{}: {e}", if is_monitor { "モニター" } else { "出力" }));
                 }
             },
@@ -317,12 +330,18 @@ impl AudioPipeline for RuntimePipeline {
                 (None, Some(handle))
             }
             None => {
+                // 入力のコールバックでは、mono にして速さをそろえ、ring buffer に入れるだけにする。
+                // 声を変える処理は重さに波があり、コールバックの中で動かすと Windows が録音の buffer を
+                // 取りこぼす（cpal の Xrun）ので、別の処理のスレッドで動かす
                 let device = find_device(config.input.raw())?;
                 let in_config = f32_config(&device, true)?;
                 let channels = in_config.channels() as usize;
                 let mut resampler = StreamResampler::new(in_config.sample_rate(), CORE_RATE, 16_384);
                 let mut mono = vec![0.0f32; 16_384];
+                let (mut in_prod, mut in_cons) = HeapRb::<f32>::new(CORE_RATE as usize).split();
                 let errors = self.errors.clone();
+                let xrun_shared = shared.clone();
+                let callback_shared = shared.clone();
                 let stream = device.build_input_stream(
                     in_config.config(),
                     move |data: &[f32], _| {
@@ -330,22 +349,39 @@ impl AudioPipeline for RuntimePipeline {
                         for (m, frame) in mono[..frames].iter_mut().zip(data.chunks(channels)) {
                             *m = frame.iter().sum::<f32>() / channels as f32;
                         }
-                        if resampler.is_identity() {
-                            processor.push(&mono[..frames]);
-                        } else {
-                            let converted = resampler.process(&mono[..frames]);
-                            processor.push(converted);
+                        let block: &[f32] =
+                            if resampler.is_identity() { &mono[..frames] } else { resampler.process(&mono[..frames]) };
+                        let pushed = in_prod.push_slice(block);
+                        if pushed < block.len() {
+                            callback_shared.dropped_input.fetch_add((block.len() - pushed) as u64, Ordering::Relaxed);
                         }
                     },
                     move |e| {
-                        if let Ok(mut errs) = errors.lock() {
+                        if e.kind() == cpal::ErrorKind::Xrun {
+                            // 録音の取りこぼしは数えて、画面には回数として出す
+                            let at = xrun_shared.processed.load(Ordering::Relaxed);
+                            xrun_shared.input_xruns.fetch_add(1, Ordering::Relaxed);
+                            xrun_shared.last_input_xrun_at.store(at, Ordering::Relaxed);
+                        } else if let Ok(mut errs) = errors.lock() {
                             errs.push(format!("入力: {e}"));
                         }
                     },
                     None,
                 )?;
                 stream.play()?;
-                (Some(stream), None)
+                let worker_shared = shared.clone();
+                let worker = std::thread::spawn(move || {
+                    let mut scratch = vec![0.0f32; 4096];
+                    while !worker_shared.stop.load(Ordering::Relaxed) {
+                        let n = in_cons.pop_slice(&mut scratch);
+                        if n > 0 {
+                            processor.push(&scratch[..n]);
+                        } else {
+                            std::thread::sleep(Duration::from_millis(1));
+                        }
+                    }
+                });
+                (Some(stream), Some(worker))
             }
         };
 

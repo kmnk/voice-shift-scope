@@ -214,8 +214,23 @@ function wire(): void {
   });
   // 動いている間に機器が無くなったときなど、音声の側の誤りを出す
   setInterval(async () => {
-    const s = await invoke<{ running: boolean; errors: string[] }>("status").catch(() => null);
-    if (s && s.errors.length > 0) message(s.errors.join(" / "));
+    const s = await invoke<{
+      running: boolean;
+      errors: string[];
+      inputXruns: number;
+      outputXruns: number;
+      monitorXruns: number;
+      lastInputXrunSeconds: number;
+    }>("status").catch(() => null);
+    if (!s) return;
+    const parts = [...new Set(s.errors)];
+    const xruns = [
+      s.inputXruns > 0 ? `入力 ${s.inputXruns} 回（最後は開始から ${s.lastInputXrunSeconds.toFixed(1)} 秒）` : "",
+      s.outputXruns > 0 ? `出力 ${s.outputXruns} 回` : "",
+      s.monitorXruns > 0 ? `モニター ${s.monitorXruns} 回` : "",
+    ].filter(Boolean);
+    if (xruns.length > 0) parts.push(`音の取りこぼし: ${xruns.join("、")}。続くときは別の機器を選ぶか、他のソフトを閉じてください`);
+    if (parts.length > 0) message(parts.join(" / "));
   }, 1000);
 }
 

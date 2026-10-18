@@ -160,6 +160,12 @@ struct StatusDto {
     running: bool,
     output_underruns: u64,
     monitor_underruns: u64,
+    /// Windows が録音・再生の buffer を取りこぼした回数（音が途切れた可能性がある）
+    input_xruns: u64,
+    output_xruns: u64,
+    monitor_xruns: u64,
+    /// 最後に録音を取りこぼしたときの、開始からの秒数
+    last_input_xrun_seconds: f64,
     errors: Vec<String>,
 }
 
@@ -171,6 +177,10 @@ fn status(state: State<AppState>) -> StatusDto {
         running: studio.session().state() == voice_domain::SessionState::Running,
         output_underruns: stats.output_underruns,
         monitor_underruns: stats.monitor_underruns,
+        input_xruns: stats.input_xruns,
+        output_xruns: stats.output_xruns,
+        monitor_xruns: stats.monitor_xruns,
+        last_input_xrun_seconds: stats.last_input_xrun_seconds,
         errors: stats.errors,
     }
 }

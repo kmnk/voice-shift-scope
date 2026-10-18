@@ -35,6 +35,11 @@ pub struct Shared {
     pub last_underrun_at: AtomicU64,
     pub monitor_underruns: AtomicU64,
     pub dropped_input: AtomicU64,
+    /// cpal が知らせた、Windows の buffer の取りこぼし（Xrun）の回数。
+    pub input_xruns: AtomicU64,
+    pub last_input_xrun_at: AtomicU64,
+    pub output_xruns: AtomicU64,
+    pub monitor_xruns: AtomicU64,
     pub stop: AtomicBool,
 }
 
