@@ -15,16 +15,11 @@ const stateText = (side: string) => q(`#${side}-state`).textContent ?? "";
 const near = (v: number, target: number, pct: number) => Math.abs(v / target - 1) * 100 <= pct;
 const pressed = (testid: string) => q(`[data-testid="${testid}"]`).getAttribute("aria-pressed") === "true";
 
-// 節目の窓の画像。Rust 側が <dir>/shots/<name>.a.png を撮り（Windows だけ）、合図の <name>.ready を書く。
-// workflow の側が <name>.b.png を撮り終えるのを最大 8 秒待つ。どちらも撮れなくても試験の判定は変えない。
+// 受け入れ基準の項目を判定した時点の窓の画像を、Rust 側が <dir>/shots/<name>.png に書く（Windows だけ）。
+// 撮れないことは試験の判定に入れない。
 async function shot(name: string): Promise<void> {
   try {
     await invoke<string>("selftest_shot", { name });
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline) {
-      if (await invoke<boolean>("selftest_shot_exists", { file: `${name}.b.png` })) return;
-      await sleep(200);
-    }
   } catch {
     // 撮れないことは試験の失敗にしない
   }
@@ -54,8 +49,10 @@ async function waitFor(cond: () => boolean, ms: number): Promise<boolean> {
 
 export async function runSelftest(dir: string): Promise<void> {
   const results: Result[] = [];
-  const record = (criterion: string, pass: boolean, detail: unknown) =>
+  const record = async (criterion: string, pass: boolean, detail: unknown) => {
     results.push({ criterion, result: pass ? "PASS" : "FAIL", detail });
+    await shot(criterion);
+  };
   try {
     await waitFor(() => q("#cable").dataset.found !== undefined, 10_000);
     // 言葉の切り替え: 文が替わり、もう一度で戻る（選んだ言葉は試験の設定のディレクトリに覚える）
@@ -67,13 +64,12 @@ export async function runSelftest(dir: string): Promise<void> {
     const langOther = document.documentElement.lang;
     click("lang-toggle");
     await sleep(200);
-    record("language-toggle", langBefore !== langOther && startEn !== startOther && q("#start").textContent === startEn, {
+    await record("language-toggle", langBefore !== langOther && startEn !== startOther && q("#start").textContent === startEn, {
       langBefore,
       langOther,
       startEn,
       startOther,
     });
-    await shot("language-toggle");
     // 簡易表示: 右の表示と分析・一時停止の欄が消え、もう一度で戻る
     q("#message").textContent = "leftover";
     click("view-toggle");
@@ -95,9 +91,10 @@ export async function runSelftest(dir: string): Promise<void> {
       controlsScroll: q(".controls").scrollHeight,
       lastMessage: q("#message").textContent,
     };
+    await shot("compact-view-compact");
     click("view-toggle");
     await sleep(1500);
-    record("compact-view", compactHidden && saveHidden && messageCleared && spare >= -2 && spare < 40 && overflowX <= 0 && controlsRight <= window.innerWidth && getComputedStyle(q("#screen")).display !== "none", {
+    await record("compact-view", compactHidden && saveHidden && messageCleared && spare >= -2 && spare < 40 && overflowX <= 0 && controlsRight <= window.innerWidth && getComputedStyle(q("#screen")).display !== "none", {
       compactHidden,
       saveHidden,
       messageCleared,
@@ -109,34 +106,34 @@ export async function runSelftest(dir: string): Promise<void> {
 
     if (q("#cable").dataset.found === "false") {
       // VB-CABLE が無いときは、出力が空で開始できず、知らせが出る
-      record("C4", disabled("start") && q<HTMLSelectElement>("#output").value === "" && (q("#cable").textContent ?? "") !== "", {
+      await record("C4", disabled("start") && q<HTMLSelectElement>("#output").value === "" && (q("#cable").textContent ?? "") !== "", {
         cable: q("#cable").textContent,
         startDisabled: disabled("start"),
       });
     } else {
       const out = q<HTMLSelectElement>("#output");
-      record("cable-found", out.value !== "" && (q("#cable").textContent ?? "") === "", { output: out.selectedOptions[0]?.textContent, note: q("#cable").textContent });
+      await record("cable-found", out.value !== "" && (q("#cable").textContent ?? "") === "", { output: out.selectedOptions[0]?.textContent, note: q("#cable").textContent });
       click("start");
       await sleep(5000);
       const stats = JSON.parse(q("#test-stats").textContent || "{}");
-      record("B6", stats.drawsPerSecond >= 30 && stats.receiveToDrawMs <= 100, {
+      await record("B6", stats.drawsPerSecond >= 30 && stats.receiveToDrawMs <= 100, {
         ...stats,
         note: "受けてから描くまでの遅れ。音から分析の結果が届くまでの遅れは含まない",
       });
       let [b, a] = f0Row();
-      record("start-0st", near(b, 150, 1) && near(a, 150, 1), { before: b, after: a });
+      await record("start-0st", near(b, 150, 1) && near(a, 150, 1), { before: b, after: a });
 
       setNumber("pitch-num", 5);
       await sleep(3000);
       [b, a] = f0Row();
-      record("B4-shift", near(b, 150, 1) && near(a, 150 * 2 ** (5 / 12), 1.5), { before: b, after: a });
+      await record("B4-shift", near(b, 150, 1) && near(a, 150 * 2 ** (5 / 12), 1.5), { before: b, after: a });
 
       click("freeze-all");
       const held = [stateText("before"), stateText("after")];
       await sleep(1500);
       const still = [stateText("before"), stateText("after")];
       const saveEnabled = !disabled("save");
-      record("B5-freeze", frozen("before") && frozen("after") && JSON.stringify(held) === JSON.stringify(still), { held, still });
+      await record("B5-freeze", frozen("before") && frozen("after") && JSON.stringify(held) === JSON.stringify(still), { held, still });
 
       // 止めている間に図の大きさが変わっても（窓の最小化や大きさの変更）、描いた点が残る
       const inked = () => {
@@ -157,7 +154,7 @@ export async function runSelftest(dir: string): Promise<void> {
       screen.style.gridTemplateRows = "";
       window.dispatchEvent(new Event("resize"));
       await sleep(300);
-      record("held-survives-resize", heightResized !== heightBefore && inkBefore > 1000 && inkResized > inkBefore * 0.2, {
+      await record("held-survives-resize", heightResized !== heightBefore && inkBefore > 1000 && inkResized > inkBefore * 0.2, {
         heightBefore,
         heightResized,
         inkBefore,
@@ -166,24 +163,24 @@ export async function runSelftest(dir: string): Promise<void> {
 
       click("save");
       const saved = await waitFor(() => q("#message").dataset.kind === "saved", 10_000);
-      record("C5-save", saveEnabled && saved, { saveEnabled, message: q("#message").textContent });
+      await record("C5-save", saveEnabled && saved, { saveEnabled, message: q("#message").textContent });
 
       click("freeze-all");
       await sleep(300);
-      record("B5-resume", !frozen("before") && !frozen("after") && disabled("save"), {});
+      await record("B5-resume", !frozen("before") && !frozen("after") && disabled("save"), {});
 
       click("freeze-after");
       setNumber("pitch-num", 7);
       await sleep(3000);
       [b, a] = f0Row();
       const differ = q("#times-differ").dataset.differ === "true";
-      record("B7", near(a, 150 * 2 ** (5 / 12), 1.5) && near(b, 150, 1) && differ, { before: b, after: a, differ });
+      await record("B7", near(a, 150 * 2 ** (5 / 12), 1.5) && near(b, 150, 1) && differ, { before: b, after: a, differ });
 
       click("freeze-all");
       const both = frozen("before") && frozen("after");
       click("freeze-all");
       const none = !frozen("before") && !frozen("after");
-      record("B8", both && none, { both, none });
+      await record("B8", both && none, { both, none });
 
       // 決まった幅で上げ下げするボタンと、元に戻すボタン
       const value = (id: string) => q<HTMLInputElement>(`#${id}`).value;
@@ -196,7 +193,7 @@ export async function runSelftest(dir: string): Promise<void> {
       q<HTMLButtonElement>('button[data-target="formant"][data-step="-0.01"]').click();
       const formant = value("formant-num");
       q<HTMLButtonElement>('button.reset[data-target="formant"]').click();
-      record("step-buttons", afterReset === "0.0" && afterSteps === "1.1" && formant === "1.04" && value("formant-num") === "1.00", {
+      await record("step-buttons", afterReset === "0.0" && afterSteps === "1.1" && formant === "1.04" && value("formant-num") === "1.00", {
         afterReset,
         afterSteps,
         formant,
@@ -209,17 +206,17 @@ export async function runSelftest(dir: string): Promise<void> {
       const toOriginal = pressed("route-original") && !pressed("route-shifted");
       click("route-shifted");
       await sleep(400);
-      record("routing", toOriginal && pressed("route-shifted"), { toOriginal, message: q("#message").textContent });
+      await record("routing", toOriginal && pressed("route-shifted"), { toOriginal, message: q("#message").textContent });
 
       // 画面に収まり、縦に流さなくてよい
       const root = document.documentElement;
-      record("fits-window", root.scrollHeight <= window.innerHeight + 1, { scrollHeight: root.scrollHeight, innerHeight: window.innerHeight });
+      await record("fits-window", root.scrollHeight <= window.innerHeight + 1, { scrollHeight: root.scrollHeight, innerHeight: window.innerHeight });
 
       click("stop");
       await sleep(500);
     }
   } catch (e) {
-    record("error", false, { message: String(e) });
+    await record("error", false, { message: String(e) });
   }
   const passed = results.length > 0 && results.every((r) => r.result === "PASS");
   await invoke("finish_selftest", { report: JSON.stringify(results, null, 2), passed });

@@ -337,8 +337,8 @@ fn finish_selftest(app: tauri::AppHandle, state: State<AppState>, report: String
     Ok(())
 }
 
-/// 画面の通しの試験の節目で、窓の画像を <dir>/shots/<name>.a.png に書き（Windows だけ）、
-/// workflow の側が撮るための合図 <dir>/shots/<name>.ready を書く。撮れなかった理由を返す。
+/// 画面の通しの試験で、受け入れ基準の項目を判定した時点の窓の画像を <dir>/shots/<name>.png に書く（Windows だけ）。
+/// 撮れなかったときは理由を返し、<dir>/app-log.txt にも書く。
 #[tauri::command]
 fn selftest_shot(app: tauri::AppHandle, state: State<AppState>, name: String) -> Res<String> {
     let Some(dir) = state.selftest_dir.clone() else { return Err(io_error("試験の入口で起動していません")) };
@@ -348,24 +348,14 @@ fn selftest_shot(app: tauri::AppHandle, state: State<AppState>, name: String) ->
     let shots = dir.join("shots");
     std::fs::create_dir_all(&shots).map_err(io_error)?;
     let result = match app.get_webview_window("main") {
-        Some(window) => match shot::capture(&window, &shots.join(format!("{name}.a.png"))) {
+        Some(window) => match shot::capture(&window, &shots.join(format!("{name}.png"))) {
             Ok(()) => "ok".to_string(),
             Err(e) => e,
         },
         None => "窓が無い".to_string(),
     };
     selftest_log(&format!("selftest_shot {name}: {result}"));
-    std::fs::write(shots.join(format!("{name}.ready")), &result).map_err(io_error)?;
     Ok(result)
-}
-
-/// <dir>/shots/<file> があるか（workflow の側が撮り終えたかを待つため）。
-#[tauri::command]
-fn selftest_shot_exists(state: State<AppState>, file: String) -> bool {
-    match &state.selftest_dir {
-        Some(dir) if !file.contains(['/', '\\']) && !file.contains("..") => dir.join("shots").join(file).exists(),
-        _ => false,
-    }
 }
 
 /// `--ui-selftest <dir>` のときだけ、<dir>/app-log.txt に起動の経過を書く（試験が止まったときの手掛かり）。
@@ -477,7 +467,6 @@ pub fn run() {
             selftest_config,
             finish_selftest,
             selftest_shot,
-            selftest_shot_exists,
         ])
         .run(tauri::generate_context!())
         .expect("アプリを起動できませんでした");
