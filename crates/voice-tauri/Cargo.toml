@@ -27,6 +27,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hound = "3.5"
 
+# 画面の通しの試験で窓の画像を撮る（src/shot.rs）。Windows でだけ使う
+[target.'cfg(windows)'.dependencies]
+png = "0.18"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_Xps", "Win32_UI_WindowsAndMessaging"] }
+
 [features]
 # `cargo build` だけで作っても、画面を frontend/dist から読むようにする（無いと開発用の http://localhost:5173 を開く）
 default = ["custom-protocol"]

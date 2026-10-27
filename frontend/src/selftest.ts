@@ -15,6 +15,21 @@ const stateText = (side: string) => q(`#${side}-state`).textContent ?? "";
 const near = (v: number, target: number, pct: number) => Math.abs(v / target - 1) * 100 <= pct;
 const pressed = (testid: string) => q(`[data-testid="${testid}"]`).getAttribute("aria-pressed") === "true";
 
+// 節目の窓の画像。Rust 側が <dir>/shots/<name>.a.png を撮り（Windows だけ）、合図の <name>.ready を書く。
+// workflow の側が <name>.b.png を撮り終えるのを最大 8 秒待つ。どちらも撮れなくても試験の判定は変えない。
+async function shot(name: string): Promise<void> {
+  try {
+    await invoke<string>("selftest_shot", { name });
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      if (await invoke<boolean>("selftest_shot_exists", { file: `${name}.b.png` })) return;
+      await sleep(200);
+    }
+  } catch {
+    // 撮れないことは試験の失敗にしない
+  }
+}
+
 function setNumber(id: string, value: number): void {
   const e = q<HTMLInputElement>(`#${id}`);
   e.value = String(value);
@@ -58,6 +73,7 @@ export async function runSelftest(dir: string): Promise<void> {
       startEn,
       startOther,
     });
+    await shot("language-toggle");
     // 簡易表示: 右の表示と分析・一時停止の欄が消え、もう一度で戻る
     q("#message").textContent = "leftover";
     click("view-toggle");

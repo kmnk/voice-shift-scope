@@ -56,17 +56,53 @@ jobs:
           VOICE_SHIFT_SCOPE_CONFIG_DIR: ${{ github.workspace }}\ui-out\config
           VOICE_SHIFT_SCOPE_TEST_SAVE_DIR: ${{ github.workspace }}\ui-out\saved
         run: |
-          New-Item -ItemType Directory -Force ui-out\saved, ui-out\config | Out-Null
-          $p = Start-Process target\release\voice-shift-scope.exe -ArgumentList '--input-wav', 'vowel150.wav', '--ui-selftest', "$PWD\ui-out" -PassThru
-          Start-Sleep -Seconds 20
-          # 止まったときの手掛かりに、20 秒後の画面を撮る
+          New-Item -ItemType Directory -Force ui-out\saved, ui-out\config, ui-out\shots | Out-Null
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-          $bmp.Save("$PWD\ui-out\screen-20s.png")
-          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Format-Table -AutoSize Id, StartTime | Out-String | Set-Content ui-out\webview-processes.txt
-          if (-not $p.WaitForExit(160000)) { Stop-Process -Id $p.Id -Force; Get-Content ui-out\app-log.txt -ErrorAction SilentlyContinue; Write-Error "self-test did not finish in 180 s"; exit 1 }
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public static class Win {
+            [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+            [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
+            [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+          }
+          "@
+          [Win]::SetProcessDPIAware() | Out-Null
+          $p = Start-Process target\release\voice-shift-scope.exe -ArgumentList '--input-wav', 'vowel150.wav', '--ui-selftest', "$PWD\ui-out" -PassThru
+          $null = $p.Handle  # 終了コードを後で読めるように handle を持っておく
+          $started = Get-Date
+          $screenTaken = $false
+          $shotsTaken = @{}
+          while (-not $p.HasExited) {
+            $elapsed = ((Get-Date) - $started).TotalSeconds
+            if (-not $screenTaken -and $elapsed -ge 20) {
+              # 止まったときの手掛かりに、20 秒後の画面を撮る
+              $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+              [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+              $bmp.Save("$PWD\ui-out\screen-20s.png")
+              Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Format-Table -AutoSize Id, StartTime | Out-String | Set-Content ui-out\webview-processes.txt
+              $screenTaken = $true
+            }
+            if ($elapsed -ge 180) { Stop-Process -Id $p.Id -Force; Get-Content ui-out\app-log.txt -ErrorAction SilentlyContinue; Write-Error "self-test did not finish in 180 s"; exit 1 }
+            # 試験の節目の合図（shots\<name>.ready）を見たら、アプリの窓の範囲を画面から切り出して shots\<name>.b.png に書く
+            foreach ($f in Get-ChildItem ui-out\shots\*.ready -ErrorAction SilentlyContinue) {
+              $name = $f.BaseName
+              if ($shotsTaken.ContainsKey($name)) { continue }
+              $p.Refresh()
+              $r = New-Object Win+Rect
+              if ($p.MainWindowHandle -ne [IntPtr]::Zero -and [Win]::GetWindowRect($p.MainWindowHandle, [ref]$r)) {
+                $bmp = New-Object System.Drawing.Bitmap ($r.Right - $r.Left), ($r.Bottom - $r.Top)
+                [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($r.Left, $r.Top, 0, 0, $bmp.Size)
+                $bmp.Save("$PWD\ui-out\shots\$name.b.png")
+              } else {
+                Set-Content "ui-out\shots\$name.b-failed.txt" "no main window handle"
+              }
+              $shotsTaken[$name] = $true
+            }
+            Start-Sleep -Milliseconds 200
+          }
+          $p.WaitForExit()
           Get-Content ui-out\ui-report.json
           exit $p.ExitCode
       - uses: actions/upload-artifact@v4

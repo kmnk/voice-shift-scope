@@ -4145,6 +4145,7 @@ name = "voice-tauri"
 version = "0.1.0"
 dependencies = [
  "hound",
+ "png 0.18.1",
  "serde",
  "serde_json",
  "tauri",
@@ -4154,6 +4155,7 @@ dependencies = [
  "voice-domain",
  "voice-dsp",
  "voice-runtime",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
