@@ -106,6 +106,54 @@ export class Spectrogram {
   }
 }
 
+/// スペクトルの図の配置（canvas の画素）。曲線は上の図に、F1〜F4 の印は図の下の 2 行の帯
+/// （上が変える前、下が変えた後）に、行の名前は右の余白に置く。印を曲線に重ねないため。
+export interface SpectrumLayout {
+  dpr: number;
+  /// 曲線・格子・目盛り・印の横の位置を決める幅（右の余白を除く）
+  plotW: number;
+  /// 曲線を描く高さ
+  plotH: number;
+  /// 印の行の上端。[変える前, 変えた後]
+  rowTop: [number, number];
+  rowH: number;
+}
+
+const SPECTRUM_RIGHT = 56;
+const SPECTRUM_AXIS = 16;
+const MARK_ROW = 8;
+const MARK_GAP = 2;
+/// 印の帯の分だけ図を低くする（図と帯の間 2px、行 8px ×2、行の間 2px、帯と目盛りの間 2px）
+const MARK_STRIP = 2 + MARK_ROW * 2 + MARK_GAP + 2;
+
+export function spectrumLayout(width: number, height: number, dpr: number): SpectrumLayout {
+  const plotW = Math.max(1, width - SPECTRUM_RIGHT * dpr);
+  const plotH = Math.max(1, height - (SPECTRUM_AXIS + MARK_STRIP) * dpr);
+  const top = plotH + 2 * dpr;
+  return { dpr, plotW, plotH, rowTop: [top, top + (MARK_ROW + MARK_GAP) * dpr], rowH: MARK_ROW * dpr };
+}
+
+export interface Mark {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string;
+}
+
+/// 片側の F1〜F4 の印の位置。声の出ていないフレームでは出さない（行は空になる）。
+export function formantMarks(frame: Frame | null, side: "before" | "after", axisMax: number, l: SpectrumLayout): Mark[] {
+  if (!frame || !frame.voiced) return [];
+  const y = l.rowTop[side === "before" ? 0 : 1];
+  const marks: Mark[] = [];
+  frame.formants.forEach((f, i) => {
+    if (!f) return;
+    const x = (f.frequency / axisMax) * l.plotW;
+    marks.push({ x: x - 1.5 * l.dpr, y, w: 3 * l.dpr, h: l.rowH, color: FORMANT_COLORS[i] });
+  });
+  return marks;
+}
+
 /// 今の瞬間のスペクトル。横が周波数、縦が dB。前を灰色の破線、後を青で重ねる。
 /// 前と後でスペクトルの範囲（上限）が違うので、それぞれの範囲で横の位置を決める。
 export function drawSpectrum(
@@ -118,7 +166,8 @@ export function drawSpectrum(
   const c = canvas.getContext("2d")!;
   const { width, height } = canvas;
   const dpr = window.devicePixelRatio || 1;
-  const plotH = height - 16 * dpr;
+  const layout = spectrumLayout(width, height, dpr);
+  const { plotW, plotH } = layout;
   c.fillStyle = "#fff";
   c.fillRect(0, 0, width, height);
   c.strokeStyle = "#eee";
@@ -126,19 +175,19 @@ export function drawSpectrum(
   c.font = `${10 * dpr}px system-ui`;
   c.textAlign = "center";
   for (let f = 0; f <= axisMax; f += 1000) {
-    const x = (f / axisMax) * width;
+    const x = (f / axisMax) * plotW;
     c.beginPath();
     c.moveTo(x, 0);
     c.lineTo(x, plotH);
     c.stroke();
-    c.fillText(`${f / 1000}k`, Math.min(width - 10 * dpr, Math.max(10 * dpr, x)), height - 4 * dpr);
+    c.fillText(`${f / 1000}k`, Math.min(plotW - 10 * dpr, Math.max(10 * dpr, x)), height - 4 * dpr);
   }
   const yOf = (db: number) => plotH - ((Math.max(DB_FLOOR, Math.min(0, db)) - DB_FLOOR) / -DB_FLOOR) * plotH;
   const draw = (view: SideView | null, side: "before" | "after", color: string, dash: number[]) => {
     if (!view) return;
     const s = view.frame.spectrum;
     const maxHz = side === "before" ? view.settings.ceiling : view.settings.afterCeiling;
-    const xOf = (hz: number) => (hz / axisMax) * width;
+    const xOf = (hz: number) => (hz / axisMax) * plotW;
     c.strokeStyle = color;
     c.lineWidth = dpr;
     c.setLineDash(dash.map((d) => d * dpr));
@@ -150,11 +199,10 @@ export function drawSpectrum(
     });
     c.stroke();
     c.setLineDash([]);
-    view.frame.formants.forEach((f, i) => {
-      if (!f || !view.frame.voiced) return;
-      c.fillStyle = FORMANT_COLORS[i];
-      c.fillRect(xOf(f.frequency) - dpr, plotH - 10 * dpr, 3 * dpr, 10 * dpr);
-    });
+    for (const m of formantMarks(view.frame, side, axisMax, layout)) {
+      c.fillStyle = m.color;
+      c.fillRect(m.x, m.y, m.w, m.h);
+    }
     view.frame.harmonics.forEach((h) => {
       c.beginPath();
       c.arc(xOf(h.frequency), yOf(h.level), 2.5 * dpr, 0, Math.PI * 2);
@@ -166,6 +214,18 @@ export function drawSpectrum(
   };
   draw(before, "before", "#8a8a85", [4, 2]);
   draw(after, "after", "#1f6fd1", []);
+  // 右の余白に、印の行の名前を書く（印が無いときも出す）
+  c.textAlign = "left";
+  c.textBaseline = "middle";
+  const rows: [string, string][] = [
+    [t("original"), "#8a8a85"],
+    [t("shifted"), "#1f6fd1"],
+  ];
+  rows.forEach(([label, color], i) => {
+    c.fillStyle = color;
+    c.fillText(label, plotW + 4 * dpr, layout.rowTop[i] + layout.rowH / 2);
+  });
+  c.textBaseline = "alphabetic";
 }
 
 function fmt(v: number | null | undefined, digits = 0): string {

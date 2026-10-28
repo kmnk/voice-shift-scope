@@ -87,7 +87,7 @@ function showDevices(d: Devices): void {
   devices = d;
   fillSelect($("input"), d.inputs, d.selectedInput);
   fillSelect($("monitor"), d.monitors, d.selectedMonitor);
-  ($("monitor-on") as HTMLInputElement).checked = d.monitorEnabled;
+  $("monitor-on").setAttribute("aria-pressed", String(d.monitorEnabled));
   ($("volume") as HTMLInputElement).value = String(d.monitorVolume);
   fillSelect($("output"), d.outputs, d.selectedOutput);
   // VB-CABLE が見つからないときだけ知らせる（見つかったときの説明は出さない）
@@ -95,13 +95,17 @@ function showDevices(d: Devices): void {
   cable.textContent = d.cable ? "" : t("cable.missing");
   cable.classList.toggle("missing", !d.cable);
   cable.dataset.found = String(!!d.cable);
-  // 出力とモニターには同じ音を流す（モニターは出しているものを確かめるため。2026-10-18 に利用者が 1 つにした）
-  document.querySelectorAll<HTMLButtonElement>("button[data-route]").forEach((b) => {
-    b.setAttribute("aria-pressed", String(b.dataset.source === d.outputSource));
-  });
-  ($("start") as HTMLButtonElement).disabled = d.running || !d.selectedOutput;
+  // 出力とモニターには同じ音を流す（モニターは出しているものを確かめるため。2026-10-18 に利用者が 1 つにした）。
+  // ボタンは 1 つで、今の値を出す
+  const route = $("route");
+  route.dataset.source = d.outputSource;
+  route.textContent = t(d.outputSource === "shifted" ? "route.shifted" : "route.original");
+  // 開始と停止は 1 つのボタン。出力を選んでいない間は開始できない
+  const run = $<HTMLButtonElement>("run");
+  run.dataset.running = String(d.running);
+  run.textContent = t(d.running ? "stop" : "start");
+  run.disabled = !d.running && !d.selectedOutput;
   ($("output") as HTMLSelectElement).disabled = d.running;
-  ($("stop") as HTMLButtonElement).disabled = !d.running;
   ($("input") as HTMLSelectElement).disabled = d.running;
 }
 
@@ -269,8 +273,11 @@ function showStatus(s: Status): void {
 }
 
 function wire(): void {
-  $("start").addEventListener("click", () => void start());
-  $("stop").addEventListener("click", async () => {
+  $("run").addEventListener("click", async () => {
+    if (!devices?.running) {
+      await start();
+      return;
+    }
     const d = await call<Devices>("stop");
     if (d) showDevices(d);
   });
@@ -288,29 +295,29 @@ function wire(): void {
     if (d) showDevices(d);
     else if (devices) showDevices(devices);
   });
-  const monitorChange = async () => {
+  // モニターの ON/OFF はトグルボタン。押したら反対の値を送り、拒まれたら今の値の表示に戻す
+  const monitorChange = async (enabled: boolean) => {
     const id = ($("monitor") as HTMLSelectElement).value || null;
-    const enabled = ($("monitor-on") as HTMLInputElement).checked;
     const d = await call<Devices>("set_monitor", { enabled, id });
     if (d) showDevices(d);
     else if (devices) showDevices(devices);
   };
-  $("monitor").addEventListener("change", () => void monitorChange());
-  $("monitor-on").addEventListener("change", () => void monitorChange());
+  const monitorPressed = () => $("monitor-on").getAttribute("aria-pressed") === "true";
+  $("monitor").addEventListener("change", () => void monitorChange(monitorPressed()));
+  $("monitor-on").addEventListener("click", () => void monitorChange(!monitorPressed()));
   $("volume").addEventListener("input", (e) => void call("set_monitor_volume", { volume: Number((e.target as HTMLInputElement).value) }));
   link("pitch", "pitch-num");
   link("formant", "formant-num");
-  document.querySelectorAll<HTMLButtonElement>("button[data-route]").forEach((b) =>
-    b.addEventListener("click", async () => {
-      if (!devices) return;
-      const source = b.dataset.source as Devices["outputSource"];
-      devices.outputSource = source;
-      devices.monitorSource = source;
-      showDevices(devices);
-      const d = await call<Devices>("set_routing", { output: source, monitor: source });
-      if (d) showDevices(d);
-    }),
-  );
+  // 流す音のボタンは、押すと反対側に切り替える
+  $("route").addEventListener("click", async () => {
+    if (!devices) return;
+    const source: Devices["outputSource"] = devices.outputSource === "shifted" ? "original" : "shifted";
+    devices.outputSource = source;
+    devices.monitorSource = source;
+    showDevices(devices);
+    const d = await call<Devices>("set_routing", { output: source, monitor: source });
+    if (d) showDevices(d);
+  });
   // 細かく合わせるための、決まった幅で上げ下げするボタンと、元に戻すボタン
   const defaults: Record<string, number> = { pitch: 0, formant: 1 };
   const decimals: Record<string, number> = { pitch: 1, formant: 2 };

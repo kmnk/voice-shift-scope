@@ -15,20 +15,16 @@
       <section class="group">
         <h2 data-i18n="sec.devices"></h2>
         <label><span class="field-label" data-i18n="input"></span> <select id="input"></select></label>
-        <div class="row">
-          <button id="start" data-testid="start" data-i18n="start"></button>
-          <button id="stop" data-testid="stop" data-i18n="stop" disabled></button>
-        </div>
+        <button id="run" class="run" data-testid="run" data-i18n="start"></button>
         <label><span class="field-label" data-i18n="output"></span> <select id="output" data-testid="output"></select></label>
         <div class="row">
-          <label><input id="monitor-on" type="checkbox" /> <span data-i18n="monitor.on"></span></label>
+          <button id="monitor-on" class="monitor-toggle" data-testid="monitor-on" data-i18n="monitor.on" aria-pressed="false"></button>
           <select id="monitor"></select>
         </div>
         <label><span class="field-label" data-i18n="volume"></span> <input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
-        <div class="row toggle" role="group" data-i18n-title="route.title">
+        <div class="row" data-i18n-title="route.title">
           <span class="field-label" data-i18n="route.source"></span>
-          <button data-route="both" data-source="original" data-testid="route-original" data-i18n="original"></button>
-          <button data-route="both" data-source="shifted" data-testid="route-shifted" data-i18n="shifted"></button>
+          <button id="route" class="route-toggle" data-testid="route" data-source="shifted" data-i18n="route.shifted"></button>
         </div>
         <p id="cable" class="cable" data-testid="cable-status"></p>
       </section>

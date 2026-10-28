@@ -38,9 +38,16 @@ input[type="number"] { width: 64px; }
 .message { margin: 0; color: var(--frozen); }
 .field-label { min-width: 3.2em; color: var(--muted); }
 .group label select { flex: 1; width: auto; min-width: 0; }
-.toggle button { flex: 1; }
-.toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 button[aria-pressed="true"] { background: var(--frozen); color: #fff; }
+/* 開始と停止は 1 つのボタンで、行の幅いっぱいにする */
+.run { width: 100%; }
+/* モニターの ON/OFF のトグルボタン。ON は青に白い文字 */
+.monitor-toggle { flex: none; width: 64px; }
+.monitor-toggle[aria-pressed="true"] { background: var(--accent); color: #fff; }
+/* 流す音のボタンは今の値を出し、色をスペクトルの線の色（SHIFTED が青、ORIGINAL が灰）に合わせる */
+.route-toggle { flex: 1; min-width: 0; color: #fff; }
+.route-toggle[data-source="shifted"] { background: var(--accent); }
+.route-toggle[data-source="original"] { background: #8a8a85; }
 /* アイコン（⏸ ▶ など）が絵文字として描かれると文字より背が高くなり、英語のときにボタンの高さがそろわないので、高さを決めて中央にそろえる */
 button { height: 24px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; gap: 2px; white-space: nowrap; }
 .screen { display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: 3fr 2fr; gap: 8px; min-height: 0; }
