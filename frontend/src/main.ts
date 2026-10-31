@@ -2,6 +2,8 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { applyStatic, hasKey, lang, setLang, t, type Lang } from "./i18n";
+import { Cursor } from "./cursor";
+import { icon, setContent, type IconName } from "./icons";
 import { composePng, fileName } from "./png";
 import { Spectrogram, drawSpectrum, renderTable } from "./render";
 import { runSelftest } from "./selftest";
@@ -21,6 +23,31 @@ let afterCeiling = 5500;
 let devices: Devices | null = null;
 let view: View = "full";
 let lastStatus: Status | null = null;
+const cursors = [
+  new Cursor($("before-cursor"), "gram", () => axisMax),
+  new Cursor($("after-cursor"), "gram", () => axisMax),
+  new Cursor($("spectrum-cursor"), "spectrum", () => axisMax),
+];
+
+/// スライダーの埋まった部分の割合を CSS の --fill に書く（style.css が溝を塗り分ける）
+function paintRange(r: HTMLInputElement): void {
+  const min = Number(r.min);
+  const max = Number(r.max);
+  const pct = max > min ? ((Number(r.value) - min) / (max - min)) * 100 : 0;
+  r.style.setProperty("--fill", `${Math.min(100, Math.max(0, pct))}%`);
+}
+
+/// ピッチ・フォルマントの値を、数の欄とスライダーにそろえて入れ、変換に送る（範囲で止める）
+const decimals: Record<string, number> = { pitch: 1, formant: 2 };
+function setShift(target: "pitch" | "formant", value: number): void {
+  const r = $<HTMLInputElement>(target);
+  const n = $<HTMLInputElement>(`${target}-num`);
+  const clamped = Math.min(Number(r.max), Math.max(Number(r.min), value));
+  n.value = clamped.toFixed(decimals[target]);
+  r.value = n.value;
+  paintRange(r);
+  void sendShift();
+}
 
 interface Status {
   running: boolean;
@@ -89,6 +116,7 @@ function showDevices(d: Devices): void {
   fillSelect($("monitor"), d.monitors, d.selectedMonitor);
   $("monitor-on").setAttribute("aria-pressed", String(d.monitorEnabled));
   ($("volume") as HTMLInputElement).value = String(d.monitorVolume);
+  paintRange($("volume"));
   fillSelect($("output"), d.outputs, d.selectedOutput);
   // VB-CABLE が見つからないときだけ知らせる（見つかったときの説明は出さない）
   const cable = $("cable");
@@ -99,11 +127,11 @@ function showDevices(d: Devices): void {
   // ボタンは 1 つで、今の値を出す
   const route = $("route");
   route.dataset.source = d.outputSource;
-  route.textContent = t(d.outputSource === "shifted" ? "route.shifted" : "route.original");
+  setContent(route, "route", t(d.outputSource === "shifted" ? "route.shifted" : "route.original"));
   // 開始と停止は 1 つのボタン。出力を選んでいない間は開始できない
   const run = $<HTMLButtonElement>("run");
   run.dataset.running = String(d.running);
-  run.textContent = t(d.running ? "stop" : "start");
+  setContent(run, d.running ? "stop" : "start", t(d.running ? "stop" : "start"));
   run.disabled = !d.running && !d.selectedOutput;
   ($("output") as HTMLSelectElement).disabled = d.running;
   ($("input") as HTMLSelectElement).disabled = d.running;
@@ -112,10 +140,9 @@ function showDevices(d: Devices): void {
 function updateFreezeButtons(): void {
   for (const side of ["before", "after"] as const) {
     const frozen = store.isFrozen(side);
-    const button = $(`freeze-${side}`);
-    button.setAttribute("aria-pressed", String(frozen));
-    const name = t(side === "before" ? "original" : "shifted");
-    button.textContent = frozen ? t("resume.side", { side: name }) : t("hold.side", { side: name });
+    $(`freeze-${side}`).setAttribute("aria-pressed", String(frozen));
+    // 止めた図は枠と札で分かるようにする（style.css の .panel[data-held]）
+    $(`${side}-panel`).dataset.held = String(frozen);
     const v = store.view(side);
     const state = $(`${side}-state`);
     state.textContent = frozen && v ? t("state.held", { t: v.time.toFixed(2) }) : "";
@@ -123,7 +150,7 @@ function updateFreezeButtons(): void {
     state.dataset.frozen = String(frozen);
   }
   const all = store.isFrozen("before") && store.isFrozen("after");
-  $("freeze-all").textContent = all ? t("resume.all") : t("hold.all");
+  $("freeze-all").setAttribute("aria-pressed", String(all));
   ($("save") as HTMLButtonElement).disabled = !store.anyFrozen();
 }
 
@@ -140,8 +167,14 @@ function draw(): void {
   const after = store.view("after");
   drawSpectrum($("spectrum"), before, after, axisMax);
   renderTable($("numbers"), before, after);
+  // 右端の値は、表と同じ 250 ms の中央値（止めている側は止めた時点の値）
+  for (const [side, v] of [["before", before], ["after", after]] as const) {
+    const values = [0, 1, 2, 3].map((i) => v?.summary?.formants[i]?.frequency ?? null);
+    grams[side].setValues(values, v?.summary?.stale ?? false);
+  }
   const differ = $("times-differ");
-  differ.textContent = store.timesDiffer() ? t("times.differ") : "";
+  if (store.timesDiffer()) setContent(differ, "warn", t("times.differ"));
+  else differ.replaceChildren();
   differ.dataset.differ = String(store.timesDiffer());
   $("ceiling-note").textContent = t("ceiling.note", { hz: afterCeiling.toFixed(0) });
 }
@@ -149,8 +182,8 @@ function draw(): void {
 /// 言葉を替えたときに、動的に書いた文も書き直す。
 function refreshTexts(): void {
   applyStatic();
-  $("view-toggle").textContent = view === "full" ? "⇲ " + (lang() === "ja" ? "簡易" : "COMPACT") : "⇱ " + (lang() === "ja" ? "全体" : "FULL");
-  $("view-toggle").title = view === "full" ? (lang() === "ja" ? "声を変えるだけの簡易表示にする" : "Voice changer only") : lang() === "ja" ? "グラフと数値も出す" : "Show plots and values";
+  setContent($("view-toggle"), view === "full" ? "compact" : "full", t(view === "full" ? "view.compact" : "view.full"));
+  $("view-toggle").title = t(view === "full" ? "view.compact.title" : "view.full.title");
   if (devices) showDevices(devices);
   updateFreezeButtons();
   if (lastStatus) showStatus(lastStatus);
@@ -238,10 +271,12 @@ function link(range: string, num: string): void {
   const n = $(num) as HTMLInputElement;
   r.addEventListener("input", () => {
     n.value = r.value;
+    paintRange(r);
     void sendShift();
   });
   n.addEventListener("change", () => {
     r.value = n.value;
+    paintRange(r);
     void sendShift();
   });
 }
@@ -305,7 +340,10 @@ function wire(): void {
   const monitorPressed = () => $("monitor-on").getAttribute("aria-pressed") === "true";
   $("monitor").addEventListener("change", () => void monitorChange(monitorPressed()));
   $("monitor-on").addEventListener("click", () => void monitorChange(!monitorPressed()));
-  $("volume").addEventListener("input", (e) => void call("set_monitor_volume", { volume: Number((e.target as HTMLInputElement).value) }));
+  $("volume").addEventListener("input", (e) => {
+    paintRange(e.target as HTMLInputElement);
+    void call("set_monitor_volume", { volume: Number((e.target as HTMLInputElement).value) });
+  });
   link("pitch", "pitch-num");
   link("formant", "formant-num");
   // 流す音のボタンは、押すと反対側に切り替える
@@ -320,23 +358,15 @@ function wire(): void {
   });
   // 細かく合わせるための、決まった幅で上げ下げするボタンと、元に戻すボタン
   const defaults: Record<string, number> = { pitch: 0, formant: 1 };
-  const decimals: Record<string, number> = { pitch: 1, formant: 2 };
-  const setValue = (target: string, value: number) => {
-    const r = $(target) as HTMLInputElement;
-    const n = $(`${target}-num`) as HTMLInputElement;
-    const clamped = Math.min(Number(r.max), Math.max(Number(r.min), value));
-    n.value = clamped.toFixed(decimals[target]);
-    r.value = n.value;
-    void sendShift();
-  };
+  type Target = "pitch" | "formant";
   document.querySelectorAll<HTMLButtonElement>("button[data-step]").forEach((b) =>
     b.addEventListener("click", () => {
-      const target = b.dataset.target!;
-      setValue(target, Number(($(`${target}-num`) as HTMLInputElement).value) + Number(b.dataset.step));
+      const target = b.dataset.target as Target;
+      setShift(target, Number(($(`${target}-num`) as HTMLInputElement).value) + Number(b.dataset.step));
     }),
   );
   document.querySelectorAll<HTMLButtonElement>("button.reset").forEach((b) =>
-    b.addEventListener("click", () => setValue(b.dataset.target!, defaults[b.dataset.target!])),
+    b.addEventListener("click", () => setShift(b.dataset.target as Target, defaults[b.dataset.target!])),
   );
   $("ceiling").addEventListener("change", () => void sendAnalysis());
   $("threshold").addEventListener("change", () => void sendAnalysis());
@@ -368,16 +398,9 @@ function wire(): void {
     grams.before.prepare(axisMax);
     grams.after.prepare(axisMax);
     draw();
+    for (const c of cursors) c.draw();
   });
-  document.addEventListener("keydown", (e) => {
-    const target = e.target as HTMLElement;
-    if (view !== "full" || target.tagName === "INPUT" || target.tagName === "SELECT") return;
-    if (e.key === " ") {
-      e.preventDefault();
-      toggle("all");
-    } else if (e.key === "1") toggle("before");
-    else if (e.key === "2") toggle("after");
-  });
+  wireShortcuts();
   // 動いている間に機器が無くなったときなど、音声の側の誤りを出す
   setInterval(async () => {
     const s = await invoke<Status>("status").catch(() => null);
@@ -385,7 +408,92 @@ function wire(): void {
   }, 1000);
 }
 
+/// キー操作の一覧を開く・閉じる。閉じたら、開く前にフォーカスのあった所へ戻す
+let focusBeforeShortcuts: HTMLElement | null = null;
+function openShortcuts(): void {
+  const dialog = $<HTMLDialogElement>("shortcuts");
+  if (dialog.open) return;
+  focusBeforeShortcuts = document.activeElement as HTMLElement | null;
+  dialog.showModal();
+  $("shortcuts-close").focus();
+}
+function closeShortcuts(): void {
+  const dialog = $<HTMLDialogElement>("shortcuts");
+  if (dialog.open) dialog.close();
+}
+
+/// キー。全体の表示のときだけ効き、数の欄・選ぶ欄・スライダーに入力しているときと、Ctrl・Alt・Meta と一緒のときは効かない。
+/// 一覧を開いている間は、一覧を閉じるキー（? と Esc）だけが効く。
+function wireShortcuts(): void {
+  const dialog = $<HTMLDialogElement>("shortcuts");
+  $("shortcuts-open").addEventListener("click", openShortcuts);
+  $("shortcuts-close").addEventListener("click", closeShortcuts);
+  // 後ろの暗い所（dialog の要素そのもの）を押すと閉じる
+  dialog.addEventListener("click", (e) => {
+    if (e.target === dialog) closeShortcuts();
+  });
+  dialog.addEventListener("close", () => {
+    focusBeforeShortcuts?.focus();
+    focusBeforeShortcuts = null;
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (dialog.open) {
+      if (e.key === "?" || e.key === "Escape") {
+        e.preventDefault();
+        closeShortcuts();
+      }
+      return;
+    }
+    const target = e.target as HTMLElement;
+    if (view !== "full" || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+    const shiftValue = (name: "pitch" | "formant", fine: number, coarse: number, sign: number) => {
+      e.preventDefault();
+      const current = Number($<HTMLInputElement>(`${name}-num`).value);
+      setShift(name, current + sign * (e.shiftKey ? coarse : fine));
+    };
+    switch (e.key) {
+      case " ":
+      case "0":
+        e.preventDefault();
+        toggle("all");
+        break;
+      case "1":
+        toggle("before");
+        break;
+      case "2":
+        toggle("after");
+        break;
+      case "s":
+      case "S":
+        if (!$<HTMLButtonElement>("save").disabled) void save();
+        break;
+      case "ArrowUp":
+        shiftValue("pitch", 0.1, 1, 1);
+        break;
+      case "ArrowDown":
+        shiftValue("pitch", 0.1, 1, -1);
+        break;
+      case "ArrowRight":
+        shiftValue("formant", 0.01, 0.05, 1);
+        break;
+      case "ArrowLeft":
+        shiftValue("formant", 0.01, 0.05, -1);
+        break;
+      case "?":
+        e.preventDefault();
+        openShortcuts();
+        break;
+    }
+  });
+}
+
 async function boot(): Promise<void> {
+  // 決まったアイコンを置く（言葉を替えても変わらない）
+  document.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
+    if (!el.querySelector(":scope > svg.icon")) el.prepend(icon(el.dataset.icon as IconName));
+  });
+  document.querySelectorAll<HTMLInputElement>('input[type="range"]').forEach(paintRange);
   wire();
   const prefs = await invoke<{ language: Lang; view: View }>("get_ui_prefs").catch(() => ({ language: "en" as Lang, view: "full" as View }));
   setLang(prefs.language);
@@ -399,6 +507,7 @@ async function boot(): Promise<void> {
     ($("ceiling") as HTMLInputElement).value = String(d.analysis.ceiling);
     ($("threshold") as HTMLInputElement).value = String(d.analysis.threshold);
     ($("relative-limit") as HTMLInputElement).value = String(d.analysis.relativeLimit);
+    document.querySelectorAll<HTMLInputElement>('input[type="range"]').forEach(paintRange);
   }
   requestAnimationFrame(loop);
   const dir = await invoke<string | null>("selftest_config").catch(() => null);

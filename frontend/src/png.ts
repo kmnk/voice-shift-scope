@@ -2,6 +2,7 @@
 
 import { t } from "./i18n";
 import { tableRows } from "./render";
+import { color } from "./tokens";
 import type { SideView } from "./store";
 
 export function fileName(now: Date): string {
@@ -66,9 +67,9 @@ export async function composePng(
   canvas.height = Math.round(height * dpr);
   const c = canvas.getContext("2d")!;
   c.scale(dpr, dpr);
-  c.fillStyle = "#fff";
+  c.fillStyle = color("surface");
   c.fillRect(0, 0, width, height);
-  c.fillStyle = "#1d1d1b";
+  c.fillStyle = color("ink");
   c.font = "13px system-ui";
   c.fillText(t("png.title", { date: now.toLocaleString(document.documentElement.lang === "ja" ? "ja-JP" : "en-US") }), 10, 18);
   c.font = "12px system-ui";

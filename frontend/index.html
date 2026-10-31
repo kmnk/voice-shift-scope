@@ -15,16 +15,16 @@
       <section class="group">
         <h2 data-i18n="sec.devices"></h2>
         <label><span class="field-label" data-i18n="input"></span> <select id="input"></select></label>
-        <button id="run" class="run" data-testid="run" data-i18n="start"></button>
+        <button id="run" class="run" data-testid="run"></button>
         <label><span class="field-label" data-i18n="output"></span> <select id="output" data-testid="output"></select></label>
         <div class="row">
-          <button id="monitor-on" class="monitor-toggle" data-testid="monitor-on" data-i18n="monitor.on" aria-pressed="false"></button>
+          <button id="monitor-on" class="monitor-toggle" data-testid="monitor-on" data-icon="monitor" aria-pressed="false"><span class="label" data-i18n="monitor.on"></span></button>
           <select id="monitor"></select>
         </div>
         <label><span class="field-label" data-i18n="volume"></span> <input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
         <div class="row" data-i18n-title="route.title">
           <span class="field-label" data-i18n="route.source"></span>
-          <button id="route" class="route-toggle" data-testid="route" data-source="shifted" data-i18n="route.shifted"></button>
+          <button id="route" class="route-toggle" data-testid="route" data-source="shifted"></button>
         </div>
         <p id="cable" class="cable" data-testid="cable-status"></p>
       </section>
@@ -32,7 +32,7 @@
         <h2 data-i18n="sec.pitch"></h2>
         <div class="row">
           <input id="pitch-num" type="number" min="-24" max="24" step="0.1" value="0" />
-          <button class="reset" data-target="pitch" data-i18n="reset" data-i18n-title="reset.title.pitch"></button>
+          <button class="reset" data-target="pitch" data-icon="reset" data-i18n-title="reset.title.pitch" data-i18n-aria="reset.title.pitch"></button>
         </div>
         <input id="pitch" type="range" min="-24" max="24" step="0.1" value="0" />
         <div class="row steps">
@@ -46,7 +46,7 @@
         <h2 data-i18n="sec.formant"></h2>
         <div class="row">
           <input id="formant-num" type="number" min="0.5" max="2" step="0.01" value="1" />
-          <button class="reset" data-target="formant" data-i18n="reset" data-i18n-title="reset.title.formant"></button>
+          <button class="reset" data-target="formant" data-icon="reset" data-i18n-title="reset.title.formant" data-i18n-aria="reset.title.formant"></button>
         </div>
         <input id="formant" type="range" min="0.5" max="2" step="0.01" value="1" />
         <div class="row steps">
@@ -58,14 +58,24 @@
       </section>
       <section class="group full-only">
         <h2 data-i18n="sec.hold"></h2>
-        <div class="row">
-          <button id="freeze-all" data-testid="freeze-all" data-i18n-title="hold.title.all"></button>
+        <!-- 名前・LIVE/HOLD の切り替え・キーの 3 列。切り替えは押すたびに入れ替わる 1 つのボタン -->
+        <div class="hold-row">
+          <span class="hold-name" data-i18n="hold.row.all"></span>
+          <button id="freeze-all" class="hold-switch" data-testid="freeze-all" aria-pressed="false" data-i18n-title="hold.title.all" data-i18n-aria="hold.aria.all"><span class="seg live" data-i18n="hold.live"></span><span class="seg hold" data-i18n="hold.hold"></span></button>
+          <span class="key" aria-hidden="true">0</span>
         </div>
-        <div class="row">
-          <button id="freeze-before" data-testid="freeze-before" data-i18n-title="hold.title.original"></button>
-          <button id="freeze-after" data-testid="freeze-after" data-i18n-title="hold.title.shifted"></button>
+        <div class="hold-row">
+          <span class="hold-name" data-i18n="original"></span>
+          <button id="freeze-before" class="hold-switch" data-testid="freeze-before" aria-pressed="false" data-i18n-title="hold.title.original" data-i18n-aria="hold.aria.original"><span class="seg live" data-i18n="hold.live"></span><span class="seg hold" data-i18n="hold.hold"></span></button>
+          <span class="key" aria-hidden="true">1</span>
         </div>
-        <button id="save" data-testid="save" data-i18n="snapshot" data-i18n-title="snapshot.title" disabled></button>
+        <div class="hold-row">
+          <span class="hold-name" data-i18n="shifted"></span>
+          <button id="freeze-after" class="hold-switch" data-testid="freeze-after" aria-pressed="false" data-i18n-title="hold.title.shifted" data-i18n-aria="hold.aria.shifted"><span class="seg live" data-i18n="hold.live"></span><span class="seg hold" data-i18n="hold.hold"></span></button>
+          <span class="key" aria-hidden="true">2</span>
+        </div>
+        <button id="save" class="save" data-testid="save" data-icon="snapshot" data-i18n-title="snapshot.title" disabled><span class="label" data-i18n="snapshot"></span><span class="key" aria-hidden="true">S</span></button>
+        <button id="shortcuts-open" class="link-button" data-testid="shortcuts-open" data-icon="help"><span class="label" data-i18n="shortcuts.open"></span></button>
       </section>
       <section class="group full-only">
         <h2 data-i18n="sec.analysis"></h2>
@@ -77,23 +87,41 @@
       <p id="message" class="message" role="status"></p>
     </aside>
     <main id="screen" class="screen full-only">
-      <figure class="panel gram-before">
-        <figcaption><span data-i18n="original"></span> <span id="before-state" class="state"></span></figcaption>
-        <div class="canvas-box"><canvas id="before-gram"></canvas></div>
+      <figure class="panel gram-before" id="before-panel" data-held="false">
+        <figcaption><span class="caption-title" data-i18n="original"></span><span id="before-state" class="state"></span><span class="legend"><span><i class="swatch" style="background: var(--formant-1)"></i>F1</span><span><i class="swatch" style="background: var(--formant-2)"></i>F2</span><span><i class="swatch" style="background: var(--formant-3)"></i>F3</span><span><i class="swatch" style="background: var(--formant-4)"></i>F4</span></span></figcaption>
+        <div class="canvas-box"><canvas id="before-gram"></canvas><canvas id="before-cursor" class="overlay"></canvas></div>
       </figure>
-      <figure class="panel gram-after">
-        <figcaption><span data-i18n="shifted"></span> <span id="after-state" class="state"></span></figcaption>
-        <div class="canvas-box"><canvas id="after-gram"></canvas></div>
+      <figure class="panel gram-after" id="after-panel" data-held="false">
+        <figcaption><span class="caption-title" data-i18n="shifted"></span><span id="after-state" class="state"></span><span class="legend"><span><i class="swatch" style="background: var(--formant-1)"></i>F1</span><span><i class="swatch" style="background: var(--formant-2)"></i>F2</span><span><i class="swatch" style="background: var(--formant-3)"></i>F3</span><span><i class="swatch" style="background: var(--formant-4)"></i>F4</span></span></figcaption>
+        <div class="canvas-box"><canvas id="after-gram"></canvas><canvas id="after-cursor" class="overlay"></canvas></div>
       </figure>
       <figure class="panel spectrum-panel">
-        <figcaption data-i18n="panel.spectrum"></figcaption>
-        <div class="canvas-box"><canvas id="spectrum"></canvas></div>
+        <figcaption><span class="caption-title" data-i18n="panel.spectrum"></span></figcaption>
+        <div class="canvas-box"><canvas id="spectrum"></canvas><canvas id="spectrum-cursor" class="overlay"></canvas></div>
       </figure>
       <figure class="panel table-panel">
-        <figcaption><span data-i18n="panel.values"></span> <span id="times-differ" class="differs" data-testid="times-differ"></span></figcaption>
+        <figcaption><span class="caption-title" data-i18n="panel.values"></span><span id="times-differ" class="differs" data-testid="times-differ"></span></figcaption>
         <div class="table-box"><table id="numbers" data-testid="numbers"></table></div>
       </figure>
     </main>
+    <dialog id="shortcuts" class="shortcuts" data-testid="shortcuts" aria-labelledby="shortcuts-title">
+      <div class="shortcuts-head">
+        <h2 id="shortcuts-title" data-i18n="shortcuts.title"></h2>
+        <button id="shortcuts-close" data-testid="shortcuts-close" data-icon="close" data-i18n-aria="close" data-i18n-title="close"></button>
+      </div>
+      <table>
+        <tr><td><kbd>0</kbd><span class="or" data-i18n="shortcuts.or"></span><kbd>Space</kbd></td><td data-i18n="shortcuts.all"></td></tr>
+        <tr><td><kbd>1</kbd></td><td data-i18n="shortcuts.original"></td></tr>
+        <tr><td><kbd>2</kbd></td><td data-i18n="shortcuts.shifted"></td></tr>
+        <tr><td><kbd>S</kbd></td><td data-i18n="shortcuts.save"></td></tr>
+        <tr><td><kbd>↑</kbd><kbd>↓</kbd></td><td data-i18n="shortcuts.pitch.fine"></td></tr>
+        <tr><td><kbd>Shift</kbd>+ <kbd>↑</kbd><kbd>↓</kbd></td><td data-i18n="shortcuts.pitch.coarse"></td></tr>
+        <tr><td><kbd>→</kbd><kbd>←</kbd></td><td data-i18n="shortcuts.formant.fine"></td></tr>
+        <tr><td><kbd>Shift</kbd>+ <kbd>→</kbd><kbd>←</kbd></td><td data-i18n="shortcuts.formant.coarse"></td></tr>
+        <tr><td><kbd>?</kbd></td><td data-i18n="shortcuts.help"></td></tr>
+      </table>
+      <p data-i18n="shortcuts.note"></p>
+    </dialog>
     <output id="test-stats" data-testid="test-stats" hidden></output>
     <script type="module" src="/src/main.ts"></script>
   </body>

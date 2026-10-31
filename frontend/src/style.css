@@ -1,68 +1,181 @@
+/* 色・余白・角・文字の値の正本。canvas も tokens.ts からここを読み、色を直書きしない */
 :root {
-  --bg: #f7f7f5;
-  --panel: #ffffff;
+  --bg: #f4f4f1;
+  --surface: #ffffff;
+  --control: #f1f1ed;
+  --control-hover: #e7e7e2;
   --ink: #1d1d1b;
   --muted: #6b6b66;
-  --line: #d9d9d4;
-  --frozen: #b4410f;
+  --line: #dcdcd6;
+  --grid: #ececea;
   --accent: #1f6fd1;
+  /* 止めた状態だけに使う。誤りの色（--danger）と分ける */
+  --hold: #6f42c1;
+
+  --danger: #c0392b;
+  --harmonic: #c4c4bd;
+  /* 変える前のスペクトルの線と、元の声を流すときのボタン */
+  --before: #8a8a85;
+  --formant-1: #1f77b4;
+  --formant-2: #e4572e;
+  --formant-3: #2a9d8f;
+  --formant-4: #e9b10a;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --text-s: 11px;
+  --text-m: 12px;
+  --text-l: 13px;
   font-family: system-ui, "Segoe UI", "Yu Gothic UI", sans-serif;
-  font-size: 12px;
+  font-size: var(--text-m);
   color: var(--ink);
   background: var(--bg);
 }
 html, body { height: 100%; margin: 0; overflow: hidden; }
 /* 左に操作の列、右に表示。画面の高さに収めて、縦に流れないようにする */
-body { display: grid; grid-template-columns: 250px 1fr; gap: 8px; padding: 8px; box-sizing: border-box; }
+body { display: grid; grid-template-columns: 250px 1fr; gap: var(--space-2); padding: var(--space-2); box-sizing: border-box; }
 /* 簡易表示: 右の表示と、分析・一時停止の欄を消し、左の列だけにする */
 /* 1fr だけだと列が中身（長い機器の名前の選ぶ欄）の幅より狭くなれず、窓からはみ出すので、0 まで縮めてよいとする */
 body.compact { grid-template-columns: minmax(0, 1fr); }
 /* 簡易表示では左の列を中身の高さにして（窓の高さを測るため）、窓をそれに合わせる */
 body.compact .controls { overflow-y: visible; align-self: start; }
 body.compact .full-only { display: none; }
-.controls { min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.controls { min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); padding-right: var(--space-1); }
 .topbar { justify-content: space-between; }
-.group { background: var(--panel); border: 1px solid var(--line); padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
-.group h2 { font-size: 11px; letter-spacing: 0.06em; color: var(--muted); margin: 0; }
-.group label { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.group { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-m); padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); }
+.group h2 { font-size: var(--text-s); font-weight: 600; letter-spacing: 0.06em; color: var(--muted); margin: 0; }
+.group label { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
 .group select, .group input[type="range"] { width: 100%; }
 .group select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
 .group label, .group .row { min-width: 0; }
-.row { display: flex; gap: 4px; align-items: center; }
+.row { display: flex; gap: var(--space-1); align-items: center; }
 .row.steps button { flex: 1; }
 .row select { flex: 1; min-width: 0; }
-input[type="number"] { width: 64px; }
 .cable { color: var(--muted); margin: 0; word-break: break-word; }
-.cable.missing { color: var(--frozen); font-weight: 600; }
-.note { color: var(--muted); margin: 0; }
-.message { margin: 0; color: var(--frozen); }
+.cable.missing { color: var(--danger); font-weight: 600; }
+.note { color: var(--muted); margin: 0; font-size: var(--text-s); }
+.message { margin: 0; color: var(--danger); }
 .field-label { min-width: 3.2em; color: var(--muted); }
 .group label select { flex: 1; width: auto; min-width: 0; }
-button[aria-pressed="true"] { background: var(--frozen); color: #fff; }
+
+/* 部品: ボタン・選ぶ欄・数の欄は高さ 24px、1px の枠、角 4px */
+button, select, input[type="number"] {
+  font: inherit;
+  color: var(--ink);
+  height: 24px;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+select, input[type="number"] { background: var(--surface); padding: 0 var(--space-1); }
+select:disabled, input:disabled { color: var(--muted); background: var(--control); }
+input[type="number"] { width: 64px; font-variant-numeric: tabular-nums; }
+/* アイコンと文字を中央にそろえ、高さを決める（絵文字が無くなっても、言葉でボタンの高さが変わらないように） */
+button {
+  background: var(--control);
+  padding: 0 var(--space-2);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--control-hover); }
+button:disabled { color: var(--muted); cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.icon { width: 14px; height: 14px; flex: none; stroke-width: 1.5; }
+/* 元に戻すボタンはアイコンだけ */
+button.reset { width: 24px; padding: 0; }
+
+/* スライダー: 4px の溝、埋まった部分と 12px の丸いつまみは強調の色。埋まった割合は main.ts が --fill に書く */
+input[type="range"] {
+  appearance: none;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  --fill: 50%;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--accent) 0 var(--fill), var(--line) var(--fill) 100%);
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+}
+
 /* 開始と停止は 1 つのボタンで、行の幅いっぱいにする */
 .run { width: 100%; }
 /* モニターの ON/OFF のトグルボタン。ON は青に白い文字 */
-.monitor-toggle { flex: none; width: 64px; }
-.monitor-toggle[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.monitor-toggle { flex: none; width: 64px; padding: 0 var(--space-1); }
+.monitor-toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 /* 流す音のボタンは今の値を出し、色をスペクトルの線の色（SHIFTED が青、ORIGINAL が灰）に合わせる */
 .route-toggle { flex: 1; min-width: 0; color: #fff; }
-.route-toggle[data-source="shifted"] { background: var(--accent); }
-.route-toggle[data-source="original"] { background: #8a8a85; }
-/* アイコン（⏸ ▶ など）が絵文字として描かれると文字より背が高くなり、英語のときにボタンの高さがそろわないので、高さを決めて中央にそろえる */
-button { height: 24px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; gap: 2px; white-space: nowrap; }
-.screen { display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: 3fr 2fr; gap: 8px; min-height: 0; }
+.route-toggle[data-source="shifted"], .route-toggle[data-source="shifted"]:hover { background: var(--accent); border-color: var(--accent); }
+.route-toggle[data-source="original"], .route-toggle[data-source="original"]:hover { background: var(--before); border-color: var(--before); }
+
+/* 止める欄: 名前 72px・切り替え・キー 24px の 3 列。3 行の切り替えの幅と端をそろえる */
+.hold-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) 24px; gap: var(--space-1); align-items: center; }
+.hold-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hold-switch { padding: 0; overflow: hidden; gap: 0; background: var(--surface); width: 100%; }
+.hold-switch:hover:not(:disabled) { background: var(--surface); }
+.hold-switch .seg { flex: 1; height: 100%; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); font-size: var(--text-s); }
+.hold-switch[aria-pressed="false"] .seg.live { background: var(--ink); color: #fff; }
+.hold-switch[aria-pressed="true"] .seg.hold { background: var(--hold); color: #fff; }
+/* キーの札: 押せる部品と見分けるため、枠も地も無い文字だけ */
+.key { color: var(--muted); font-size: var(--text-s); text-align: center; }
+/* 保存のボタンの S は、上の行のキーの列と同じ中心線に置く（ボタンの枠の 1px を戻す） */
+.save { position: relative; width: 100%; }
+.save .key { position: absolute; right: -1px; width: 24px; top: 0; bottom: 0; display: inline-flex; align-items: center; justify-content: center; }
+.link-button { background: none; border: none; height: auto; padding: 0; color: var(--muted); font-size: var(--text-s); justify-content: flex-start; align-self: flex-start; }
+.link-button:hover:not(:disabled) { background: none; color: var(--ink); }
+
+.screen { display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: 3fr 2fr; gap: var(--space-2); min-height: 0; }
 .gram-before { grid-column: 1 / span 5; }
 .gram-after { grid-column: 6 / span 5; }
 .spectrum-panel { grid-column: 1 / span 7; }
 .table-panel { grid-column: 8 / span 3; }
-.panel { margin: 0; background: var(--panel); border: 1px solid var(--line); padding: 4px 6px; display: flex; flex-direction: column; min-height: 0; }
-.panel figcaption { font-weight: 600; margin-bottom: 2px; }
+.panel { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-m); padding: var(--space-1) 6px; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+/* 止めた図: 枠を 2px の紫にする。内側の影で足し、図の大きさを変えない */
+.panel[data-held="true"] { border-color: var(--hold); box-shadow: inset 0 0 0 1px var(--hold); }
+/* 題の行の高さを決める。止めた札が出ても、左右の図の大きさ（同じ高さが同じ周波数）を変えないため */
+.panel figcaption { font-weight: 600; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; min-width: 0; height: 18px; flex: none; }
+.caption-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* 凡例は題の右端。狭いときは題の方を切る */
+.legend { margin-left: auto; display: flex; gap: var(--space-2); flex: none; font-weight: normal; font-size: var(--text-s); }
+.legend span { display: inline-flex; align-items: center; gap: 3px; }
+.swatch { display: inline-block; width: 8px; height: 8px; border-radius: 1px; flex: none; }
 .canvas-box { flex: 1; min-height: 0; position: relative; }
 .canvas-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .table-box { flex: 1; min-height: 0; overflow: auto; }
-.state.frozen { color: var(--frozen); }
+/* 止めた札: 紫の地に白い文字 */
+.state:empty { display: none; }
+.state.frozen { background: var(--hold); color: #fff; font-size: var(--text-s); line-height: 14px; padding: 1px 6px; border-radius: var(--radius-s); flex: none; }
+.differs { color: var(--danger); font-weight: normal; display: inline-flex; align-items: center; gap: 2px; }
+.differs:empty { display: none; }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-th, td { padding: 0 4px; text-align: right; border-bottom: 1px solid #eee; line-height: 1.35; white-space: nowrap; }
-th:first-child, td:first-child { text-align: left; }
-td.stale { color: #aaa; }
-.differs { color: var(--frozen); font-weight: normal; }
+th, td { padding: 0 2px; text-align: right; border-bottom: 1px solid var(--grid); line-height: 1.35; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; padding-left: 0; }
+td .swatch { margin-right: 3px; vertical-align: 0; }
+td.stale { color: var(--muted); opacity: 0.6; }
+
+/* キー操作の一覧 */
+dialog.shortcuts { width: 360px; box-sizing: border-box; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--ink); box-shadow: 0 4px 16px rgb(0 0 0 / 0.15); }
+dialog.shortcuts::backdrop { background: rgb(0 0 0 / 0.3); }
+.shortcuts-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); }
+.shortcuts-head h2 { font-size: var(--text-l); margin: 0; }
+.shortcuts-head button { width: 24px; padding: 0; background: none; border: none; }
+.shortcuts table td { border: none; height: 24px; text-align: left; }
+.shortcuts kbd { display: inline-block; min-width: 14px; text-align: center; padding: 1px 5px; margin-right: 2px; background: var(--control); border: 1px solid var(--line); border-radius: var(--radius-s); font-family: ui-monospace, Consolas, monospace; font-size: var(--text-s); }
+.shortcuts .or { color: var(--muted); margin: 0 var(--space-1); }
+.shortcuts p { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--text-s); }
