@@ -20,6 +20,8 @@ const pressed = (testid: string) => q(`[data-testid="${testid}"]`).getAttribute(
 // 受け入れ基準の項目を判定した時点の窓の画像を、Rust 側が <dir>/shots/<name>.png に書く（Windows だけ）。
 // 撮れないことは試験の判定に入れない。
 async function shot(name: string): Promise<void> {
+  // DOM を変えた直後は、まだ画面に描かれていない。描き直しを 2 回待ってから撮る
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   try {
     await invoke<string>("selftest_shot", { name });
   } catch {
@@ -440,7 +442,7 @@ export async function runSelftest(dir: string): Promise<void> {
         const l = spectrumLayout(sp.w, sp.h, 1);
         const spWant = { hz: formatKHz(spectrumFreqAt(sp.x, l, axisMax) ?? NaN), db: formatDb(spectrumDbAt(sp.y, l) ?? NaN) };
         const spText = { hz: sp.o.dataset.cursorFreq, db: sp.o.dataset.cursorDb };
-        await shot("S7-cursor");
+        await shot("S7-cursor-hover");
         sp.o.dispatchEvent(new PointerEvent("pointerleave"));
         await sleep(50);
         const cleared = sp.o.dataset.cursorFreq === undefined && g.o.dataset.cursorFreq === undefined;
