@@ -245,12 +245,15 @@ export async function runSelftest(dir: string): Promise<void> {
     await record("S6-db-axis", dbTicksText === "0,-20,-40,-60,-80,-100", { dbTicks: dbTicksText });
     const grid = checkHoldGrid();
     await record("S9-hold-keys", grid.pass, grid.detail);
-    // 左の列が長くなりすぎない: 最後の欄の下端が窓の上から 767px 以内（S14）
+    // 左の列が長くなりすぎない: 最後の欄の下端が、変える前（e6a91ea の Windows の画像から測った値）より 35px 以内（S14）。
+    // VB-CABLE が無いと、その知らせの文の分だけ前から長い
     {
       const groups = [...document.querySelectorAll<HTMLElement>(".controls > .group")].filter((g) => g.offsetParent !== null);
       const last = groups[groups.length - 1];
       const bottom = last.getBoundingClientRect().bottom + q(".controls").scrollTop;
-      await record("S14-column-length", bottom <= 767, { bottom, lastGroup: last.querySelector("h2")?.textContent });
+      const cableFound = q("#cable").dataset.found === "true";
+      const before = cableFound ? 734 : 782;
+      await record("S14-column-length", bottom - before <= 35, { bottom, before, grew: bottom - before, cableFound, lastGroup: last.querySelector("h2")?.textContent });
     }
 
     // キー操作の一覧: ? で開き、開いている間は他のキーが効かず、Esc で閉じる（S12）
