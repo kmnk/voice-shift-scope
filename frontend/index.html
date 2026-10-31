@@ -10,7 +10,10 @@
     <aside class="controls">
       <div class="row topbar">
         <button id="view-toggle" data-testid="view-toggle"></button>
-        <button id="lang-toggle" data-testid="lang-toggle" data-i18n="lang.toggle" data-i18n-title="lang.toggle.title"></button>
+        <div class="row">
+          <button id="shortcuts-open" class="icon-button" data-testid="shortcuts-open" data-icon="help" data-i18n-title="shortcuts.open" data-i18n-aria="shortcuts.open"></button>
+          <button id="lang-toggle" data-testid="lang-toggle" data-i18n="lang.toggle" data-i18n-title="lang.toggle.title"></button>
+        </div>
       </div>
       <section class="group">
         <h2 data-i18n="sec.devices"></h2>
@@ -75,7 +78,6 @@
           <span class="key" aria-hidden="true">2</span>
         </div>
         <button id="save" class="save" data-testid="save" data-icon="snapshot" data-i18n-title="snapshot.title" disabled><span class="label" data-i18n="snapshot"></span><span class="key" aria-hidden="true">S</span></button>
-        <button id="shortcuts-open" class="link-button" data-testid="shortcuts-open" data-icon="help"><span class="label" data-i18n="shortcuts.open"></span></button>
       </section>
       <section class="group full-only">
         <h2 data-i18n="sec.analysis"></h2>
