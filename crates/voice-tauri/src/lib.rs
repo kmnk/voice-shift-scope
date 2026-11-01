@@ -337,6 +337,38 @@ fn finish_selftest(app: tauri::AppHandle, state: State<AppState>, report: String
     Ok(())
 }
 
+/// 試験で窓を変えてよい大きさ（論理の px）。全体の表示の最小（960×640）から、ふつうの画面に収まる大きさまで。
+const TEST_SIZE_MIN: (f64, f64) = (960.0, 640.0);
+const TEST_SIZE_MAX: (f64, f64) = (2560.0, 1600.0);
+
+/// 試験で窓の大きさを変えるときの値を確かめる。範囲の外は理由を返す。
+fn checked_test_size(width: f64, height: f64) -> Result<(f64, f64), String> {
+    let ok = |v: f64, min: f64, max: f64| v.is_finite() && v >= min && v <= max;
+    if ok(width, TEST_SIZE_MIN.0, TEST_SIZE_MAX.0) && ok(height, TEST_SIZE_MIN.1, TEST_SIZE_MAX.1) {
+        Ok((width, height))
+    } else {
+        Err(format!(
+            "窓の大きさは {}×{} から {}×{} の間（受け取ったのは {width}×{height}）",
+            TEST_SIZE_MIN.0, TEST_SIZE_MIN.1, TEST_SIZE_MAX.0, TEST_SIZE_MAX.1
+        ))
+    }
+}
+
+/// 画面の通しの試験で、窓の中の大きさを変える（最小の窓で配置を確かめるため）。
+/// 試験の入口（`--ui-selftest`）で起動したときだけ動き、利用者の画面からは使えない。
+#[tauri::command]
+fn selftest_resize(app: tauri::AppHandle, state: State<AppState>, width: f64, height: f64) -> Res<()> {
+    if state.selftest_dir.is_none() {
+        return Err(io_error("試験の入口で起動していません"));
+    }
+    let (w, h) = checked_test_size(width, height).map_err(io_error)?;
+    let Some(window) = app.get_webview_window("main") else { return Err(io_error("窓が無い")) };
+    let _ = window.unmaximize();
+    window.set_size(tauri::LogicalSize::new(w, h)).map_err(io_error)?;
+    selftest_log(&format!("selftest_resize {w}x{h}"));
+    Ok(())
+}
+
 /// 画面の通しの試験で、受け入れ基準の項目を判定した時点の窓の画像を <dir>/shots/<name>.png に書く（Windows だけ）。
 /// 撮れなかったときは理由を返し、<dir>/app-log.txt にも書く。
 #[tauri::command]
@@ -467,7 +499,27 @@ pub fn run() {
             selftest_config,
             finish_selftest,
             selftest_shot,
+            selftest_resize,
         ])
         .run(tauri::generate_context!())
         .expect("アプリを起動できませんでした");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::checked_test_size;
+
+    #[test]
+    fn test_size_accepts_the_minimum_and_default_windows() {
+        assert_eq!(checked_test_size(960.0, 640.0), Ok((960.0, 640.0)));
+        assert_eq!(checked_test_size(1280.0, 860.0), Ok((1280.0, 860.0)));
+    }
+
+    #[test]
+    fn test_size_rejects_sizes_outside_the_range() {
+        assert!(checked_test_size(959.0, 640.0).is_err());
+        assert!(checked_test_size(960.0, 639.0).is_err());
+        assert!(checked_test_size(3000.0, 860.0).is_err());
+        assert!(checked_test_size(f64::NAN, 860.0).is_err());
+    }
 }
