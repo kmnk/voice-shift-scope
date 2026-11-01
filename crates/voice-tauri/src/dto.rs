@@ -36,6 +36,15 @@ pub struct DevicesDto {
     pub monitor_source: &'static str,
     pub running: bool,
     pub analysis: AnalysisDto,
+    /// 今のピッチ（半音）とフォルマント（倍率）。起動したときは覚えておいた値になっている
+    pub shift: ShiftDto,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShiftDto {
+    pub semitones: f32,
+    pub formant: f32,
 }
 
 #[derive(Serialize)]
@@ -81,6 +90,7 @@ pub fn devices_dto(list: &DeviceList, session: &VoiceSession, names: impl Fn(&st
             threshold: analysis.threshold.db(),
             relative_limit: analysis.relative_limit.db(),
         },
+        shift: ShiftDto { semitones: session.shift().pitch.semitones(), formant: session.shift().formant.ratio() },
     }
 }
 

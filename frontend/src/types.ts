@@ -59,6 +59,8 @@ export interface Devices {
   monitorSource: "shifted" | "original";
   running: boolean;
   analysis: { ceiling: number; threshold: number; relativeLimit: number };
+  /** 今のピッチ（半音）とフォルマント（倍率）。起動したときは覚えておいた値 */
+  shift: { semitones: number; formant: number };
 }
 
 export type Side = "before" | "after";
