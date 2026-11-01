@@ -168,6 +168,30 @@ async function checkShiftControls(record: (c: string, pass: boolean, detail: unk
   );
 }
 
+/// 数値の表が欄の中に収まり（横にも縦にもはみ出さない）、2 つのスペクトログラムが同じ大きさか（spec の U4）
+function tableFits(): { lang: string; fits: boolean; table: number[]; panel: number[]; grams: number[][] } {
+  const t = q("#numbers").getBoundingClientRect();
+  const p = q(".table-panel").getBoundingClientRect();
+  const g = ["before", "after"].map((side) => {
+    const r = q(`#${side}-gram`).getBoundingClientRect();
+    return [Math.round(r.width), Math.round(r.height)];
+  });
+  const inside = t.right <= p.right + 0.5 && t.bottom <= p.bottom + 0.5 && t.left >= p.left - 0.5;
+  const same = g[0][0] === g[1][0] && g[0][1] === g[1][1];
+  return { lang: lang(), fits: inside && same, table: [t.width, t.height].map(Math.round), panel: [p.width, p.height].map(Math.round), grams: g };
+}
+
+/// 英語と日本語の両方で tableFits を見る（言葉を替えて戻す）
+async function tableFitsBothLanguages(): Promise<ReturnType<typeof tableFits>[]> {
+  const first = tableFits();
+  click("lang-toggle");
+  await sleep(300);
+  const second = tableFits();
+  click("lang-toggle");
+  await sleep(300);
+  return [first, second];
+}
+
 function setNumber(id: string, value: number): void {
   const e = q<HTMLInputElement>(`#${id}`);
   e.value = String(value);
@@ -780,8 +804,12 @@ export async function runSelftest(dir: string): Promise<void> {
       const small = await resizeWindow(960, 640);
       await record("window-960x640", small.ok, small);
       await shot("size-960x640");
+      const smallTable = await tableFitsBothLanguages();
       const back = await resizeWindow(1280, 860);
       await record("window-1280x860", back.ok, back);
+      const bigTable = await tableFitsBothLanguages();
+      const cases = [...smallTable.map((c) => ({ size: "960x640", ...c })), ...bigTable.map((c) => ({ size: "1280x860", ...c }))];
+      await record("U4-table", small.ok && back.ok && cases.every((c) => c.fits), { cases });
     }
   } catch (e) {
     await record("error", false, { message: String(e) });
