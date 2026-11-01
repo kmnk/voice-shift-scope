@@ -3,10 +3,23 @@
 use serde_json::{Value, json};
 use voice_domain::ports::VoiceShifter;
 use voice_domain::{AnalysisSettings, FormantShift, PitchShift, ShiftSettings};
-use voice_dsp::{DEFAULT_BLOCK_SECONDS, SignalsmithShifter};
+use voice_dsp::{DEFAULT_BLOCK_SECONDS, SignalsmithShifter, app_shifter_with_block};
 
 /// 声を変える処理の窓の長さ（秒）。`check --block-ms` で替える。
 pub static BLOCK_SECONDS: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+
+/// 判定に使う声を変える処理。`app`（アプリと同じ組み立て、既定）か `signalsmith`（変更の前の、Signalsmith Stretch だけ）。
+/// `check --shifter` で替える。判定が誤りを捕まえるかを、変更の前の処理で FAIL になることで確かめるために使う。
+pub static SHIFTER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// `SHIFTER` と `BLOCK_SECONDS` に従って、声を変える処理を作る。
+pub fn make_shifter() -> Box<dyn VoiceShifter> {
+    let block = *BLOCK_SECONDS.get().unwrap_or(&DEFAULT_BLOCK_SECONDS);
+    match SHIFTER.get().map(String::as_str) {
+        Some("signalsmith") => Box::new(SignalsmithShifter::with_block(RATE, block, block / 4.0)),
+        _ => Box::new(app_shifter_with_block(RATE, block)),
+    }
+}
 
 use crate::analysis::{analyze_signal, formant_medians, median};
 use crate::synth::{self, Resonance, SPEC_VOWEL, SYNTH_VOWEL};
@@ -100,18 +113,30 @@ pub fn b3(settings: &AnalysisSettings) -> Vec<Outcome> {
 /// `input_f0` は入力の F0（Hz）で、フォルマントの包絡の目安に使う。
 /// 返すのは、遅れの分を前から除いた出力と、その遅れ（標本）。
 pub fn shift_signal(x: &[f32], settings: ShiftSettings, input_f0: Option<f32>) -> (Vec<f32>, usize) {
-    let block = *BLOCK_SECONDS.get().unwrap_or(&DEFAULT_BLOCK_SECONDS);
-    let mut shifter = SignalsmithShifter::with_block(RATE, block, block / 4.0);
+    shift_signal_switching(x, &[(0, settings)], input_f0)
+}
+
+/// `shift_signal` の、途中で設定を変えるもの。`schedule` は（入力の標本の位置, 設定）を位置の順に並べたもの。
+pub fn shift_signal_switching(
+    x: &[f32],
+    schedule: &[(usize, ShiftSettings)],
+    input_f0: Option<f32>,
+) -> (Vec<f32>, usize) {
+    let mut shifter = make_shifter();
     if let Some(f0) = input_f0 {
         shifter.set_pitch_hint(f0);
     }
-    shifter.set(settings);
     let latency = shifter.latency();
     let block = 480;
     let mut padded = x.to_vec();
     padded.resize(x.len() + latency + block, 0.0);
     let mut out = vec![0.0f32; padded.len()];
-    for (i, o) in padded.chunks(block).zip(out.chunks_mut(block)) {
+    let mut next = 0;
+    for (k, (i, o)) in padded.chunks(block).zip(out.chunks_mut(block)).enumerate() {
+        while next < schedule.len() && schedule[next].0 <= k * block {
+            shifter.set(schedule[next].1);
+            next += 1;
+        }
         shifter.process(i, o);
     }
     out.drain(..latency);
@@ -218,6 +243,134 @@ pub fn a4() -> Vec<Outcome> {
     }]
 }
 
+fn rms_db(x: &[f32]) -> f64 {
+    let p = x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / x.len().max(1) as f64;
+    10.0 * p.max(1e-30).log10()
+}
+
+/// Q2: ピッチを下げたとき（F0 100・150 Hz）の F1〜F3 と F0。
+/// −5・−12 半音（フォルマント 1.0 倍）は変える前から ±5%、−12 半音とフォルマント 0.8・1.2 倍は変える前のその倍率から ±7%。
+/// どの場合も F0 は狙いから ±1%。
+pub fn q2(settings: &AnalysisSettings) -> Vec<Outcome> {
+    let mut out = Vec::new();
+    for f0 in [100.0, 150.0] {
+        let x = synth::vowel(f0, &SYNTH_VOWEL, RATE as f64, 2.0, 0.5);
+        let before = analyze_signal(&x, RATE, settings);
+        let before_f0 = f0_median(&before, SKIP);
+        let before_fm = formant_medians(&before, SKIP);
+        for (st, ratio, tolerance) in [(-5.0f32, 1.0f32, 5.0f32), (-12.0, 1.0, 5.0), (-12.0, 0.8, 7.0), (-12.0, 1.2, 7.0)] {
+            let (y, _) = shift_signal(&x, shift(st, ratio), before_f0);
+            let after = analyze_signal(&y, RATE, &settings.for_shifted(FormantShift::new(ratio).expect("範囲内")));
+            let after_f0 = f0_median(&after, 0.5);
+            let expected_f0 = before_f0.map(|b| b * 2f32.powf(st / 12.0));
+            let f0_diff = after_f0.zip(expected_f0).map(|(a, e)| (a / e - 1.0) * 100.0);
+            let mut pass = f0_diff.is_some_and(|d| d.abs() <= 1.0);
+            let after_fm = formant_medians(&after, 0.5);
+            let rows: Vec<Value> = (0..3)
+                .map(|i| {
+                    let d = after_fm[i].zip(before_fm[i]).map(|(a, b)| (a / (b * ratio) - 1.0) * 100.0);
+                    let ok = d.is_some_and(|d| d.abs() <= tolerance);
+                    pass &= ok;
+                    json!({ "formant": format!("F{}", i + 1), "before": before_fm[i], "after": after_fm[i], "expected": before_fm[i].map(|b| b * ratio), "diff_percent": d, "tolerance_percent": tolerance, "pass": ok })
+                })
+                .collect();
+            out.push(Outcome {
+                criterion: "Q2".into(),
+                case: format!("F0 {f0} Hz、{st:+} 半音、フォルマント {ratio} 倍"),
+                pass,
+                detail: json!({ "expected_f0": expected_f0, "after_f0": after_f0, "f0_diff_percent": f0_diff, "formants": rows }),
+            });
+        }
+    }
+    out
+}
+
+/// Q3: F0 150 Hz の合成の母音で、1.0 秒に −5 → +5 半音、2.0 秒に −5 半音へ切り替えたとき、
+/// 切り替えの前後 100 ms の RMS（20 ms の窓、5 ms ごと）が、その前の 200 ms の同じ RMS の中央値の 0.5〜2 倍に収まる。
+/// 切り替えは処理の時刻で起き、出力では遅れの分だけ前の時刻に当たるので、両方を含む範囲を見る。
+pub fn q3() -> Vec<Outcome> {
+    let x = synth::vowel(150.0, &SYNTH_VOWEL, RATE as f64, 3.0, 0.5);
+    let r = RATE as usize;
+    let schedule = [(0, shift(-5.0, 1.0)), (r, shift(5.0, 1.0)), (2 * r, shift(-5.0, 1.0))];
+    let (y, latency) = shift_signal_switching(&x, &schedule, Some(150.0));
+    // 20 ms の窓を 5 ms ずつずらす。窓は出力の 1 周期（F0 が 50 Hz まで）より長くし、脈の間の枠を落ち込みと数えない
+    let hop = r / 200;
+    let width = r / 50;
+    let frame_rms = |a: usize, b: usize| -> Vec<f64> {
+        (a / hop..b / hop).map(|k| rms_db(&y[k * hop - width / 2..k * hop + width / 2])).collect()
+    };
+    [(r, "−5 → +5 半音"), (2 * r, "+5 → −5 半音")]
+        .iter()
+        .map(|&(at, name)| {
+            let lo = at.saturating_sub(latency) - r / 10;
+            let hi = at + r / 10;
+            let reference = median(frame_rms(lo - r / 5, lo).iter().map(|v| *v as f32).collect()).unwrap_or(-300.0) as f64;
+            let frames = frame_rms(lo, hi);
+            let (min, max) = frames.iter().fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
+            let limit = 20.0 * 2f64.log10();
+            let pass = min >= reference - limit && max <= reference + limit;
+            Outcome {
+                criterion: "Q3".into(),
+                case: name.into(),
+                pass,
+                detail: json!({ "reference_db": reference, "min_db": min, "max_db": max, "allowed_db": limit, "range_seconds": [lo as f64 / r as f64, hi as f64 / r as f64] }),
+            }
+        })
+        .collect()
+}
+
+/// Q4: 変えた後の音量（0.5 秒から後の RMS）が、変える前から ±2 dB 以内。
+pub fn q4() -> Vec<Outcome> {
+    let cases = [(-12.0, 1.0), (-5.0, 1.0), (5.0, 1.0), (12.0, 1.0), (0.0, 0.8), (0.0, 1.2), (-12.0, 0.8)];
+    let mut out = Vec::new();
+    for f0 in [100.0, 150.0] {
+        let x = synth::vowel(f0, &SYNTH_VOWEL, RATE as f64, 2.0, 0.5);
+        let start = RATE as usize / 2;
+        let input_db = rms_db(&x[start..]);
+        for (st, ratio) in cases {
+            let (y, _) = shift_signal(&x, shift(st, ratio), Some(f0 as f32));
+            let output_db = rms_db(&y[start..]);
+            let diff = output_db - input_db;
+            out.push(Outcome {
+                criterion: "Q4".into(),
+                case: format!("F0 {f0} Hz、{st:+} 半音、フォルマント {ratio} 倍"),
+                pass: diff.abs() <= 2.0,
+                detail: json!({ "input_db": input_db, "output_db": output_db, "diff_db": diff, "tolerance_db": 2.0 }),
+            });
+        }
+    }
+    out
+}
+
+/// Q5: −60 dBFS の白色雑音だけを ±12 半音で変えたとき、出力の RMS が入力より 1 dB を超えて大きくならない。
+pub fn q5() -> Vec<Outcome> {
+    let n = 2 * RATE as usize;
+    // 決まった種の線形合同法で、RMS が −60 dBFS の一様な雑音を作る（一様分布 [−a, a] の RMS は a / √3）
+    let a = 1e-3f32 * 3f32.sqrt();
+    let mut state = 0x1234_5678u32;
+    let x: Vec<f32> = (0..n)
+        .map(|_| {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (state as f32 / u32::MAX as f32 * 2.0 - 1.0) * a
+        })
+        .collect();
+    let start = RATE as usize / 2;
+    let input_db = rms_db(&x[start..]);
+    [12.0f32, -12.0]
+        .iter()
+        .map(|&st| {
+            let (y, _) = shift_signal(&x, shift(st, 1.0), None);
+            let output_db = rms_db(&y[start..]);
+            Outcome {
+                criterion: "Q5".into(),
+                case: format!("−60 dBFS の白色雑音、{st:+} 半音"),
+                pass: output_db <= input_db + 1.0,
+                detail: json!({ "input_db": input_db, "output_db": output_db, "allowed_increase_db": 1.0 }),
+            }
+        })
+        .collect()
+}
+
 pub fn run(criteria: &[String], settings: &AnalysisSettings) -> Result<Vec<Outcome>, String> {
     let mut out = Vec::new();
     for c in criteria {
@@ -232,7 +385,11 @@ pub fn run(criteria: &[String], settings: &AnalysisSettings) -> Result<Vec<Outco
             "A4" => out.extend(a4()),
             "B1" => out.extend(b1(&SYNTH_VOWEL, settings)),
             "B3" => out.extend(b3(settings)),
-            other => return Err(format!("{other} はまだ判定できません（今あるのは A1〜A4・B1・B3）")),
+            "Q2" => out.extend(q2(settings)),
+            "Q3" => out.extend(q3()),
+            "Q4" => out.extend(q4()),
+            "Q5" => out.extend(q5()),
+            other => return Err(format!("{other} はまだ判定できません（今あるのは A1〜A4・B1・B3・Q2〜Q5）")),
         }
     }
     Ok(out)
