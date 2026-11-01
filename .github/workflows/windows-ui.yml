@@ -13,6 +13,11 @@ on:
       - "crates/**"
       - ".github/workflows/windows-ui.yml"
 
+# 続けて push したときは、同じブランチの古い実行を止める
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ui:
     strategy:
