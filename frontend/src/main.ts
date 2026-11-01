@@ -8,6 +8,7 @@ import { composePng, fileName } from "./png";
 import { Spectrogram, drawSpectrum, renderTable } from "./render";
 import { STEP, fillRange, formatShift, formantToSlider, normalize, parseShift, sliderToFormant, type ShiftTarget } from "./shift";
 import { runSelftest } from "./selftest";
+import { TargetOverlay } from "./target";
 import { FreezeStore } from "./store";
 import type { Devices, Pair, Side } from "./types";
 
@@ -17,6 +18,8 @@ type View = "full" | "compact";
 
 const store = new FreezeStore();
 const grams = { before: new Spectrogram($("before-gram")), after: new Spectrogram($("after-gram")) };
+/// 止めた側の重ね描き。片側だけを止めているとき、動いている側の図に止めた側の F1〜F4 を破線で重ねる
+const targets = { before: new TargetOverlay($("before-target")), after: new TargetOverlay($("after-target")) };
 let pending: Pair[] = [];
 /// 2 つの図とスペクトルの縦（周波数）の範囲。前と後の上限の大きい方にそろえる
 let axisMax = 5500;
@@ -193,10 +196,18 @@ function draw(): void {
   const after = store.view("after");
   drawSpectrum($("spectrum"), before, after, axisMax);
   renderTable($("numbers"), before, after);
-  // 右端の値は、表と同じ 250 ms の中央値（止めている側は止めた時点の値）
-  for (const [side, v] of [["before", before], ["after", after]] as const) {
-    const values = [0, 1, 2, 3].map((i) => v?.summary?.formants[i]?.frequency ?? null);
-    grams[side].setValues(values, v?.summary?.stale ?? false);
+  // 右端の値は、表と同じ 250 ms の中央値（止めている側は止めた時点の値）。
+  // 片側だけを止めているときは、動いている側の図に止めた側の値を目標として重ねる（両側を止めた・両側が動いているときは重ねない）
+  const formants = (v: typeof before) => [0, 1, 2, 3].map((i) => v?.summary?.formants[i]?.frequency ?? null);
+  for (const [side, v, other] of [["before", before, after], ["after", after, before]] as const) {
+    const otherSide = side === "before" ? "after" : "before";
+    const overlay = !store.isFrozen(side) && store.isFrozen(otherSide) && other !== null;
+    const goal = overlay ? formants(other) : [];
+    grams[side].setValues(formants(v), v?.summary?.stale ?? false, goal, overlay ? (other?.summary?.stale ?? false) : false);
+    targets[side].set(goal, axisMax);
+    const legend = $(`${side}-target-legend`);
+    legend.hidden = !overlay;
+    (legend.querySelector(".label") as HTMLElement).textContent = overlay && other ? t("overlay.legend", { t: other.time.toFixed(2), side: t(otherSide === "before" ? "original" : "shifted") }) : "";
   }
   const differ = $("times-differ");
   if (store.timesDiffer()) setContent(differ, "warn", t("times.differ"));
@@ -347,6 +358,7 @@ async function save(): Promise<void> {
   const now = new Date();
   const bytes = await composePng(
     [$("before-gram") as HTMLCanvasElement, $("after-gram") as HTMLCanvasElement],
+    [$("before-target") as HTMLCanvasElement, $("after-target") as HTMLCanvasElement],
     $("spectrum") as HTMLCanvasElement,
     store.view("before"),
     store.view("after"),
@@ -458,6 +470,8 @@ function wire(): void {
     grams.before.prepare(axisMax);
     grams.after.prepare(axisMax);
     draw();
+    targets.before.draw();
+    targets.after.draw();
     for (const c of cursors) c.draw();
   });
   wireShortcuts();

@@ -8,7 +8,7 @@ import type { SideView } from "./store";
 import type { Summary } from "./summary";
 
 /// スペクトログラムの左の周波数の目盛りの幅（CSS の px）
-const AXIS = 34;
+export const AXIS = 34;
 /// スペクトログラムの右の、F1〜F4 の今の値を出す欄の幅（CSS の px）
 export const VALUE_GUTTER = 44;
 /// 値の欄で、値どうしを離す最小の間（CSS の px）
@@ -38,17 +38,23 @@ export interface ValueLabel {
   /// 文字の高さ（重ならないようにずらした後）
   y: number;
   text: string;
+  /// 止めた側の目標の値（重ね描き）。今の値は false
+  target: boolean;
 }
 
 /// 値の欄の F1〜F4 の値の位置。高さは周波数の位置にし、近すぎる値は下の値を下へずらす。
 /// 図の下端を越えるときは下端に寄せる（重なってよい）。値の無いフォルマントは出さない。
-export function valueLabels(values: (number | null)[], axisMax: number, height: number, minGap: number): ValueLabel[] {
+/// targets（片側だけを止めたときの、止めた側の値）も同じ規則で一緒に並べ、今の値と重ねない。
+export function valueLabels(values: (number | null)[], axisMax: number, height: number, minGap: number, targets: (number | null)[] = []): ValueLabel[] {
   const labels: ValueLabel[] = [];
-  values.forEach((v, index) => {
-    if (v === null || !Number.isFinite(v)) return;
-    const lineY = height - (v / axisMax) * height;
-    labels.push({ index, lineY, y: lineY, text: v.toFixed(0) });
-  });
+  const add = (list: (number | null)[], target: boolean) =>
+    list.forEach((v, index) => {
+      if (v === null || !Number.isFinite(v)) return;
+      const lineY = height - (v / axisMax) * height;
+      labels.push({ index, lineY, y: lineY, text: v.toFixed(0), target });
+    });
+  add(values, false);
+  add(targets, true);
   labels.sort((a, b) => a.y - b.y);
   const top = minGap / 2;
   const bottom = height - minGap / 2;
@@ -75,6 +81,8 @@ export class Spectrogram {
   private history: Frame[] = [];
   private values: (number | null)[] = [null, null, null, null];
   private stale = false;
+  private targets: (number | null)[] = [];
+  private targetsStale = false;
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
   }
@@ -101,10 +109,14 @@ export class Spectrogram {
   }
 
   /// 右端の値を替える（止めている側は止めた時点の値のまま呼ばれる）。
-  setValues(values: (number | null)[], stale: boolean): void {
-    const same = stale === this.stale && values.length === this.values.length && values.every((v, i) => v === this.values[i]);
+  /// targets は、他方だけを止めているときの止めた側の値（目標）。重ねないときは空
+  setValues(values: (number | null)[], stale: boolean, targets: (number | null)[] = [], targetsStale = false): void {
+    const eq = (a: (number | null)[], b: (number | null)[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+    const same = stale === this.stale && targetsStale === this.targetsStale && eq(values, this.values) && eq(targets, this.targets);
     this.values = values;
     this.stale = stale;
+    this.targets = targets;
+    this.targetsStale = targetsStale;
     if (!same) this.drawValues();
   }
 
@@ -132,12 +144,19 @@ export class Spectrogram {
     const left = width - Math.round(VALUE_GUTTER * dpr);
     c.fillStyle = color("surface");
     c.fillRect(left, 0, width - left, height);
-    const labels = valueLabels(this.values, this.axisMax, height / dpr, VALUE_MIN_GAP);
+    const labels = valueLabels(this.values, this.axisMax, height / dpr, VALUE_MIN_GAP, this.targets);
     c.font = `${10 * dpr}px system-ui`;
     c.textAlign = "left";
     c.textBaseline = "middle";
     const muted = color("muted");
+    const hold = color("hold");
     for (const l of labels) {
+      if (l.target) {
+        // 目標の値: 紫の文字だけ（頭の短い横線は付けない）。古い値は灰色
+        c.fillStyle = this.targetsStale ? muted : hold;
+        c.fillText(l.text, left + 10 * dpr, l.y * dpr);
+        continue;
+      }
       const ink = this.stale ? muted : formantColor(l.index);
       c.fillStyle = ink;
       c.fillRect(left + 2 * dpr, Math.round(l.lineY * dpr) - Math.round(dpr / 2), 6 * dpr, Math.max(1, Math.round(dpr)));
