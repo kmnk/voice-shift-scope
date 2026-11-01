@@ -498,7 +498,7 @@ async function checkSettings(record: (c: string, pass: boolean, detail: unknown)
   const focusInside = panel.contains(document.activeElement);
   const r = panel.getBoundingClientRect();
   const inWindow = r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight;
-  await shot("U3-settings");
+  await shot("U3-settings-open");
   press("Escape");
   await sleep(200);
   const closedByEsc = !open();
@@ -657,14 +657,14 @@ export async function runSelftest(dir: string): Promise<void> {
       // U5: 出力を選ぶ案内が図の中に出て、画面のどこにも VB-CABLE の語が無い（いつも使う前提にしない）
       const guide = q("#plot-guide").textContent ?? "";
       const mentions = /VB-?CABLE/i.test(document.body.innerText);
-      await shot("U5-guide");
+      await shot("U5-guide-before-start");
       await record("U5-guide", guide === t("guide.output") && !mentions, { guide, mentions });
     } else {
       const out = q<HTMLSelectElement>("#output");
       await record("cable-found", out.value !== "", { output: out.selectedOptions[0]?.textContent });
       // U5: 出力が選ばれていて始める前は「開始を押す」案内が出て、開始すると消える
       const guideBefore = q("#plot-guide").textContent ?? "";
-      await shot("U5-guide");
+      await shot("U5-guide-before-start");
       click("run");
       await sleep(5000);
       const guideAfter = q("#plot-guide").textContent ?? "";
