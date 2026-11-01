@@ -19,15 +19,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  with-vb-cable:
+  # VB-CABLE が無いときの振る舞いを先に確かめてから VB-CABLE を入れ、build を 1 回で済ませる
+  e2e:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - id: build
+        run: cargo build --release -p voice-cli
+      - name: Synthesize a test vowel
+        run: target/release/voice-cli synth vowel --f0 150 --seconds 2 --out vowel150.wav
+      - name: Expect exit code 2 when VB-CABLE is missing
+        shell: pwsh
+        run: |
+          target/release/voice-cli loopback --input-wav vowel150.wav
+          if ($LASTEXITCODE -ne 2) { Write-Error "loopback: expected exit code 2, got $LASTEXITCODE"; exit 1 }
+          target/release/voice-cli e2e --seconds 1
+          if ($LASTEXITCODE -ne 2) { Write-Error "e2e: expected exit code 2, got $LASTEXITCODE"; exit 1 }
+          exit 0
       - name: Install VB-CABLE
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
       - name: Allow desktop apps to use the microphone
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: |
           foreach ($root in 'HKLM:', 'HKCU:') {
@@ -38,10 +53,8 @@ jobs:
             Set-ItemProperty -Path "$key\NonPackaged" -Name Value -Value Allow
           }
           Get-Service audiosrv, AudioEndpointBuilder | Format-Table -AutoSize Name, Status
-      - run: cargo build --release -p voice-cli
-      - name: Synthesize a test vowel
-        run: target/release/voice-cli synth vowel --f0 150 --seconds 2 --out vowel150.wav
       - name: Loop it through VB-CABLE
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: |
           target/release/voice-cli loopback --input-wav vowel150.wav --out-wav recorded.wav | Tee-Object -FilePath e2e-report.json
@@ -50,13 +63,14 @@ jobs:
       # この 2 つは利用者の Windows で docs/windows-checklist.md の手順で確かめる。ここでは値を report に残し、
       # 合否はランナーで判定できる A1 と分析だけで決める。
       - name: Measure latency through the audio runtime (0 semitones, 10 s)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: |
           target/release/voice-cli e2e --seconds 10 --semitones 0 | Tee-Object -FilePath e2e-latency.json
           if ($LASTEXITCODE -eq 2) { Write-Error "VB-CABLE が見つからない"; exit 1 }
           ./scripts/e2e_gate.ps1 e2e-latency.json A1 analysis
       - name: Run the audio runtime through VB-CABLE (+5 semitones, 20 s)
-        if: always()
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: |
           target/release/voice-cli e2e --seconds 20 --semitones 5 | Tee-Object -FilePath e2e-runtime.json
@@ -72,19 +86,3 @@ jobs:
             e2e-latency.json
             e2e-runtime.json
 
-  without-vb-cable:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release -p voice-cli
-      - run: target/release/voice-cli synth vowel --f0 150 --seconds 1 --out vowel150.wav
-      - name: Expect exit code 2 when VB-CABLE is missing
-        shell: pwsh
-        run: |
-          target/release/voice-cli loopback --input-wav vowel150.wav
-          if ($LASTEXITCODE -ne 2) { Write-Error "loopback: expected exit code 2, got $LASTEXITCODE"; exit 1 }
-          target/release/voice-cli e2e --seconds 1
-          if ($LASTEXITCODE -ne 2) { Write-Error "e2e: expected exit code 2, got $LASTEXITCODE"; exit 1 }
-          exit 0

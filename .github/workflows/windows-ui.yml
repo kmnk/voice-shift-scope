@@ -4,6 +4,8 @@ name: windows-ui
 # 画面に出たものを読んで判定し、ui-report.json を書いて終わる（終了コード 0 が成功）。
 # tauri-driver（WebDriver）は、このランナーで「DevToolsActivePort file doesn't exist」でアプリにつながらなかったので使わない。
 # 入力は --input-wav の試験用の母音、設定と画像の保存先はランナーの一時的な場所。ランナーは毎回作り直される。
+# build を 1 回で済ませるため、1 つの job で VB-CABLE を入れる前と後に 1 回ずつ動かす。
+# 自己試験は、その時点で VB-CABLE があるかを読んで、無ければ C4、あれば cable-found を判定する。
 on:
   workflow_dispatch:
   push:
@@ -12,6 +14,7 @@ on:
       - "frontend/**"
       - "crates/**"
       - ".github/workflows/windows-ui.yml"
+      - "scripts/ui_selftest.ps1"
 
 # 続けて push したときは、同じブランチの古い実行を止める
 concurrency:
@@ -20,15 +23,14 @@ concurrency:
 
 jobs:
   ui:
-    strategy:
-      fail-fast: false
-      matrix:
-        cable: [with-vb-cable, without-vb-cable]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # release.yml と同じものを build するので、cache を共有する
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-release-app
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -39,10 +41,8 @@ jobs:
         run: |
           npm ci
           npm run build
-      - run: cargo build --release -p voice-tauri -p voice-cli
-      - name: Install VB-CABLE
-        if: matrix.cable == 'with-vb-cable'
-        uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
+      - id: build
+        run: cargo build --release -p voice-tauri -p voice-cli
       - name: Allow desktop apps to use the microphone
         shell: pwsh
         run: |
@@ -54,28 +54,25 @@ jobs:
             Set-ItemProperty -Path "$key\NonPackaged" -Name Value -Value Allow
           }
       - run: target/release/voice-cli synth vowel --f0 150 --seconds 60 --out vowel150.wav
-      - name: Run the UI self-test
+      - name: Run the UI self-test without VB-CABLE
         shell: pwsh
         timeout-minutes: 5
-        env:
-          VOICE_SHIFT_SCOPE_CONFIG_DIR: ${{ github.workspace }}\ui-out\config
-          VOICE_SHIFT_SCOPE_TEST_SAVE_DIR: ${{ github.workspace }}\ui-out\saved
-        run: |
-          New-Item -ItemType Directory -Force ui-out\saved, ui-out\config | Out-Null
-          $p = Start-Process target\release\voice-shift-scope.exe -ArgumentList '--input-wav', 'vowel150.wav', '--ui-selftest', "$PWD\ui-out" -PassThru
-          Start-Sleep -Seconds 20
-          # 止まったときの手掛かりに、20 秒後の画面を撮る
-          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-          $bmp.Save("$PWD\ui-out\screen-20s.png")
-          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Format-Table -AutoSize Id, StartTime | Out-String | Set-Content ui-out\webview-processes.txt
-          if (-not $p.WaitForExit(160000)) { Stop-Process -Id $p.Id -Force; Get-Content ui-out\app-log.txt -ErrorAction SilentlyContinue; Write-Error "self-test did not finish in 180 s"; exit 1 }
-          Get-Content ui-out\ui-report.json
-          exit $p.ExitCode
+        run: ./scripts/ui_selftest.ps1 ui-out-without-vb-cable
+      - name: Install VB-CABLE
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
+      - name: Run the UI self-test with VB-CABLE
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        timeout-minutes: 5
+        run: ./scripts/ui_selftest.ps1 ui-out-with-vb-cable
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ui-${{ matrix.cable }}
-          path: ui-out
+          name: ui-without-vb-cable
+          path: ui-out-without-vb-cable
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-with-vb-cable
+          path: ui-out-with-vb-cable
