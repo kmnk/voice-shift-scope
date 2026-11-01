@@ -122,7 +122,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* ピッチとフォルマントの値の行: − と + の間に大きな値の欄、右に元に戻すボタン。どれも高さ 32px */
 .value-row > * { height: 32px; flex: none; }
-.value-row .step { width: 24px; padding: 0; }
+.value-row .step { width: 24px; padding: 0; font-size: 16px; }
 .value-row button.reset { width: 32px; }
 .group input.value { flex: 1; min-width: 0; width: auto; font-size: 20px; font-weight: 600; text-align: right; padding: 0 var(--space-2); font-variant-numeric: tabular-nums; }
 /* スライダーの中央（既定の値）に縦 6px の目盛り */
