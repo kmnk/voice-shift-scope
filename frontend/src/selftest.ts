@@ -238,7 +238,9 @@ async function checkOverlay(record: (c: string, pass: boolean, detail: unknown) 
       bothHeld.before.targets === "" &&
       bothHeld.after.targets === "" &&
       bothHeld.before.legend === "" &&
-      restored.before.targets === shiftedHeld.before.targets,
+      // 止め直すとその時点の値になるので、最初と同じ値ではなく、重ねた値が止めた側の値と同じことを見る
+      filled(restored.before.targets) &&
+      restored.before.targets === restored.after.values,
     { shiftedHeld, originalHeld, bothHeld, restored },
   );
 
@@ -897,7 +899,8 @@ export async function runSelftest(dir: string): Promise<void> {
         const f1 = num("formant-num");
         press("ArrowRight", { shiftKey: true });
         const f2 = num("formant-num");
-        const sliderMatches = Number(q<HTMLInputElement>("#formant").value) === formantToSlider(shiftValue("formant"));
+        // スライダーは値を刻み（0.001）に丸めて持つので、刻みの幅までの差を許す
+        const sliderMatches = Math.abs(Number(q<HTMLInputElement>("#formant").value) - formantToSlider(shiftValue("formant"))) <= 0.001;
         press("ArrowLeft", { shiftKey: true });
         press("ArrowLeft");
         const f3 = num("formant-num");
