@@ -29,6 +29,30 @@ async function shot(name: string): Promise<void> {
   }
 }
 
+/// 窓の中の大きさを変え、画面がその大きさになるまで待つ（試験の入口だけで動く Rust の selftest_resize）。
+async function resizeWindow(width: number, height: number): Promise<{ ok: boolean; innerWidth: number; innerHeight: number; error?: string; firstTry?: { innerWidth: number; innerHeight: number } }> {
+  try {
+    await invoke("selftest_resize", { width, height });
+  } catch (e) {
+    return { ok: false, innerWidth: window.innerWidth, innerHeight: window.innerHeight, error: String(e) };
+  }
+  const fits = () => Math.abs(window.innerWidth - width) <= 2 && Math.abs(window.innerHeight - height) <= 2;
+  let ok = await waitFor(fits, 3000);
+  // 窓の大きさに窓の縁やタイトルバーが入る OS（macOS では高さが 32 px 足りなかった）では、画面の中が頼んだ大きさになるよう、差を足して 1 回だけ頼み直す
+  const first = { innerWidth: window.innerWidth, innerHeight: window.innerHeight };
+  if (!ok) {
+    try {
+      await invoke("selftest_resize", { width: width + (width - first.innerWidth), height: height + (height - first.innerHeight) });
+    } catch (e) {
+      return { ok: false, ...first, error: String(e) };
+    }
+    ok = await waitFor(fits, 3000);
+  }
+  // 大きさが変わった後の描き直しを待つ
+  await sleep(800);
+  return { ok, innerWidth: window.innerWidth, innerHeight: window.innerHeight, ...(ok && (first.innerWidth !== width || first.innerHeight !== height) ? { firstTry: first } : {}) };
+}
+
 function setNumber(id: string, value: number): void {
   const e = q<HTMLInputElement>(`#${id}`);
   e.value = String(value);
@@ -649,6 +673,14 @@ export async function runSelftest(dir: string): Promise<void> {
           !afterStop.outputDisabled,
         { runButtons, whileRunning, afterStop },
       );
+    }
+    // 最小の窓（960×640）にして撮り、元の大きさに戻す。配置が小さい窓に収まるかを画像で見るため
+    {
+      const small = await resizeWindow(960, 640);
+      await record("window-960x640", small.ok, small);
+      await shot("size-960x640");
+      const back = await resizeWindow(1280, 860);
+      await record("window-1280x860", back.ok, back);
     }
   } catch (e) {
     await record("error", false, { message: String(e) });
