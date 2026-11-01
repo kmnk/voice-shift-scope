@@ -18,7 +18,7 @@ use voice_domain::{
     AnalysisSettings, DomainError, FormantCeiling, FormantShift, HarmonicRelativeLimit, HarmonicThreshold, LpcOrder, MonitorVolume,
     PitchShift, ShiftSettings,
 };
-use voice_dsp::{DefaultAnalyzer, SignalsmithShifter};
+use voice_dsp::DefaultAnalyzer;
 use voice_runtime::{CpalDevices, RuntimePipeline};
 
 use crate::dto::{DevicesDto, PairDto, devices_dto};
@@ -436,7 +436,7 @@ pub fn run() {
             let publisher = Arc::new(ChannelPublisher::default());
             let test_samples = input_wav_from_args();
             let mut pipeline = RuntimePipeline::new(
-                Box::new(|rate| Box::new(SignalsmithShifter::new(rate))),
+                Box::new(voice_dsp::app_shifter),
                 Box::new(|| Box::new(DefaultAnalyzer::default())),
                 publisher.clone(),
             );

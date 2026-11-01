@@ -8,7 +8,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use voice_domain::ports::{AnalysisPublisher, AudioDevices, AudioPipeline, PipelineConfig};
 use voice_domain::{AnalysisPair, DeviceDirection, FormantShift, MonitorSettings, MonitorVolume, PitchShift, ShiftSettings};
-use voice_dsp::{DefaultAnalyzer, SignalsmithShifter};
+use voice_dsp::DefaultAnalyzer;
 use voice_runtime::loopback::{Recorder, onset, resample_linear};
 use voice_runtime::{CpalDevices, RuntimePipeline};
 
@@ -61,7 +61,7 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
 
     let collect = Arc::new(Collect::default());
     let mut pipeline = RuntimePipeline::new(
-        Box::new(|rate| Box::new(SignalsmithShifter::new(rate))),
+        Box::new(voice_dsp::app_shifter),
         Box::new(|| Box::new(DefaultAnalyzer::default())),
         collect.clone(),
     )
