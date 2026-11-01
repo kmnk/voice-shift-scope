@@ -136,6 +136,8 @@ input[type="range"]::-webkit-slider-thumb {
 .bar > * { flex: none; }
 .bar .run { width: 80px; margin-right: var(--space-2); }
 .hold-group { display: flex; align-items: center; gap: var(--space-1); margin-left: var(--space-1); }
+/* 組と組の間は 16px で、真ん中に区切りの線（切り替えの右 8px・線 1px・名前の左 7px） */
+.hold-group + .hold-group::before { content: ""; flex: none; width: 1px; height: 16px; margin-right: 3px; background: var(--line); }
 .bar .save { margin-left: var(--space-1); }
 .bar .message { flex: 1 1 auto; min-width: 0; margin: 0 0 0 var(--space-2); display: flex; align-items: center; gap: 2px; color: var(--danger); }
 .bar .message .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -152,18 +154,13 @@ input[type="range"]::-webkit-slider-thumb {
 .route-toggle[data-source="shifted"], .route-toggle[data-source="shifted"]:hover { background: var(--accent); border-color: var(--accent); }
 .route-toggle[data-source="original"], .route-toggle[data-source="original"]:hover { background: var(--before); border-color: var(--before); }
 
-/* 止める切り替え: 名前・切り替え（92px）・キーの札を横に並べる */
+/* 止める切り替え: 名前・切り替え（92px）を横に並べる */
 .hold-name { white-space: nowrap; }
 .hold-switch { padding: 0; overflow: hidden; gap: 0; background: var(--surface); width: 92px; }
 .hold-switch:hover:not(:disabled) { background: var(--surface); }
 .hold-switch .seg { flex: 1; height: 100%; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); font-size: var(--text-s); }
 .hold-switch[aria-pressed="false"] .seg.live { background: var(--ink); color: #fff; }
 .hold-switch[aria-pressed="true"] .seg.hold { background: var(--hold); color: #fff; }
-/* キーの札: 押せる部品と見分けるため、枠も地も無い文字だけ */
-.key { color: var(--muted); font-size: var(--text-s); text-align: center; }
-/* 保存のボタンの S は、ボタンの中の右端 */
-.save { position: relative; padding-right: 24px; }
-.save .key { position: absolute; right: 0; width: 20px; top: 0; bottom: 0; display: inline-flex; align-items: center; justify-content: center; }
 /* アイコンだけのボタン（キー操作の一覧を開く） */
 .icon-button { width: 24px; padding: 0; }
 

@@ -431,8 +431,7 @@ function checkLegend(): { pass: boolean; detail: unknown } {
   return { pass: legendOk && tableOk, detail: { want, legends, table } };
 }
 
-/// S9: 止める欄のキーの札と、3 行の切り替えの並び
-/// 上の帯（spec の U1）: 部品がそろい、どれも窓の幅を越えず、帯の高さが 32px。キーの札は切り替えの右に並び、S は保存のボタンの中の右端
+/// 上の帯（spec の U1）: 部品がそろい、どれも窓の幅を越えず、帯の高さが 32px。キーの札は無く、止める切り替えの組の間に区切りの線がある
 function checkBar(): { lang: string; pass: boolean; detail: unknown } {
   const bar = q(".bar").getBoundingClientRect();
   const ids = ["run", "freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open", "lang-toggle", "view-toggle"];
@@ -441,24 +440,33 @@ function checkBar(): { lang: string; pass: boolean; detail: unknown } {
     const r = el.getBoundingClientRect();
     return { id, inBar: q(".bar").contains(el), visible: el.offsetParent !== null, right: Math.round(r.right) };
   });
-  const keys = ["freeze-all", "freeze-before", "freeze-after"].map((id) => {
-    const sw = q(`[data-testid="${id}"]`).getBoundingClientRect();
-    const key = q(`[data-testid="${id}"]`).parentElement!.querySelector<HTMLElement>(".key")!;
-    const k = key.getBoundingClientRect();
-    return { id, key: key.textContent, gap: Math.round(k.left - sw.right) };
+  // 帯にキーの札を出さない（キーは ? の一覧で知る）
+  const keyHints = q(".bar").querySelectorAll(".key").length;
+  // 組と組の間の区切りの線: 2 本で、前の切り替えの右から約 8px、次の名前の左まで約 7px
+  const switches = ["freeze-all", "freeze-before", "freeze-after"].map((id) => q(`[data-testid="${id}"]`));
+  const dividers = switches.slice(1).map((sw, i) => {
+    const group = sw.parentElement!;
+    const line = getComputedStyle(group, "::before");
+    const prevRight = switches[i].getBoundingClientRect().right;
+    const name = group.querySelector<HTMLElement>(".hold-name")!.getBoundingClientRect();
+    const lineWidth = parseFloat(line.width);
+    const lineLeft = group.getBoundingClientRect().left;
+    return {
+      width: lineWidth,
+      height: parseFloat(line.height),
+      before: Math.round(lineLeft - prevRight),
+      after: Math.round(name.left - (lineLeft + lineWidth)),
+    };
   });
-  const save = q("#save").getBoundingClientRect();
-  const sKey = q("#save .key").getBoundingClientRect();
-  const sInside = q("#save .key").textContent === "S" && sKey.right <= save.right + 0.5 && save.right - sKey.right <= 4;
+  const dividersOk = dividers.every((d) => d.width === 1 && d.height === 16 && Math.abs(d.before - 8) <= 1 && Math.abs(d.after - 7) <= 1);
   const messageInBar = q(".bar").contains(q("#message")) && !q(".controls").contains(q("#message"));
   const pass =
     Math.round(bar.height) === 32 &&
     parts.every((p) => p.inBar && p.visible && p.right <= window.innerWidth) &&
-    keys.map((k) => k.key).join(",") === "0,1,2" &&
-    keys.every((k) => k.gap >= 3 && k.gap <= 6) &&
-    sInside &&
+    keyHints === 0 &&
+    dividersOk &&
     messageInBar;
-  return { lang: lang(), pass, detail: { barHeight: bar.height, parts, keys, sInside, messageInBar, innerWidth: window.innerWidth } };
+  return { lang: lang(), pass, detail: { barHeight: bar.height, parts, keyHints, dividers, messageInBar, innerWidth: window.innerWidth } };
 }
 
 /// 左の列（spec の U2）: PITCH・FORMANT・DEVICES の 3 つの欄だけで、DEVICES に機器の部品があり、縦にスクロールしない
