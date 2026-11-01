@@ -34,16 +34,22 @@
   background: var(--bg);
 }
 html, body { height: 100%; margin: 0; overflow: hidden; }
-/* 左に操作の列、右に表示。画面の高さに収めて、縦に流れないようにする */
-body { display: grid; grid-template-columns: 250px 1fr; gap: var(--space-2); padding: var(--space-2); box-sizing: border-box; }
-/* 簡易表示: 右の表示と、分析・一時停止の欄を消し、左の列だけにする */
+/* 上に操作の帯、その下の左に声を変える操作と機器の列、右に表示。画面の高さに収めて、縦に流れないようにする */
+body { display: grid; grid-template-columns: 250px minmax(0, 1fr); grid-template-rows: 32px minmax(0, 1fr); grid-template-areas: "bar bar" "controls screen"; gap: var(--space-2); padding: var(--space-2); box-sizing: border-box; }
+.bar { grid-area: bar; }
+.controls { grid-area: controls; }
+.screen { grid-area: screen; }
+/* 簡易表示: 右の表示と、止める・保存・設定・キー操作を消し、帯（折り返す）と左の列だけにする */
 /* 1fr だけだと列が中身（長い機器の名前の選ぶ欄）の幅より狭くなれず、窓からはみ出すので、0 まで縮めてよいとする */
-body.compact { grid-template-columns: minmax(0, 1fr); }
+body.compact { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; grid-template-areas: "bar" "controls"; align-content: start; }
+body.compact .bar { flex-wrap: wrap; row-gap: var(--space-1); }
+body.compact .bar .message { order: 10; flex-basis: 100%; white-space: normal; }
+body.compact .bar .message .label { white-space: normal; }
+body.compact .bar .message:empty { display: none; }
 /* 簡易表示では左の列を中身の高さにして（窓の高さを測るため）、窓をそれに合わせる */
 body.compact .controls { overflow-y: visible; align-self: start; }
 body.compact .full-only { display: none; }
 .controls { min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); padding-right: var(--space-1); }
-.topbar { justify-content: space-between; }
 .group { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 6px var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); }
 /* 欄の内側の余白は縦 6px・横 8px（縦を詰めて左の列を短くする） */
 .group h2 { font-size: var(--text-s); font-weight: 600; letter-spacing: 0.06em; color: var(--muted); margin: 0; }
@@ -56,7 +62,6 @@ body.compact .full-only { display: none; }
 .cable { color: var(--muted); margin: 0; word-break: break-word; }
 .cable.missing { color: var(--danger); font-weight: 600; }
 .note { color: var(--muted); margin: 0; font-size: var(--text-s); }
-.message { margin: 0; color: var(--danger); }
 .field-label { min-width: 3.2em; color: var(--muted); }
 .group label select { flex: 1; width: auto; min-width: 0; }
 
@@ -128,8 +133,19 @@ input[type="range"]::-webkit-slider-thumb {
 /* スペクトルの凡例の線の見本 */
 .line-sample { display: block; flex: none; }
 
-/* 開始と停止は 1 つのボタンで、行の幅いっぱいにする */
-.run { width: 100%; }
+/* 上の帯: 部品の間 4px、止める切り替えの組の間 8px、開始・停止の後 12px。状態の知らせは残りの幅を取り、収まらなければ省略記号で切る */
+.bar { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.bar > * { flex: none; }
+.bar .run { width: 80px; margin-right: var(--space-2); }
+.hold-group { display: flex; align-items: center; gap: var(--space-1); margin-left: var(--space-1); }
+.bar .save { margin-left: var(--space-1); }
+.bar .message { flex: 1 1 auto; min-width: 0; margin: 0 0 0 var(--space-2); display: flex; align-items: center; gap: 2px; color: var(--danger); }
+.bar .message .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.bar .message[data-kind="saved"] { color: var(--muted); }
+.bar-end { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
+/* 設定の板（分析）: 帯の下、窓の右端にそろえる */
+.settings { position: fixed; inset: auto; top: calc(var(--space-2) * 2 + 32px); right: var(--space-2); left: auto; width: 300px; margin: 0; padding: var(--space-3); box-sizing: border-box; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-m); box-shadow: 0 4px 16px rgb(0 0 0 / 0.15); }
+.settings .group { border: none; padding: 0; }
 /* モニターの ON/OFF のトグルボタン。ON は青に白い文字 */
 .monitor-toggle { flex: none; width: 64px; padding: 0 var(--space-1); }
 .monitor-toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -138,19 +154,18 @@ input[type="range"]::-webkit-slider-thumb {
 .route-toggle[data-source="shifted"], .route-toggle[data-source="shifted"]:hover { background: var(--accent); border-color: var(--accent); }
 .route-toggle[data-source="original"], .route-toggle[data-source="original"]:hover { background: var(--before); border-color: var(--before); }
 
-/* 止める欄: 名前 72px・切り替え・キー 24px の 3 列。3 行の切り替えの幅と端をそろえる */
-.hold-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) 24px; gap: var(--space-1); align-items: center; }
-.hold-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hold-switch { padding: 0; overflow: hidden; gap: 0; background: var(--surface); width: 100%; }
+/* 止める切り替え: 名前・切り替え（92px）・キーの札を横に並べる */
+.hold-name { white-space: nowrap; }
+.hold-switch { padding: 0; overflow: hidden; gap: 0; background: var(--surface); width: 92px; }
 .hold-switch:hover:not(:disabled) { background: var(--surface); }
 .hold-switch .seg { flex: 1; height: 100%; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); font-size: var(--text-s); }
 .hold-switch[aria-pressed="false"] .seg.live { background: var(--ink); color: #fff; }
 .hold-switch[aria-pressed="true"] .seg.hold { background: var(--hold); color: #fff; }
 /* キーの札: 押せる部品と見分けるため、枠も地も無い文字だけ */
 .key { color: var(--muted); font-size: var(--text-s); text-align: center; }
-/* 保存のボタンの S は、上の行のキーの列と同じ中心線に置く（ボタンの枠の 1px を戻す） */
-.save { position: relative; width: 100%; }
-.save .key { position: absolute; right: -1px; width: 24px; top: 0; bottom: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* 保存のボタンの S は、ボタンの中の右端 */
+.save { position: relative; padding-right: 24px; }
+.save .key { position: absolute; right: 0; width: 20px; top: 0; bottom: 0; display: inline-flex; align-items: center; justify-content: center; }
 /* アイコンだけのボタン（キー操作の一覧を開く） */
 .icon-button { width: 24px; padding: 0; }
 

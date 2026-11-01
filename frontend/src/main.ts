@@ -78,11 +78,14 @@ interface Status {
   lastInputXrunSeconds: number;
 }
 
-/// 画面の下の知らせ。種類（data-kind）は試験が言葉に依らず読むためのもの。
+/// 帯の状態の知らせ（1 か所）。種類（data-kind）は見た目を変え、試験が言葉に依らず読むためのもの。
+/// 誤り・取りこぼし（error・status）は警告のアイコンを付ける。帯に収まらない文は省略記号で切れるので、全文を説明（title）に入れる。
 let messageTimer: number | undefined;
 function message(text: string, kind = "error"): void {
   const m = $("message");
-  m.textContent = text;
+  if (text) setContent(m, kind === "saved" ? null : "warn", text);
+  else m.replaceChildren();
+  m.title = text;
   m.dataset.kind = text ? kind : "";
   // 「保存しました」は数秒で消す（誤りと取りこぼしは、続いている間は出し続ける）
   window.clearTimeout(messageTimer);
@@ -100,11 +103,12 @@ function fitCompactWindow(): void {
   void call("set_view", { view: "compact", contentHeight: wanted });
 }
 
-/// 簡易表示の窓の高さ: 左の列の中身の高さに、body の上下の余白を足したもの
+/// 簡易表示の窓の高さ: 帯と左の列の中身の高さに、その間と body の上下の余白を足したもの
 function compactContentHeight(): number {
   const controls = document.querySelector(".controls") as HTMLElement;
+  const bar = document.querySelector(".bar") as HTMLElement;
   const style = getComputedStyle(document.body);
-  return Math.ceil(controls.scrollHeight + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + 2);
+  return Math.ceil(bar.offsetHeight + parseFloat(style.rowGap) + controls.scrollHeight + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + 2);
 }
 
 /// command の誤りを、今の言葉で出す（domain の誤りは名前で引き、無ければ届いた文のまま）。
@@ -202,8 +206,11 @@ function draw(): void {
 /// 言葉を替えたときに、動的に書いた文も書き直す。
 function refreshTexts(): void {
   applyStatic();
-  setContent($("view-toggle"), view === "full" ? "compact" : "full", t(view === "full" ? "view.compact" : "view.full"));
-  $("view-toggle").title = t(view === "full" ? "view.compact.title" : "view.full.title");
+  // 表示の切り替えはアイコンだけのボタン。名前は説明と読み上げに持たせる
+  const viewToggle = $("view-toggle");
+  setContent(viewToggle, view === "full" ? "compact" : "full", "");
+  viewToggle.title = t(view === "full" ? "view.compact.title" : "view.full.title");
+  viewToggle.setAttribute("aria-label", viewToggle.title);
   if (devices) showDevices(devices);
   updateFreezeButtons();
   if (lastStatus) showStatus(lastStatus);
@@ -212,6 +219,8 @@ function refreshTexts(): void {
 
 function applyView(v: View): void {
   view = v;
+  // 設定の板は全体の表示だけ（簡易表示では分析が止まるため）
+  closeSettings();
   document.body.classList.toggle("compact", v === "compact");
   refreshTexts();
   if (v === "full") {
@@ -435,7 +444,10 @@ function wire(): void {
     applyView(next);
     void call("set_view", { view: next, contentHeight: next === "compact" ? compactContentHeight() : null });
   });
-  new ResizeObserver(() => fitCompactWindow()).observe(document.querySelector(".controls") as HTMLElement);
+  const observer = new ResizeObserver(() => fitCompactWindow());
+  observer.observe(document.querySelector(".controls") as HTMLElement);
+  observer.observe(document.querySelector(".bar") as HTMLElement);
+  wireSettings();
   window.addEventListener("resize", () => {
     if (view === "compact") {
       fitCompactWindow();
@@ -452,6 +464,34 @@ function wire(): void {
     const s = await invoke<Status>("status").catch(() => null);
     if (s) showStatus(s);
   }, 1000);
+}
+
+/// 設定の板（分析の設定）。帯の設定のボタンで開く。Esc・板の外を押す・ボタンでもう一度押すと閉じる。
+/// 閉じる振る舞いはブラウザーの light dismiss に任せず、ここで持つ（試験が送るキーとクリックでも同じに動くように）
+function settingsOpen(): boolean {
+  return $("settings").matches(":popover-open");
+}
+function openSettings(): void {
+  const panel = $("settings");
+  if (settingsOpen()) return;
+  panel.showPopover();
+  $("settings-open").setAttribute("aria-expanded", "true");
+  $<HTMLInputElement>("ceiling").focus();
+}
+function closeSettings(): void {
+  const panel = $("settings");
+  if (!settingsOpen()) return;
+  const focusWasInside = panel.contains(document.activeElement);
+  panel.hidePopover();
+  $("settings-open").setAttribute("aria-expanded", "false");
+  if (focusWasInside) $("settings-open").focus();
+}
+function wireSettings(): void {
+  $("settings-open").addEventListener("click", () => (settingsOpen() ? closeSettings() : openSettings()));
+  document.addEventListener("pointerdown", (e) => {
+    const target = e.target as Node;
+    if (settingsOpen() && !$("settings").contains(target) && !$("settings-open").contains(target)) closeSettings();
+  });
 }
 
 /// キー操作の一覧を開く・閉じる。閉じたら、開く前にフォーカスのあった所へ戻す
@@ -484,6 +524,11 @@ function wireShortcuts(): void {
   });
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === "Escape" && settingsOpen()) {
+      e.preventDefault();
+      closeSettings();
+      return;
+    }
     if (dialog.open) {
       if (e.key === "?" || e.key === "Escape") {
         e.preventDefault();

@@ -175,7 +175,7 @@ fn get_ui_prefs(state: State<AppState>) -> UiPrefsDto {
 
 /// 窓の大きさ（論理の px）。簡易表示は左の列だけが入る大きさにする。
 const FULL_SIZE: (f64, f64) = (1280.0, 860.0);
-const COMPACT_SIZE: (f64, f64) = (300.0, 640.0);
+const COMPACT_SIZE: (f64, f64) = (266.0, 640.0);
 
 /// 表示を全体か簡易に替えて覚え、窓の大きさを合わせる。
 /// 簡易表示では、画面が測った左の列の中身の高さ（`content_height`、論理の px）に窓を合わせる。

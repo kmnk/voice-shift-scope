@@ -10,6 +10,7 @@ import {
   Minimize2,
   Play,
   RotateCcw,
+  Settings,
   Square,
   TriangleAlert,
   X,
@@ -27,6 +28,7 @@ const ICONS = {
   reset: RotateCcw,
   snapshot: Camera,
   help: CircleQuestionMark,
+  settings: Settings,
   close: X,
   warn: TriangleAlert,
 } satisfies Record<string, IconNode>;
