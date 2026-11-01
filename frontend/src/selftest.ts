@@ -5,6 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { lang, t } from "./i18n";
 import { formatDb, formatKHz, gramFreqAt, spectrumDbAt, spectrumFreqAt, spectrumLayout } from "./render";
+import { formantToSlider } from "./shift";
 
 type Result = { criterion: string; result: "PASS" | "FAIL"; detail: unknown };
 
@@ -51,6 +52,120 @@ async function resizeWindow(width: number, height: number): Promise<{ ok: boolea
   // 大きさが変わった後の描き直しを待つ
   await sleep(800);
   return { ok, innerWidth: window.innerWidth, innerHeight: window.innerHeight, ...(ok && (first.innerWidth !== width || first.innerHeight !== height) ? { firstTry: first } : {}) };
+}
+
+/// ピッチ・フォルマントの今の値（欄の文字は符号やマイナス記号を含むので、main.ts が書く data-value を読む）
+const shiftValue = (target: "pitch" | "formant") => Number(q<HTMLInputElement>(`#${target}-num`).dataset.value);
+
+/// ピッチ・フォルマントの欄の見た目と操作（spec の U6・U7・U8）。VB-CABLE が無くても動く
+async function checkShiftControls(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
+  // U6: スペクトルの題は文字だけになり、線の見本の凡例が付く
+  const caption = q(".spectrum-panel .caption-title").textContent ?? "";
+  const lines = [...document.querySelectorAll<SVGLineElement>('[data-testid="spectrum-legend"] line')];
+  const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const strokes = lines.map((l) => getComputedStyle(l).stroke);
+  const probe = document.createElement("span");
+  document.body.append(probe);
+  const rgb = (name: string) => {
+    probe.style.color = css(name);
+    return getComputedStyle(probe).color;
+  };
+  const expected = [rgb("--before"), rgb("--accent")];
+  probe.remove();
+  const dashed = lines.map((l) => l.getAttribute("stroke-dasharray") ?? "");
+  await record("U6-spectrum-legend", lines.length === 2 && strokes[0] === expected[0] && strokes[1] === expected[1] && dashed[0] !== "" && dashed[1] === "" && !/gray|dashed|灰|破線/.test(caption), {
+    caption,
+    strokes,
+    expected,
+    dashed,
+  });
+
+  const text = (t: "pitch" | "formant") => q<HTMLInputElement>(`#${t}-num`).value;
+  const slider = (t: "pitch" | "formant") => q<HTMLInputElement>(`#${t}`);
+  const reset = (t: "pitch" | "formant") => q<HTMLButtonElement>(`button.reset[data-target="${t}"]`).click();
+  const wheel = (el: Element, deltaY: number, shiftKey = false) => el.dispatchEvent(new WheelEvent("wheel", { deltaY, shiftKey, bubbles: true, cancelable: true }));
+  const typeIn = (t: "pitch" | "formant", value: string) => {
+    const f = q<HTMLInputElement>(`#${t}-num`);
+    f.value = value;
+    f.dispatchEvent(new Event("change"));
+  };
+  reset("pitch");
+  reset("formant");
+
+  // U7: どの操作で変えても、ピッチは +5.0・0.0 の形、フォルマントは 1.00 の形で出る
+  const s = slider("pitch");
+  s.value = "5";
+  s.dispatchEvent(new Event("input"));
+  const bySlider = text("pitch");
+  reset("pitch");
+  const byReset = text("pitch");
+  typeIn("pitch", "+5");
+  const byTyping = text("pitch");
+  const sentValue = shiftValue("pitch");
+  typeIn("pitch", "abc");
+  const afterBad = text("pitch");
+  typeIn("pitch", "−3.2");
+  const negative = text("pitch");
+  reset("pitch");
+  const formantText = text("formant");
+  await record("U7-digits", bySlider === "+5.0" && byReset === "0.0" && byTyping === "+5.0" && sentValue === 5 && afterBad === "+5.0" && negative === "−3.2" && formantText === "1.00", {
+    bySlider,
+    byReset,
+    byTyping,
+    sentValue,
+    afterBad,
+    negative,
+    formantText,
+  });
+
+  // U8: 刻みのボタンの行が無く、− と +（Shift で大きい刻み）とホイールで動く。フォルマント ×1.00 はスライダーの中央
+  const oldSteps = document.querySelectorAll("button[data-step]").length;
+  const click = (testid: string, shiftKey = false) =>
+    q(`[data-testid="${testid}"]`).dispatchEvent(new MouseEvent("click", { shiftKey, bubbles: true, cancelable: true }));
+  click("pitch-up");
+  const pUp = shiftValue("pitch");
+  click("pitch-up", true);
+  const pUpCoarse = shiftValue("pitch");
+  click("pitch-down", true);
+  click("pitch-down");
+  const pBack = shiftValue("pitch");
+  click("formant-up");
+  const fUp = shiftValue("formant");
+  click("formant-up", true);
+  const fUpCoarse = shiftValue("formant");
+  click("formant-down", true);
+  click("formant-down");
+  const fBack = shiftValue("formant");
+  const field = q<HTMLInputElement>("#pitch-num");
+  wheel(field, -100);
+  const wUp = shiftValue("pitch");
+  await sleep(150);
+  wheel(field, -100, true);
+  const wUpCoarse = shiftValue("pitch");
+  await sleep(150);
+  wheel(slider("formant"), -100);
+  const fWheel = shiftValue("formant");
+  reset("pitch");
+  reset("formant");
+  const centered = Number(slider("formant").value) === formantToSlider(1) && Number(slider("formant").value) === 0;
+  const f = slider("formant");
+  f.value = f.min;
+  f.dispatchEvent(new Event("input"));
+  const atMin = text("formant");
+  f.value = f.max;
+  f.dispatchEvent(new Event("input"));
+  const atMax = text("formant");
+  reset("formant");
+  const close = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+  await record(
+    "U8-controls",
+    oldSteps === 0 &&
+      close(pUp, 0.1) && close(pUpCoarse, 1.1) && close(pBack, 0) &&
+      close(fUp, 1.01) && close(fUpCoarse, 1.06) && close(fBack, 1) &&
+      close(wUp, 0.1) && close(wUpCoarse, 1.1) && close(fWheel, 1.01) &&
+      centered && atMin === "0.50" && atMax === "2.00",
+    { oldSteps, pUp, pUpCoarse, pBack, fUp, fUpCoarse, fBack, wUp, wUpCoarse, fWheel, centered, atMin, atMax },
+  );
 }
 
 function setNumber(id: string, value: number): void {
@@ -183,7 +298,9 @@ function checkButtons(): { lang: string; bad: unknown[]; checked: number } {
     const text = b.textContent ?? "";
     const needsIcon = b.dataset.icon !== undefined || ["run", "route", "view-toggle"].includes(b.id);
     const hasSvg = b.querySelector("svg.icon") !== null;
-    if (h !== 24 || OLD_ICONS.test(text) || (needsIcon && !hasSvg)) bad.push({ id: b.id || b.className, h, text, needsIcon, hasSvg });
+    // ピッチとフォルマントの値の行（− と + と元に戻す）は、大きな値の欄に合わせて 32px（このタスクの spec の試作）
+    const expected = b.closest(".value-row") ? 32 : 24;
+    if (h !== expected || OLD_ICONS.test(text) || (needsIcon && !hasSvg)) bad.push({ id: b.id || b.className, h, text, needsIcon, hasSvg });
   });
   const texts = [...document.querySelectorAll<HTMLElement>("figcaption, .message, .cable")].map((e) => e.textContent ?? "");
   for (const text of texts) if (OLD_ICONS.test(text)) bad.push({ text });
@@ -267,6 +384,7 @@ export async function runSelftest(dir: string): Promise<void> {
     await record("S3-legend", legend.pass, legend.detail);
     const dbTicksText = q<HTMLCanvasElement>("#spectrum").dataset.dbTicks;
     await record("S6-db-axis", dbTicksText === "0,-20,-40,-60,-80,-100", { dbTicks: dbTicksText });
+    await checkShiftControls(record);
     const grid = checkHoldGrid();
     await record("S9-hold-keys", grid.pass, grid.detail);
     // 左の列が長くなりすぎない: 最後の欄の下端が、変える前（e6a91ea の Windows の画像から測った値）より 35px 以内（S14）。
@@ -457,7 +575,7 @@ export async function runSelftest(dir: string): Promise<void> {
 
       // 図の上のカーソル: 周波数（スペクトルでは dB も）の札がマウスの位置の値を出し、外すと消える（S7）
       {
-        const axisMax = Number(q<HTMLInputElement>("#ceiling").value) * Math.max(1, Number(q<HTMLInputElement>("#formant-num").value));
+        const axisMax = Number(q<HTMLInputElement>("#ceiling").value) * Math.max(1, shiftValue("formant"));
         const hover = (id: string, fx: number, fy: number) => {
           const o = q<HTMLCanvasElement>(`#${id}`);
           const r = o.getBoundingClientRect();
@@ -549,24 +667,6 @@ export async function runSelftest(dir: string): Promise<void> {
       const none = !frozen("before") && !frozen("after");
       await record("B8", both && none, { both, none });
 
-      // 決まった幅で上げ下げするボタンと、元に戻すボタン
-      const value = (id: string) => q<HTMLInputElement>(`#${id}`).value;
-      q<HTMLButtonElement>('button.reset[data-target="pitch"]').click();
-      const afterReset = value("pitch-num");
-      q<HTMLButtonElement>('button[data-target="pitch"][data-step="1"]').click();
-      q<HTMLButtonElement>('button[data-target="pitch"][data-step="0.1"]').click();
-      const afterSteps = value("pitch-num");
-      q<HTMLButtonElement>('button[data-target="formant"][data-step="0.05"]').click();
-      q<HTMLButtonElement>('button[data-target="formant"][data-step="-0.01"]').click();
-      const formant = value("formant-num");
-      q<HTMLButtonElement>('button.reset[data-target="formant"]').click();
-      await record("step-buttons", afterReset === "0.0" && afterSteps === "1.1" && formant === "1.04" && value("formant-num") === "1.00", {
-        afterReset,
-        afterSteps,
-        formant,
-        formantReset: value("formant-num"),
-      });
-
       // 出力とモニターに流す音の切り替え（1 つのボタンで両方。押すたびに入れ替わる。spec の D4）
       const routeButtons = document.querySelectorAll("button[data-testid^=\"route\"]").length;
       const first = q("#route").dataset.source;
@@ -589,7 +689,7 @@ export async function runSelftest(dir: string): Promise<void> {
       // 矢印のキーでピッチとフォルマントが決めた幅だけ変わる。数の欄に入力しているときは変わらない（S10）
       {
         blur();
-        const num = (id: string) => Number(q<HTMLInputElement>(`#${id}`).value);
+        const num = (id: string) => shiftValue(id === "pitch-num" ? "pitch" : "formant");
         const p0 = num("pitch-num");
         const f0 = num("formant-num");
         press("ArrowUp");
@@ -603,20 +703,21 @@ export async function runSelftest(dir: string): Promise<void> {
         const f1 = num("formant-num");
         press("ArrowRight", { shiftKey: true });
         const f2 = num("formant-num");
-        const sliderMatches = q<HTMLInputElement>("#formant").value === q<HTMLInputElement>("#formant-num").value;
+        const sliderMatches = Number(q<HTMLInputElement>("#formant").value) === formantToSlider(shiftValue("formant"));
         press("ArrowLeft", { shiftKey: true });
         press("ArrowLeft");
         const f3 = num("formant-num");
-        // 数の欄にフォーカスがあるときは効かない
+        // 値の欄にフォーカスがあるときは、欄の ↑ だけが効く（全体のキーと 2 重に動かない）
         const field = q<HTMLInputElement>("#pitch-num");
         field.focus();
         press("ArrowUp", {}, field);
         const inField = num("pitch-num");
+        press("ArrowDown", {}, field);
         blur();
         const close = (a: number, b: number) => Math.abs(a - b) < 1e-6;
         await record(
           "S10-arrows",
-          close(p1, p0 + 0.1) && close(p2, p0 + 1.1) && close(p3, p0) && close(f1, f0 + 0.01) && close(f2, f0 + 0.06) && close(f3, f0) && sliderMatches && close(inField, p0),
+          close(p1, p0 + 0.1) && close(p2, p0 + 1.1) && close(p3, p0) && close(f1, f0 + 0.01) && close(f2, f0 + 0.06) && close(f3, f0) && sliderMatches && close(inField, p0 + 0.1),
           { p0, p1, p2, p3, f0, f1, f2, f3, sliderMatches, inField },
         );
       }

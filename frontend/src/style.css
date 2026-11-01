@@ -52,7 +52,6 @@ body.compact .full-only { display: none; }
 .group select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
 .group label, .group .row { min-width: 0; }
 .row { display: flex; gap: var(--space-1); align-items: center; }
-.row.steps button { flex: 1; }
 .row select { flex: 1; min-width: 0; }
 .cable { color: var(--muted); margin: 0; word-break: break-word; }
 .cable.missing { color: var(--danger); font-weight: 600; }
@@ -73,6 +72,7 @@ button, select, input[type="number"] {
 select, input[type="number"] { background: var(--surface); padding: 0 var(--space-1); }
 select:disabled, input:disabled { color: var(--muted); background: var(--control); }
 input[type="number"] { width: 64px; font-variant-numeric: tabular-nums; }
+input.value { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-s); box-sizing: border-box; font-family: inherit; }
 /* アイコンと文字を中央にそろえ、高さを決める（絵文字が無くなっても、言葉でボタンの高さが変わらないように） */
 button {
   background: var(--control);
@@ -92,18 +92,20 @@ button:disabled { color: var(--muted); cursor: default; }
 /* 元に戻すボタンはアイコンだけ */
 button.reset { width: 24px; padding: 0; }
 
-/* スライダー: 4px の溝、埋まった部分と 12px の丸いつまみは強調の色。埋まった割合は main.ts が --fill に書く */
+/* スライダー: 4px の溝、埋まった部分と 12px の丸いつまみは強調の色。埋まった範囲は main.ts が --from・--to に書く
+   （ピッチとフォルマントは中央からつまみまで、音量は左端から） */
 input[type="range"] {
   appearance: none;
   height: 16px;
   margin: 0;
   background: transparent;
-  --fill: 50%;
+  --from: 0%;
+  --to: 0%;
 }
 input[type="range"]::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
-  background: linear-gradient(to right, var(--accent) 0 var(--fill), var(--line) var(--fill) 100%);
+  background: linear-gradient(to right, var(--line) 0 var(--from), var(--accent) var(--from) var(--to), var(--line) var(--to) 100%);
 }
 input[type="range"]::-webkit-slider-thumb {
   appearance: none;
@@ -114,6 +116,17 @@ input[type="range"]::-webkit-slider-thumb {
   background: var(--accent);
   border: none;
 }
+
+/* ピッチとフォルマントの値の行: − と + の間に大きな値の欄、右に元に戻すボタン。どれも高さ 32px */
+.value-row > * { height: 32px; flex: none; }
+.value-row .step { width: 24px; padding: 0; }
+.value-row button.reset { width: 32px; }
+.group input.value { flex: 1; min-width: 0; width: auto; font-size: 20px; font-weight: 600; text-align: right; padding: 0 var(--space-2); font-variant-numeric: tabular-nums; }
+/* スライダーの中央（既定の値）に縦 6px の目盛り */
+.slider { position: relative; padding-bottom: 6px; }
+.slider .tick { position: absolute; left: 50%; top: 12px; width: 1px; height: 6px; background: var(--muted); transform: translateX(-0.5px); }
+/* スペクトルの凡例の線の見本 */
+.line-sample { display: block; flex: none; }
 
 /* 開始と停止は 1 つのボタンで、行の幅いっぱいにする */
 .run { width: 100%; }
