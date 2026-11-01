@@ -217,8 +217,6 @@ async function waitFor(cond: () => boolean, ms: number): Promise<boolean> {
 /// DEVICES 欄のボタンが、取りうる文言のどれでも 1 行に収まり、欄からはみ出さないか（今の言葉で測る）。
 /// 測るために文言を一時的に入れ替え、終わったら戻す。
 function devicesTextsFit(): { lang: string; id: string; text: string; fits: boolean; scrollWidth: number; clientWidth: number; height: number }[] {
-  const group = q("#run").closest(".group") as HTMLElement;
-  const groupRight = group.getBoundingClientRect().right;
   const cases: [string, string[]][] = [
     ["run", [t("start"), t("stop")]],
     ["monitor-on", [t("monitor.on")]],
@@ -233,6 +231,8 @@ function devicesTextsFit(): { lang: string; id: string; text: string; fits: bool
     for (const text of texts) {
       label.textContent = text;
       const rect = b.getBoundingClientRect();
+      // 開始・停止は帯に、他は DEVICES の欄にある。入っている方の右端を越えない
+      const groupRight = (b.closest(".group, .bar") as HTMLElement).getBoundingClientRect().right;
       const fits = b.scrollWidth <= b.clientWidth + 1 && rect.right <= groupRight && rect.height <= 25;
       out.push({ lang: lang(), id, text, fits, scrollWidth: b.scrollWidth, clientWidth: b.clientWidth, height: rect.height });
     }
@@ -349,23 +349,95 @@ function checkLegend(): { pass: boolean; detail: unknown } {
 }
 
 /// S9: 止める欄のキーの札と、3 行の切り替えの並び
-function checkHoldGrid(): { pass: boolean; detail: unknown } {
-  const keys = [...document.querySelectorAll<HTMLElement>(".hold-row .key, .save .key")];
-  const centers = keys.map((k) => {
-    const r = k.getBoundingClientRect();
-    return { text: k.textContent, center: r.left + r.width / 2 };
+/// 上の帯（spec の U1）: 部品がそろい、どれも窓の幅を越えず、帯の高さが 32px。キーの札は切り替えの右に並び、S は保存のボタンの中の右端
+function checkBar(): { lang: string; pass: boolean; detail: unknown } {
+  const bar = q(".bar").getBoundingClientRect();
+  const ids = ["run", "freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open", "lang-toggle", "view-toggle"];
+  const parts = ids.map((id) => {
+    const el = q(`[data-testid="${id}"]`);
+    const r = el.getBoundingClientRect();
+    return { id, inBar: q(".bar").contains(el), visible: el.offsetParent !== null, right: Math.round(r.right) };
   });
-  const switches = ["freeze-all", "freeze-before", "freeze-after"].map((id) => {
-    const r = q(`[data-testid="${id}"]`).getBoundingClientRect();
-    return { id, left: r.left, right: r.right, width: r.width };
+  const keys = ["freeze-all", "freeze-before", "freeze-after"].map((id) => {
+    const sw = q(`[data-testid="${id}"]`).getBoundingClientRect();
+    const key = q(`[data-testid="${id}"]`).parentElement!.querySelector<HTMLElement>(".key")!;
+    const k = key.getBoundingClientRect();
+    return { id, key: key.textContent, gap: Math.round(k.left - sw.right) };
   });
-  const spread = (xs: number[]) => Math.max(...xs) - Math.min(...xs);
+  const save = q("#save").getBoundingClientRect();
+  const sKey = q("#save .key").getBoundingClientRect();
+  const sInside = q("#save .key").textContent === "S" && sKey.right <= save.right + 0.5 && save.right - sKey.right <= 4;
+  const messageInBar = q(".bar").contains(q("#message")) && !q(".controls").contains(q("#message"));
   const pass =
-    centers.map((c) => c.text).join(",") === "0,1,2,S" &&
-    spread(centers.map((c) => c.center)) <= 1 &&
-    spread(switches.map((s) => s.left)) <= 0.5 &&
-    spread(switches.map((s) => s.right)) <= 0.5;
-  return { pass, detail: { centers, switches } };
+    Math.round(bar.height) === 32 &&
+    parts.every((p) => p.inBar && p.visible && p.right <= window.innerWidth) &&
+    keys.map((k) => k.key).join(",") === "0,1,2" &&
+    keys.every((k) => k.gap >= 3 && k.gap <= 6) &&
+    sInside &&
+    messageInBar;
+  return { lang: lang(), pass, detail: { barHeight: bar.height, parts, keys, sInside, messageInBar, innerWidth: window.innerWidth } };
+}
+
+/// 左の列（spec の U2）: PITCH・FORMANT・DEVICES の 3 つの欄だけで、DEVICES に機器の部品があり、縦にスクロールしない
+function checkColumn(): { lang: string; pass: boolean; detail: unknown } {
+  const controls = q(".controls");
+  const groups = [...controls.querySelectorAll<HTMLElement>(":scope > .group")].filter((g) => g.offsetParent !== null);
+  const headings = groups.map((g) => g.querySelector("h2")?.dataset.i18n ?? "");
+  const devices = groups[2];
+  const inDevices = ["input", "output", "monitor-on", "volume", "route"].every((id) => devices?.querySelector(`#${id}`) !== null);
+  const scroll = { scrollHeight: controls.scrollHeight, clientHeight: controls.clientHeight };
+  const pass = headings.join(",") === "sec.pitch,sec.formant,sec.devices" && inDevices && scroll.scrollHeight <= scroll.clientHeight;
+  return { lang: lang(), pass, detail: { headings, inDevices, ...scroll, width: Math.round(controls.getBoundingClientRect().width) } };
+}
+
+/// 英語と日本語の両方で、帯と左の列を見る（言葉を替えて戻す）
+async function barAndColumnBothLanguages(): Promise<{ bar: ReturnType<typeof checkBar>[]; column: ReturnType<typeof checkColumn>[] }> {
+  const bar = [checkBar()];
+  const column = [checkColumn()];
+  click("lang-toggle");
+  await sleep(300);
+  bar.push(checkBar());
+  column.push(checkColumn());
+  click("lang-toggle");
+  await sleep(300);
+  return { bar, column };
+}
+
+/// 設定の板（spec の U3）: ボタンで開き、分析の欄が中にあり、Esc と板の外を押すと閉じ、閉じると設定のボタンにフォーカスが戻る
+async function checkSettings(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
+  const panel = q("#settings");
+  const open = () => panel.matches(":popover-open");
+  click("settings-open");
+  await sleep(200);
+  const opened = open();
+  const expanded = q("#settings-open").getAttribute("aria-expanded");
+  const fields = ["ceiling", "threshold", "relative-limit"].every((id) => panel.querySelector(`#${id}`) !== null);
+  const focusInside = panel.contains(document.activeElement);
+  const r = panel.getBoundingClientRect();
+  const inWindow = r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight;
+  await shot("U3-settings");
+  press("Escape");
+  await sleep(200);
+  const closedByEsc = !open();
+  const focusBack = document.activeElement === q("#settings-open");
+  click("settings-open");
+  await sleep(200);
+  const reopened = open();
+  q("#before-gram").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  await sleep(200);
+  const closedByOutside = !open();
+  blur();
+  await record("U3-settings", opened && expanded === "true" && fields && focusInside && inWindow && closedByEsc && focusBack && reopened && closedByOutside, {
+    opened,
+    expanded,
+    fields,
+    focusInside,
+    inWindow,
+    closedByEsc,
+    focusBack,
+    reopened,
+    closedByOutside,
+  });
 }
 
 export async function runSelftest(dir: string): Promise<void> {
@@ -409,17 +481,13 @@ export async function runSelftest(dir: string): Promise<void> {
     const dbTicksText = q<HTMLCanvasElement>("#spectrum").dataset.dbTicks;
     await record("S6-db-axis", dbTicksText === "0,-20,-40,-60,-80,-100", { dbTicks: dbTicksText });
     await checkShiftControls(record);
-    const grid = checkHoldGrid();
-    await record("S9-hold-keys", grid.pass, grid.detail);
-    // 左の列が長くなりすぎない: 最後の欄の下端が、変える前（e6a91ea の Windows の画像から測った値）より 35px 以内（S14）。
-    // VB-CABLE が無いと、その知らせの文の分だけ前から長い
     {
-      const groups = [...document.querySelectorAll<HTMLElement>(".controls > .group")].filter((g) => g.offsetParent !== null);
-      const last = groups[groups.length - 1];
-      const bottom = last.getBoundingClientRect().bottom + q(".controls").scrollTop;
-      const cableFound = q("#cable").dataset.found === "true";
-      const before = cableFound ? 734 : 782;
-      await record("S14-column-length", bottom - before <= 35, { bottom, before, grew: bottom - before, cableFound, lastGroup: last.querySelector("h2")?.textContent });
+      const { bar, column } = await barAndColumnBothLanguages();
+      await record("U1-bar", bar.every((b) => b.pass), { size: "1280x860", bar });
+      await record("U2-column", column.every((c) => c.pass), { size: "1280x860", column });
+      await checkSettings(record);
+      // U9: 状態の知らせは帯の 1 か所で、左の列に知らせの文は無い
+      await record("U9-status", q(".bar").contains(q("#message")) && q(".controls").querySelector(".message") === null, {});
     }
 
     // キー操作の一覧: ? で開き、開いている間は他のキーが効かず、Esc で閉じる（S12）
@@ -475,6 +543,12 @@ export async function runSelftest(dir: string): Promise<void> {
       controlsScroll: q(".controls").scrollHeight,
       lastMessage: q("#message").textContent,
     };
+    // U12: 簡易表示では止める・保存・設定・キー操作が見えず、欄は全体の表示と同じ順で、左の列の幅は全体の表示と同じ 250px
+    const compactU12 = {
+      hidden: ["freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open"].every((id) => q(`[data-testid="${id}"]`).offsetParent === null),
+      column: checkColumn().detail,
+      width: Math.round(q(".controls").getBoundingClientRect().width),
+    };
     await shot("compact-view-compact");
     click("view-toggle");
     await sleep(1500);
@@ -487,6 +561,10 @@ export async function runSelftest(dir: string): Promise<void> {
       controlsRight,
       ...compactDetail,
     });
+    {
+      const c = compactU12.column as { headings: string[] };
+      await record("U12-compact", compactU12.hidden && c.headings.join(",") === "sec.pitch,sec.formant,sec.devices" && compactU12.width === 250, compactU12);
+    }
 
     if (q("#cable").dataset.found === "false") {
       // VB-CABLE が無いときは、出力が空で開始できず、知らせが出る
@@ -805,6 +883,9 @@ export async function runSelftest(dir: string): Promise<void> {
       await record("window-960x640", small.ok, small);
       await shot("size-960x640");
       const smallTable = await tableFitsBothLanguages();
+      const smallLayout = await barAndColumnBothLanguages();
+      await record("U1-bar-960x640", small.ok && smallLayout.bar.every((b) => b.pass), { bar: smallLayout.bar });
+      await record("U2-column-960x640", small.ok && smallLayout.column.every((c) => c.pass), { column: smallLayout.column });
       const back = await resizeWindow(1280, 860);
       await record("window-1280x860", back.ok, back);
       const bigTable = await tableFitsBothLanguages();

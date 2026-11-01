@@ -7,30 +7,34 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <aside class="controls">
-      <div class="row topbar">
-        <button id="view-toggle" data-testid="view-toggle"></button>
-        <div class="row">
-          <button id="shortcuts-open" class="icon-button" data-testid="shortcuts-open" data-icon="help" data-i18n-title="shortcuts.open" data-i18n-aria="shortcuts.open"></button>
-          <button id="lang-toggle" data-testid="lang-toggle" data-i18n="lang.toggle" data-i18n-title="lang.toggle.title"></button>
-        </div>
+    <!-- 上の帯: 図を見ながら使う操作（開始・停止、止める、保存）と状態の知らせ、右端に設定・キー操作・言葉・表示の切り替え -->
+    <header class="bar">
+      <button id="run" class="run" data-testid="run"></button>
+      <div class="hold-group full-only">
+        <span class="hold-name" data-i18n="hold.row.all"></span>
+        <button id="freeze-all" class="hold-switch" data-testid="freeze-all" aria-pressed="false" data-i18n-title="hold.title.all" data-i18n-aria="hold.aria.all"><span class="seg live" data-i18n="hold.live"></span><span class="seg hold" data-i18n="hold.hold"></span></button>
+        <span class="key" aria-hidden="true">0</span>
       </div>
-      <section class="group">
-        <h2 data-i18n="sec.devices"></h2>
-        <label><span class="field-label" data-i18n="input"></span> <select id="input"></select></label>
-        <button id="run" class="run" data-testid="run"></button>
-        <label><span class="field-label" data-i18n="output"></span> <select id="output" data-testid="output"></select></label>
-        <div class="row">
-          <button id="monitor-on" class="monitor-toggle" data-testid="monitor-on" data-icon="monitor" aria-pressed="false"><span class="label" data-i18n="monitor.on"></span></button>
-          <select id="monitor"></select>
-        </div>
-        <label><span class="field-label" data-i18n="volume"></span> <input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
-        <div class="row" data-i18n-title="route.title">
-          <span class="field-label" data-i18n="route.source"></span>
-          <button id="route" class="route-toggle" data-testid="route" data-source="shifted"></button>
-        </div>
-        <p id="cable" class="cable" data-testid="cable-status"></p>
-      </section>
+      <div class="hold-group full-only">
+        <span class="hold-name" data-i18n="original"></span>
+        <button id="freeze-before" class="hold-switch" data-testid="freeze-before" aria-pressed="false" data-i18n-title="hold.title.original" data-i18n-aria="hold.aria.original"><span class="seg live" data-i18n="hold.live"></span><span class="seg hold" data-i18n="hold.hold"></span></button>
+        <span class="key" aria-hidden="true">1</span>
+      </div>
+      <div class="hold-group full-only">
+        <span class="hold-name" data-i18n="shifted"></span>
+        <button id="freeze-after" class="hold-switch" data-testid="freeze-after" aria-pressed="false" data-i18n-title="hold.title.shifted" data-i18n-aria="hold.aria.shifted"><span class="seg live" data-i18n="hold.live"></span><span class="seg hold" data-i18n="hold.hold"></span></button>
+        <span class="key" aria-hidden="true">2</span>
+      </div>
+      <button id="save" class="save full-only" data-testid="save" data-icon="snapshot" data-i18n-title="snapshot.title" disabled><span class="label" data-i18n="snapshot"></span><span class="key" aria-hidden="true">S</span></button>
+      <p id="message" class="message" role="status"></p>
+      <div class="bar-end">
+        <button id="settings-open" class="icon-button full-only" data-testid="settings-open" data-icon="settings" aria-expanded="false" aria-controls="settings" data-i18n-title="settings" data-i18n-aria="settings"></button>
+        <button id="shortcuts-open" class="icon-button full-only" data-testid="shortcuts-open" data-icon="help" data-i18n-title="shortcuts.open" data-i18n-aria="shortcuts.open"></button>
+        <button id="lang-toggle" data-testid="lang-toggle" data-i18n="lang.toggle" data-i18n-title="lang.toggle.title"></button>
+        <button id="view-toggle" class="icon-button" data-testid="view-toggle"></button>
+      </div>
+    </header>
+    <aside class="controls">
       <section class="group">
         <h2 data-i18n="sec.pitch"></h2>
         <div class="row value-row">
@@ -51,35 +55,32 @@
         </div>
         <div class="slider"><input id="formant" type="range" min="-1" max="1" step="0.001" value="0" /><span class="tick" aria-hidden="true"></span></div>
       </section>
-      <section class="group full-only">
-        <h2 data-i18n="sec.hold"></h2>
-        <!-- 名前・LIVE/HOLD の切り替え・キーの 3 列。切り替えは押すたびに入れ替わる 1 つのボタン -->
-        <div class="hold-row">
-          <span class="hold-name" data-i18n="hold.row.all"></span>
-          <button id="freeze-all" class="hold-switch" data-testid="freeze-all" aria-pressed="false" data-i18n-title="hold.title.all" data-i18n-aria="hold.aria.all"><span class="seg live" data-i18n="hold.live"></span><span class="seg hold" data-i18n="hold.hold"></span></button>
-          <span class="key" aria-hidden="true">0</span>
+      <section class="group">
+        <h2 data-i18n="sec.devices"></h2>
+        <label><span class="field-label" data-i18n="input"></span> <select id="input"></select></label>
+        <label><span class="field-label" data-i18n="output"></span> <select id="output" data-testid="output"></select></label>
+        <div class="row">
+          <button id="monitor-on" class="monitor-toggle" data-testid="monitor-on" data-icon="monitor" aria-pressed="false"><span class="label" data-i18n="monitor.on"></span></button>
+          <select id="monitor"></select>
         </div>
-        <div class="hold-row">
-          <span class="hold-name" data-i18n="original"></span>
-          <button id="freeze-before" class="hold-switch" data-testid="freeze-before" aria-pressed="false" data-i18n-title="hold.title.original" data-i18n-aria="hold.aria.original"><span class="seg live" data-i18n="hold.live"></span><span class="seg hold" data-i18n="hold.hold"></span></button>
-          <span class="key" aria-hidden="true">1</span>
+        <label><span class="field-label" data-i18n="volume"></span> <input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
+        <div class="row" data-i18n-title="route.title">
+          <span class="field-label" data-i18n="route.source"></span>
+          <button id="route" class="route-toggle" data-testid="route" data-source="shifted"></button>
         </div>
-        <div class="hold-row">
-          <span class="hold-name" data-i18n="shifted"></span>
-          <button id="freeze-after" class="hold-switch" data-testid="freeze-after" aria-pressed="false" data-i18n-title="hold.title.shifted" data-i18n-aria="hold.aria.shifted"><span class="seg live" data-i18n="hold.live"></span><span class="seg hold" data-i18n="hold.hold"></span></button>
-          <span class="key" aria-hidden="true">2</span>
-        </div>
-        <button id="save" class="save" data-testid="save" data-icon="snapshot" data-i18n-title="snapshot.title" disabled><span class="label" data-i18n="snapshot"></span><span class="key" aria-hidden="true">S</span></button>
+        <p id="cable" class="cable" data-testid="cable-status"></p>
       </section>
-      <section class="group full-only">
-        <h2 data-i18n="sec.analysis"></h2>
-        <label><span data-i18n="ceiling"></span> <input id="ceiling" type="number" min="3000" max="8000" step="100" value="5500" /></label>
-        <p id="ceiling-note" class="note"></p>
-        <label data-i18n-title="harm.floor.title"><span data-i18n="harm.floor"></span> <input id="threshold" type="number" min="0" max="40" step="1" value="10" /></label>
-        <label data-i18n-title="harm.range.title"><span data-i18n="harm.range"></span> <input id="relative-limit" type="number" min="10" max="100" step="5" value="40" /></label>
-      </section>
-      <p id="message" class="message" role="status"></p>
     </aside>
+    <!-- 設定の板（分析の設定）。帯の設定のボタンで開き、Esc・板の外・ボタンで閉じる（main.ts） -->
+    <div id="settings" class="settings" popover="manual" data-testid="settings">
+        <section class="group">
+          <h2 data-i18n="sec.analysis"></h2>
+          <label><span data-i18n="ceiling"></span> <input id="ceiling" type="number" min="3000" max="8000" step="100" value="5500" /></label>
+          <p id="ceiling-note" class="note"></p>
+          <label data-i18n-title="harm.floor.title"><span data-i18n="harm.floor"></span> <input id="threshold" type="number" min="0" max="40" step="1" value="10" /></label>
+          <label data-i18n-title="harm.range.title"><span data-i18n="harm.range"></span> <input id="relative-limit" type="number" min="10" max="100" step="5" value="40" /></label>
+        </section>
+    </div>
     <main id="screen" class="screen full-only">
       <figure class="panel gram-before" id="before-panel" data-held="false">
         <figcaption><span class="caption-title" data-i18n="original"></span><span id="before-state" class="state"></span><span class="legend"><span><i class="swatch" style="background: var(--formant-1)"></i>F1</span><span><i class="swatch" style="background: var(--formant-2)"></i>F2</span><span><i class="swatch" style="background: var(--formant-3)"></i>F3</span><span><i class="swatch" style="background: var(--formant-4)"></i>F4</span></span></figcaption>
