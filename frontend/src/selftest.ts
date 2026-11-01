@@ -567,16 +567,25 @@ export async function runSelftest(dir: string): Promise<void> {
     }
 
     if (q("#cable").dataset.found === "false") {
-      // VB-CABLE が無いときは、出力が空で開始できず、知らせが出る
-      await record("C4", disabled("run") && q<HTMLSelectElement>("#output").value === "" && (q("#cable").textContent ?? "") !== "", {
-        cable: q("#cable").textContent,
+      // VB-CABLE が無いときは、出力が空で開始できない（C4）
+      await record("C4", disabled("run") && q<HTMLSelectElement>("#output").value === "", {
         runDisabled: disabled("run"),
       });
+      // U5: 出力を選ぶ案内が図の中に出て、画面のどこにも VB-CABLE の語が無い（いつも使う前提にしない）
+      const guide = q("#plot-guide").textContent ?? "";
+      const mentions = /VB-?CABLE/i.test(document.body.innerText);
+      await shot("U5-guide");
+      await record("U5-guide", guide === t("guide.output") && !mentions, { guide, mentions });
     } else {
       const out = q<HTMLSelectElement>("#output");
-      await record("cable-found", out.value !== "" && (q("#cable").textContent ?? "") === "", { output: out.selectedOptions[0]?.textContent, note: q("#cable").textContent });
+      await record("cable-found", out.value !== "", { output: out.selectedOptions[0]?.textContent });
+      // U5: 出力が選ばれていて始める前は「開始を押す」案内が出て、開始すると消える
+      const guideBefore = q("#plot-guide").textContent ?? "";
+      await shot("U5-guide");
       click("run");
       await sleep(5000);
+      const guideAfter = q("#plot-guide").textContent ?? "";
+      await record("U5-guide", guideBefore === t("guide.start") && guideAfter === "", { guideBefore, guideAfter });
       // 開始と停止は 1 つのボタン。動いている間は STOP を出し、IN と OUT を選べない（spec の D1）
       const whileRunning = {
         running: q("#run").dataset.running,

@@ -24,6 +24,8 @@ let afterCeiling = 5500;
 let devices: Devices | null = null;
 let view: View = "full";
 let lastStatus: Status | null = null;
+/// 一度でも開始したか（始める前の案内を消すため。停止した後は最後の図を残し、案内を出さない）
+let everStarted = false;
 const cursors = [
   new Cursor($("before-cursor"), "gram", () => axisMax),
   new Cursor($("after-cursor"), "gram", () => axisMax),
@@ -142,11 +144,11 @@ function showDevices(d: Devices): void {
   ($("volume") as HTMLInputElement).value = String(d.monitorVolume);
   paintRange($("volume"));
   fillSelect($("output"), d.outputs, d.selectedOutput);
-  // VB-CABLE が見つからないときだけ知らせる（見つかったときの説明は出さない）
-  const cable = $("cable");
-  cable.textContent = d.cable ? "" : t("cable.missing");
-  cable.classList.toggle("missing", !d.cable);
-  cable.dataset.found = String(!!d.cable);
+  // VB-CABLE は出力の機器の 1 つで、いつも使う前提にしないので、有無を画面に出さない（試験が読む印だけを残す）
+  $("cable").dataset.found = String(!!d.cable);
+  // 始める前の案内: 一度も開始していない間だけ、何をすれば始まるかを図の中に出す
+  if (d.running) everStarted = true;
+  $("plot-guide").textContent = everStarted ? "" : t(d.selectedOutput ? "guide.start" : "guide.output");
   // 出力とモニターには同じ音を流す（モニターは出しているものを確かめるため。2026-10-18 に利用者が 1 つにした）。
   // ボタンは 1 つで、今の値を出す
   const route = $("route");

@@ -59,8 +59,6 @@ body.compact .full-only { display: none; }
 .group label, .group .row { min-width: 0; }
 .row { display: flex; gap: var(--space-1); align-items: center; }
 .row select { flex: 1; min-width: 0; }
-.cable { color: var(--muted); margin: 0; word-break: break-word; }
-.cable.missing { color: var(--danger); font-weight: 600; }
 .note { color: var(--muted); margin: 0; font-size: var(--text-s); }
 .field-label { min-width: 3.2em; color: var(--muted); }
 .group label select { flex: 1; width: auto; min-width: 0; }
@@ -188,6 +186,9 @@ input[type="range"]::-webkit-slider-thumb {
 .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 1px; flex: none; }
 .canvas-box { flex: 1; min-height: 0; position: relative; }
 .canvas-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* 始める前の案内: 図の中央に、地を付けずに出す。押せる部品を持たない */
+.plot-guide { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(320px, 90%); margin: 0; text-align: center; color: var(--muted); pointer-events: none; }
+.plot-guide:empty { display: none; }
 .table-box { flex: 1; }
 /* 止めた札: 紫の地に白い文字 */
 .state:empty { display: none; }
