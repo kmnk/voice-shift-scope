@@ -89,6 +89,7 @@
         <figcaption><span class="caption-title" data-i18n="shifted"></span><span id="after-state" class="state"></span><span class="legend"><span><i class="swatch" style="background: var(--formant-1)"></i>F1</span><span><i class="swatch" style="background: var(--formant-2)"></i>F2</span><span><i class="swatch" style="background: var(--formant-3)"></i>F3</span><span><i class="swatch" style="background: var(--formant-4)"></i>F4</span></span></figcaption>
         <div class="canvas-box"><canvas id="after-gram"></canvas><canvas id="after-cursor" class="overlay"></canvas></div>
       </figure>
+      <div class="lower">
       <figure class="panel spectrum-panel">
         <figcaption><span class="caption-title" data-i18n="panel.spectrum"></span><span class="legend line-legend" data-testid="spectrum-legend"><span><svg class="line-sample" width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" style="stroke: var(--before)" stroke-width="1" stroke-dasharray="4 2" /></svg><span data-i18n="original"></span></span><span><svg class="line-sample" width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" style="stroke: var(--accent)" stroke-width="1.5" /></svg><span data-i18n="shifted"></span></span></span></figcaption>
         <div class="canvas-box"><canvas id="spectrum"></canvas><canvas id="spectrum-cursor" class="overlay"></canvas></div>
@@ -97,6 +98,7 @@
         <figcaption><span class="caption-title" data-i18n="panel.values"></span><span id="times-differ" class="differs" data-testid="times-differ"></span></figcaption>
         <div class="table-box"><table id="numbers" data-testid="numbers"></table></div>
       </figure>
+      </div>
     </main>
     <dialog id="shortcuts" class="shortcuts" data-testid="shortcuts" aria-labelledby="shortcuts-title">
       <div class="shortcuts-head">
