@@ -37,8 +37,13 @@ export function layoutLower(totalWidth: number, tableWidth: number, spectrumAspe
   return { spectrumX: margin, spectrumWidth, spectrumHeight, tableX, width: Math.max(totalWidth, tableX + tableWidth + margin) };
 }
 
+/// 画像の上の、状態と設定の行の高さ（CSS の px）。スペクトログラムはこの下から描く
+export const PNG_HEADER = 86;
+
 export async function composePng(
   grams: [HTMLCanvasElement, HTMLCanvasElement],
+  /// 重ね描きの canvas（片側だけを止めているときの破線）。スペクトログラムの上に重ねて写す
+  targets: [HTMLCanvasElement, HTMLCanvasElement],
   spectrum: HTMLCanvasElement,
   before: SideView | null,
   after: SideView | null,
@@ -59,7 +64,7 @@ export async function composePng(
   const lower = layoutLower(gw * 2 + 30, tableWidth, spectrum.clientWidth / Math.max(1, spectrum.clientHeight));
 
   const width = lower.width;
-  const header = 86;
+  const header = PNG_HEADER;
   const tableHeight = rows.length * 16 + 10;
   const height = header + gh + 20 + Math.max(lower.spectrumHeight, tableHeight) + 20;
   const canvas = document.createElement("canvas");
@@ -80,6 +85,8 @@ export async function composePng(
   c.fillText(t("shifted"), gw + 20, header - 6);
   c.drawImage(grams[0], 10, header, gw, gh);
   c.drawImage(grams[1], gw + 20, header, gw, gh);
+  c.drawImage(targets[0], 10, header, gw, gh);
+  c.drawImage(targets[1], gw + 20, header, gw, gh);
   const lowerTop = header + gh + 20;
   c.drawImage(spectrum, lower.spectrumX, lowerTop, lower.spectrumWidth, lower.spectrumHeight);
   c.font = "12px system-ui";

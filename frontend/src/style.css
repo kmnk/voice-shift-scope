@@ -190,6 +190,12 @@ input[type="range"]::-webkit-slider-thumb {
 .plot-guide { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(320px, 90%); margin: 0; text-align: center; color: var(--muted); pointer-events: none; }
 .plot-guide:empty { display: none; }
 .table-box { flex: 1; }
+/* 重ね描きの破線は図の上に重ねるだけで、マウスは下（カーソルの canvas）へ通す */
+.canvas-box canvas.target { pointer-events: none; }
+/* 重ね描きの凡例: 紫の破線の見本と、止めた時刻と側。狭いときは題より先にこの文字を切り、F1〜F4 の凡例は切らない */
+.target-legend { display: inline-flex; align-items: center; gap: 3px; min-width: 0; flex: 0 1 auto; color: var(--hold); font-weight: normal; font-size: var(--text-s); overflow: hidden; }
+.target-legend[hidden] { display: none; }
+.target-legend .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 /* 止めた札: 紫の地に白い文字 */
 .state:empty { display: none; }
 .state.frozen { background: var(--hold); color: #fff; font-size: var(--text-s); line-height: 14px; padding: 1px 6px; border-radius: var(--radius-s); flex: none; }

@@ -6,6 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { lang, t } from "./i18n";
 import { formatDb, formatKHz, gramFreqAt, spectrumDbAt, spectrumFreqAt, spectrumLayout } from "./render";
 import { formantToSlider } from "./shift";
+import { PNG_HEADER, composePng } from "./png";
+import { targetLineYs } from "./target";
 
 type Result = { criterion: string; result: "PASS" | "FAIL"; detail: unknown };
 
@@ -190,6 +192,85 @@ async function tableFitsBothLanguages(): Promise<ReturnType<typeof tableFits>[]>
   click("lang-toggle");
   await sleep(300);
   return [first, second];
+}
+
+/// 重ね描き（spec の U10・U11）。変えた後だけを止めた状態で呼ばれ、同じ状態に戻して終わる
+async function checkOverlay(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
+  await sleep(500);
+  const look = () =>
+    Object.fromEntries(
+      (["before", "after"] as const).map((side) => [
+        side,
+        {
+          targets: q<HTMLCanvasElement>(`#${side}-target`).dataset.targets ?? "",
+          values: q<HTMLCanvasElement>(`#${side}-gram`).dataset.values ?? "",
+          legend: q(`#${side}-target-legend`).hidden ? "" : (q(`#${side}-target-legend`).textContent ?? ""),
+        },
+      ]),
+    ) as Record<"before" | "after", { targets: string; values: string; legend: string }>;
+  const shiftedHeld = look();
+  await shot("U10-overlay");
+  // 変える前だけを止める
+  click("freeze-after");
+  click("freeze-before");
+  await sleep(500);
+  const originalHeld = look();
+  // 両側を止める
+  click("freeze-after");
+  await sleep(300);
+  const bothHeld = look();
+  // 変えた後だけを止めた状態に戻す
+  click("freeze-before");
+  await sleep(300);
+  const restored = look();
+  const filled = (s: string) => s.split(",").filter((v) => v !== "").length >= 2;
+  const shiftedSide = t("shifted");
+  await record(
+    "U10-overlay",
+    filled(shiftedHeld.before.targets) &&
+      shiftedHeld.before.targets === shiftedHeld.after.values &&
+      shiftedHeld.after.targets === "" &&
+      shiftedHeld.before.legend.includes(shiftedSide) &&
+      shiftedHeld.after.legend === "" &&
+      filled(originalHeld.after.targets) &&
+      originalHeld.after.targets === originalHeld.before.values &&
+      originalHeld.before.targets === "" &&
+      bothHeld.before.targets === "" &&
+      bothHeld.after.targets === "" &&
+      bothHeld.before.legend === "" &&
+      restored.before.targets === shiftedHeld.before.targets,
+    { shiftedHeld, originalHeld, bothHeld, restored },
+  );
+
+  // U11: 保存する PNG の、変える前の図の目標の高さの画素に、そのフォルマントの色の破線がある
+  const grams: [HTMLCanvasElement, HTMLCanvasElement] = [q("#before-gram"), q("#after-gram")];
+  const targetsCanvases: [HTMLCanvasElement, HTMLCanvasElement] = [q("#before-target"), q("#after-target")];
+  const bytes = await composePng(grams, targetsCanvases, q<HTMLCanvasElement>("#spectrum"), null, null, new Date());
+  const bitmap = await createImageBitmap(new Blob([bytes.slice().buffer as ArrayBuffer], { type: "image/png" }));
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const c = canvas.getContext("2d")!;
+  c.drawImage(bitmap, 0, 0);
+  const dpr = window.devicePixelRatio || 1;
+  const gw = grams[0].clientWidth;
+  const gh = grams[0].clientHeight;
+  const goal = restored.before.targets.split(",").map((v) => (v === "" ? null : Number(v)));
+  const axisMax = Number(q<HTMLInputElement>("#ceiling").value) * Math.max(1, shiftValue("formant"));
+  const ys = targetLineYs(goal, axisMax, gh);
+  const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const found = ys.map((y, i) => {
+    if (y === null) return null;
+    const want = hex(css(`--formant-${i + 1}`));
+    // 破線なので、線の高さの横の何点かを見て、どれかがその色に近ければよい
+    for (let x = 60; x < gw - 60; x += 3) {
+      const px = c.getImageData(Math.round((10 + x) * dpr), Math.round((PNG_HEADER + y) * dpr), 1, 1).data;
+      if (Math.abs(px[0] - want[0]) + Math.abs(px[1] - want[1]) + Math.abs(px[2] - want[2]) < 60) return true;
+    }
+    return false;
+  });
+  await record("U11-overlay-png", found.filter((f) => f !== null).length >= 2 && found.every((f) => f !== false), { goal, axisMax, found });
 }
 
 function setNumber(id: string, value: number): void {
@@ -766,6 +847,8 @@ export async function runSelftest(dir: string): Promise<void> {
         const held = ["before", "after"].map((side) => q(`#${side}-panel`).dataset.held);
         await record("S8-one-side", gramHeights[0] === gramHeights[1] && held[0] === "false" && held[1] === "true", { gramHeights, held });
       }
+      // U10・U11: 片側だけを止めると、動いている側の図に止めた側の F1〜F4 を破線で重ね、題に凡例を出す。PNG にも写る
+      await checkOverlay(record);
       setNumber("pitch-num", 7);
       await sleep(3000);
       [b, a] = f0Row();

@@ -105,6 +105,25 @@ describe("スペクトログラムの右端の値（S4）", () => {
     expect(valueLabels([null, 1200, null, NaN], 5500, 550, 12).map((l) => l.index)).toEqual([1]);
   });
 
+  it("止めた側の目標の値も一緒に並べ、8 つのどれも 12px より近づかない", () => {
+    // 今の値と目標の値が 2〜4 Hz しか違わない（1px 未満）
+    const labels = valueLabels([738, 1190, 2532, 3455], 5500, 550, 12, [754, 1207, 2550, 3493]);
+    expect(labels).toHaveLength(8);
+    expect(labels.filter((l) => l.target).map((l) => l.text).sort()).toEqual(["1207", "2550", "3493", "754"]);
+    const ys = labels.map((l) => l.y).sort((a, b) => a - b);
+    for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(12 - 1e-9);
+    // 目標の方が高い周波数なので、目標の文字が今の値の上に来る
+    for (let i = 0; i < 4; i++) {
+      const goal = labels.find((l) => l.target && l.index === i)!;
+      const now = labels.find((l) => !l.target && l.index === i)!;
+      expect(goal.y).toBeLessThan(now.y);
+    }
+  });
+
+  it("目標が無いときは今の値だけ", () => {
+    expect(valueLabels([761, null, null, null], 5500, 550, 12).every((l) => !l.target)).toBe(true);
+  });
+
   it("図の下端を越えるときは下端に寄せる", () => {
     const labels = valueLabels([10, 20, 30, null], 5500, 550, 12);
     expect(Math.max(...labels.map((l) => l.y))).toBeLessThanOrEqual(550 - 6);
