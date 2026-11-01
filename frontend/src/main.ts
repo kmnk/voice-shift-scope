@@ -6,6 +6,7 @@ import { Cursor } from "./cursor";
 import { icon, setContent, type IconName } from "./icons";
 import { composePng, fileName } from "./png";
 import { Spectrogram, drawSpectrum, renderTable } from "./render";
+import { STEP, fillRange, formatShift, formantToSlider, normalize, parseShift, sliderToFormant, type ShiftTarget } from "./shift";
 import { runSelftest } from "./selftest";
 import { FreezeStore } from "./store";
 import type { Devices, Pair, Side } from "./types";
@@ -29,24 +30,43 @@ const cursors = [
   new Cursor($("spectrum-cursor"), "spectrum", () => axisMax),
 ];
 
-/// スライダーの埋まった部分の割合を CSS の --fill に書く（style.css が溝を塗り分ける）
+/// スライダーの埋まった範囲を CSS の --from・--to に書く（style.css が溝を塗り分ける）。
+/// ピッチとフォルマントは中央（既定の値）からつまみまで、音量は左端からつまみまで
 function paintRange(r: HTMLInputElement): void {
   const min = Number(r.min);
   const max = Number(r.max);
-  const pct = max > min ? ((Number(r.value) - min) / (max - min)) * 100 : 0;
-  r.style.setProperty("--fill", `${Math.min(100, Math.max(0, pct))}%`);
+  const value = Number(r.value);
+  let [from, to] = fillRange(min, max, value);
+  if (r.id === "volume") [from, to] = [0, max > min ? ((value - min) / (max - min)) * 100 : 0];
+  r.style.setProperty("--from", `${from}%`);
+  r.style.setProperty("--to", `${to}%`);
 }
 
-/// ピッチ・フォルマントの値を、数の欄とスライダーにそろえて入れ、変換に送る（範囲で止める）
-const decimals: Record<string, number> = { pitch: 1, formant: 2 };
-function setShift(target: "pitch" | "formant", value: number): void {
-  const r = $<HTMLInputElement>(target);
-  const n = $<HTMLInputElement>(`${target}-num`);
-  const clamped = Math.min(Number(r.max), Math.max(Number(r.min), value));
-  n.value = clamped.toFixed(decimals[target]);
-  r.value = n.value;
-  paintRange(r);
+/// ピッチ（半音）とフォルマント（倍率）の今の値。欄の文字ではなくここが正本（欄は符号やマイナス記号を含むため）
+const shift: Record<ShiftTarget, number> = { pitch: 0, formant: 1 };
+
+/// 今の値を、値の欄（いつも同じ桁）とスライダー（フォルマントは log2 の位置）に出す
+function showShift(target: ShiftTarget): void {
+  const v = shift[target];
+  const field = $<HTMLInputElement>(`${target}-num`);
+  field.value = formatShift(target, v);
+  // 試験が言葉や書式に依らずに読む値
+  field.dataset.value = String(v);
+  const slider = $<HTMLInputElement>(target);
+  slider.value = String(target === "pitch" ? v : formantToSlider(v));
+  paintRange(slider);
+}
+
+/// ピッチ・フォルマントの値を範囲で止めて丸め、欄とスライダーにそろえて出し、変換に送る
+function setShift(target: ShiftTarget, value: number): void {
+  shift[target] = normalize(target, value);
+  showShift(target);
   void sendShift();
+}
+
+/// 小さい刻み（Shift と一緒なら大きい刻み）で上げ下げする
+function stepShift(target: ShiftTarget, dir: number, coarse: boolean): void {
+  setShift(target, shift[target] + dir * (coarse ? STEP[target].coarse : STEP[target].fine));
 }
 
 interface Status {
@@ -252,8 +272,8 @@ async function start(): Promise<void> {
 
 async function sendShift(): Promise<void> {
   await call("change_shift", {
-    semitones: Number(($("pitch-num") as HTMLInputElement).value),
-    formant: Number(($("formant-num") as HTMLInputElement).value),
+    semitones: shift.pitch,
+    formant: shift.formant,
   });
 }
 
@@ -266,19 +286,49 @@ async function sendAnalysis(): Promise<void> {
   });
 }
 
-function link(range: string, num: string): void {
-  const r = $(range) as HTMLInputElement;
-  const n = $(num) as HTMLInputElement;
-  r.addEventListener("input", () => {
-    n.value = r.value;
-    paintRange(r);
-    void sendShift();
+/// ピッチ・フォルマントの欄の操作: スライダー、値の欄への入力、欄の中の ↑↓、ホイール、− と + のボタン
+function wireShift(target: ShiftTarget): void {
+  const slider = $<HTMLInputElement>(target);
+  const field = $<HTMLInputElement>(`${target}-num`);
+  slider.addEventListener("input", () => {
+    const position = Number(slider.value);
+    setShift(target, target === "pitch" ? position : sliderToFormant(position));
   });
-  n.addEventListener("change", () => {
-    r.value = n.value;
-    paintRange(r);
-    void sendShift();
+  // 欄を押すと文字を選ぶ。Enter かフォーカスが外れると値にし、読めない文字なら前の値に戻す
+  field.addEventListener("focus", () => field.select());
+  const commit = () => {
+    const v = parseShift(field.value);
+    if (v === null) showShift(target);
+    else setShift(target, v);
+  };
+  field.addEventListener("change", commit);
+  field.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+      field.select();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      showShift(target);
+      field.select();
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      stepShift(target, e.key === "ArrowUp" ? 1 : -1, e.shiftKey);
+      field.select();
+    }
   });
+  // ホイール: 上で増え下で減る。Shift と一緒のとき Chromium は横のスクロール（deltaX）にすることがあるので両方を見る。
+  // タッチパッドで細かい事象が続くと速く動きすぎるので、100 ms に 1 刻みに間引く
+  let lastWheel = 0;
+  const onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+    if (delta === 0 || e.timeStamp - lastWheel < 100) return;
+    lastWheel = e.timeStamp;
+    stepShift(target, delta < 0 ? 1 : -1, e.shiftKey);
+  };
+  field.addEventListener("wheel", onWheel, { passive: false });
+  slider.addEventListener("wheel", onWheel, { passive: false });
 }
 
 async function save(): Promise<void> {
@@ -344,8 +394,8 @@ function wire(): void {
     paintRange(e.target as HTMLInputElement);
     void call("set_monitor_volume", { volume: Number((e.target as HTMLInputElement).value) });
   });
-  link("pitch", "pitch-num");
-  link("formant", "formant-num");
+  wireShift("pitch");
+  wireShift("formant");
   // 流す音のボタンは、押すと反対側に切り替える
   $("route").addEventListener("click", async () => {
     if (!devices) return;
@@ -356,17 +406,13 @@ function wire(): void {
     const d = await call<Devices>("set_routing", { output: source, monitor: source });
     if (d) showDevices(d);
   });
-  // 細かく合わせるための、決まった幅で上げ下げするボタンと、元に戻すボタン
-  const defaults: Record<string, number> = { pitch: 0, formant: 1 };
-  type Target = "pitch" | "formant";
-  document.querySelectorAll<HTMLButtonElement>("button[data-step]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const target = b.dataset.target as Target;
-      setShift(target, Number(($(`${target}-num`) as HTMLInputElement).value) + Number(b.dataset.step));
-    }),
+  // 値の欄の左右の − と +（Shift と一緒に押すと大きい刻み）と、元に戻すボタン
+  const defaults: Record<ShiftTarget, number> = { pitch: 0, formant: 1 };
+  document.querySelectorAll<HTMLButtonElement>("button.step").forEach((b) =>
+    b.addEventListener("click", (e) => stepShift(b.dataset.target as ShiftTarget, Number(b.dataset.dir), e.shiftKey)),
   );
   document.querySelectorAll<HTMLButtonElement>("button.reset").forEach((b) =>
-    b.addEventListener("click", () => setShift(b.dataset.target as Target, defaults[b.dataset.target!])),
+    b.addEventListener("click", () => setShift(b.dataset.target as ShiftTarget, defaults[b.dataset.target as ShiftTarget])),
   );
   $("ceiling").addEventListener("change", () => void sendAnalysis());
   $("threshold").addEventListener("change", () => void sendAnalysis());
@@ -447,10 +493,9 @@ function wireShortcuts(): void {
     }
     const target = e.target as HTMLElement;
     if (view !== "full" || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
-    const shiftValue = (name: "pitch" | "formant", fine: number, coarse: number, sign: number) => {
+    const shiftValue = (name: ShiftTarget, _fine: number, _coarse: number, sign: number) => {
       e.preventDefault();
-      const current = Number($<HTMLInputElement>(`${name}-num`).value);
-      setShift(name, current + sign * (e.shiftKey ? coarse : fine));
+      stepShift(name, sign, e.shiftKey);
     };
     switch (e.key) {
       case " ":
@@ -493,7 +538,9 @@ async function boot(): Promise<void> {
   document.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
     if (!el.querySelector(":scope > svg.icon")) el.prepend(icon(el.dataset.icon as IconName));
   });
-  document.querySelectorAll<HTMLInputElement>('input[type="range"]').forEach(paintRange);
+  showShift("pitch");
+  showShift("formant");
+  paintRange($("volume"));
   wire();
   const prefs = await invoke<{ language: Lang; view: View }>("get_ui_prefs").catch(() => ({ language: "en" as Lang, view: "full" as View }));
   setLang(prefs.language);

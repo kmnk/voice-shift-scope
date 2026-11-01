@@ -33,31 +33,23 @@
       </section>
       <section class="group">
         <h2 data-i18n="sec.pitch"></h2>
-        <div class="row">
-          <input id="pitch-num" type="number" min="-24" max="24" step="0.1" value="0" />
+        <div class="row value-row">
+          <button class="step" data-target="pitch" data-dir="-1" data-testid="pitch-down" data-i18n-title="step.pitch.down" data-i18n-aria="step.pitch.down">−</button>
+          <input id="pitch-num" class="value" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="0.0" data-value="0" data-i18n-aria="value.pitch" />
+          <button class="step" data-target="pitch" data-dir="1" data-testid="pitch-up" data-i18n-title="step.pitch.up" data-i18n-aria="step.pitch.up">+</button>
           <button class="reset" data-target="pitch" data-icon="reset" data-i18n-title="reset.title.pitch" data-i18n-aria="reset.title.pitch"></button>
         </div>
-        <input id="pitch" type="range" min="-24" max="24" step="0.1" value="0" />
-        <div class="row steps">
-          <button data-target="pitch" data-step="-1">−1</button>
-          <button data-target="pitch" data-step="-0.1">−0.1</button>
-          <button data-target="pitch" data-step="0.1">+0.1</button>
-          <button data-target="pitch" data-step="1">+1</button>
-        </div>
+        <div class="slider"><input id="pitch" type="range" min="-24" max="24" step="0.1" value="0" /><span class="tick" aria-hidden="true"></span></div>
       </section>
       <section class="group">
         <h2 data-i18n="sec.formant"></h2>
-        <div class="row">
-          <input id="formant-num" type="number" min="0.5" max="2" step="0.01" value="1" />
+        <div class="row value-row">
+          <button class="step" data-target="formant" data-dir="-1" data-testid="formant-down" data-i18n-title="step.formant.down" data-i18n-aria="step.formant.down">−</button>
+          <input id="formant-num" class="value" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="1.00" data-value="1" data-i18n-aria="value.formant" />
+          <button class="step" data-target="formant" data-dir="1" data-testid="formant-up" data-i18n-title="step.formant.up" data-i18n-aria="step.formant.up">+</button>
           <button class="reset" data-target="formant" data-icon="reset" data-i18n-title="reset.title.formant" data-i18n-aria="reset.title.formant"></button>
         </div>
-        <input id="formant" type="range" min="0.5" max="2" step="0.01" value="1" />
-        <div class="row steps">
-          <button data-target="formant" data-step="-0.05">−0.05</button>
-          <button data-target="formant" data-step="-0.01">−0.01</button>
-          <button data-target="formant" data-step="0.01">+0.01</button>
-          <button data-target="formant" data-step="0.05">+0.05</button>
-        </div>
+        <div class="slider"><input id="formant" type="range" min="-1" max="1" step="0.001" value="0" /><span class="tick" aria-hidden="true"></span></div>
       </section>
       <section class="group full-only">
         <h2 data-i18n="sec.hold"></h2>
@@ -98,7 +90,7 @@
         <div class="canvas-box"><canvas id="after-gram"></canvas><canvas id="after-cursor" class="overlay"></canvas></div>
       </figure>
       <figure class="panel spectrum-panel">
-        <figcaption><span class="caption-title" data-i18n="panel.spectrum"></span></figcaption>
+        <figcaption><span class="caption-title" data-i18n="panel.spectrum"></span><span class="legend line-legend" data-testid="spectrum-legend"><span><svg class="line-sample" width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" style="stroke: var(--before)" stroke-width="1" stroke-dasharray="4 2" /></svg><span data-i18n="original"></span></span><span><svg class="line-sample" width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" style="stroke: var(--accent)" stroke-width="1.5" /></svg><span data-i18n="shifted"></span></span></span></figcaption>
         <div class="canvas-box"><canvas id="spectrum"></canvas><canvas id="spectrum-cursor" class="overlay"></canvas></div>
       </figure>
       <figure class="panel table-panel">
