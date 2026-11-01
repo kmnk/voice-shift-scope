@@ -76,6 +76,15 @@ jobs:
           target/release/voice-cli e2e --seconds 20 --semitones 5 | Tee-Object -FilePath e2e-runtime.json
           if ($LASTEXITCODE -eq 2) { Write-Error "VB-CABLE が見つからない"; exit 1 }
           ./scripts/e2e_gate.ps1 e2e-runtime.json A1 analysis
+      # ピッチを 0 半音より下げると、声を変える処理が TD-PSOLA に切り替わる（crates/voice-dsp/src/hybrid.rs）。
+      # その側も音声の実行で通す
+      - name: Run the audio runtime through VB-CABLE (-12 semitones, PSOLA, 20 s)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          target/release/voice-cli e2e --seconds 20 --semitones -12 | Tee-Object -FilePath e2e-runtime-lowered.json
+          if ($LASTEXITCODE -eq 2) { Write-Error "VB-CABLE が見つからない"; exit 1 }
+          ./scripts/e2e_gate.ps1 e2e-runtime-lowered.json A1 analysis
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -85,4 +94,5 @@ jobs:
             recorded.wav
             e2e-latency.json
             e2e-runtime.json
+            e2e-runtime-lowered.json
 
