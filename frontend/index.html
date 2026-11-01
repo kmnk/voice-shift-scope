@@ -68,7 +68,8 @@
           <span class="field-label" data-i18n="route.source"></span>
           <button id="route" class="route-toggle" data-testid="route" data-source="shifted"></button>
         </div>
-        <p id="cable" class="cable" data-testid="cable-status"></p>
+        <!-- VB-CABLE の有無は画面に出さない（いつも使う前提にしない）。試験が有無を知るための data-found だけを持つ -->
+        <p id="cable" class="cable" data-testid="cable-status" hidden></p>
       </section>
     </aside>
     <!-- 設定の板（分析の設定）。帯の設定のボタンで開き、Esc・板の外・ボタンで閉じる（main.ts） -->
@@ -84,7 +85,7 @@
     <main id="screen" class="screen full-only">
       <figure class="panel gram-before" id="before-panel" data-held="false">
         <figcaption><span class="caption-title" data-i18n="original"></span><span id="before-state" class="state"></span><span class="legend"><span><i class="swatch" style="background: var(--formant-1)"></i>F1</span><span><i class="swatch" style="background: var(--formant-2)"></i>F2</span><span><i class="swatch" style="background: var(--formant-3)"></i>F3</span><span><i class="swatch" style="background: var(--formant-4)"></i>F4</span></span></figcaption>
-        <div class="canvas-box"><canvas id="before-gram"></canvas><canvas id="before-cursor" class="overlay"></canvas></div>
+        <div class="canvas-box"><canvas id="before-gram"></canvas><canvas id="before-cursor" class="overlay"></canvas><p id="plot-guide" class="plot-guide" role="status" data-testid="plot-guide"></p></div>
       </figure>
       <figure class="panel gram-after" id="after-panel" data-held="false">
         <figcaption><span class="caption-title" data-i18n="shifted"></span><span id="after-state" class="state"></span><span class="legend"><span><i class="swatch" style="background: var(--formant-1)"></i>F1</span><span><i class="swatch" style="background: var(--formant-2)"></i>F2</span><span><i class="swatch" style="background: var(--formant-3)"></i>F3</span><span><i class="swatch" style="background: var(--formant-4)"></i>F4</span></span></figcaption>
