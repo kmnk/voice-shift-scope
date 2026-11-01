@@ -1,5 +1,6 @@
 //! アプリを閉じた後まで覚える値。前に画像を保存したフォルダー、画面の言葉、表示（全体か簡易か）、
-//! 入力・出力・モニターの機器、分析の設定を持つ（機器と分析の値は 2026-10-18 に利用者が覚えるとした）。
+//! 入力・出力・モニターの機器、分析の設定、ピッチとフォルマントの値を持つ（機器と分析の値は 2026-10-18 に、
+//! ピッチとフォルマントの値は 2026-11-02 に利用者が覚えるとした）。
 
 use std::path::{Path, PathBuf};
 
@@ -18,6 +19,8 @@ pub struct Preferences {
     pub devices: RememberedDevices,
     #[serde(default)]
     pub analysis: Option<RememberedAnalysis>,
+    #[serde(default)]
+    pub shift: Option<RememberedShift>,
 }
 
 /// 機器は cpal の id で覚える。起動したときに一覧に無ければ、既定の機器にする。
@@ -34,6 +37,13 @@ pub struct RememberedAnalysis {
     pub threshold: f32,
     pub relative_limit: f32,
     pub lpc_order: u32,
+}
+
+/// ピッチ（半音）とフォルマント（倍率）。起動したときに範囲の外なら、既定（0 半音・1.0 倍）のまま。
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+pub struct RememberedShift {
+    pub semitones: f32,
+    pub formant: f32,
 }
 
 pub struct PreferencesStore {
@@ -81,6 +91,12 @@ impl PreferencesStore {
     pub fn remember_analysis(&self, analysis: RememberedAnalysis) -> std::io::Result<()> {
         let mut prefs = self.load();
         prefs.analysis = Some(analysis);
+        self.save(&prefs)
+    }
+
+    pub fn remember_shift(&self, shift: RememberedShift) -> std::io::Result<()> {
+        let mut prefs = self.load();
+        prefs.shift = Some(shift);
         self.save(&prefs)
     }
 
@@ -141,6 +157,12 @@ mod tests {
         assert_eq!(loaded.devices.output.as_deref(), Some("cable"));
         assert_eq!(loaded.analysis.map(|a| a.ceiling), Some(5000.0));
         assert_eq!(loaded.view.as_deref(), Some("compact"));
+        // ピッチとフォルマントは初めは無く、覚えた後は他の値と一緒に残る
+        assert_eq!(loaded.shift, None);
+        store.remember_shift(RememberedShift { semitones: -12.0, formant: 0.8 }).unwrap();
+        let loaded = store.load();
+        assert_eq!(loaded.shift, Some(RememberedShift { semitones: -12.0, formant: 0.8 }));
+        assert_eq!(loaded.analysis.map(|a| a.ceiling), Some(5000.0));
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

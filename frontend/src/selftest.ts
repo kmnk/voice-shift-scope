@@ -539,6 +539,14 @@ export async function runSelftest(dir: string): Promise<void> {
   };
   try {
     await waitFor(() => q("#cable").dataset.found !== undefined, 10_000);
+    // 起動したとき、覚えておいたピッチとフォルマント（試験では環境変数で渡した値、無ければ既定）が欄に出ている
+    const expected = await invoke<[number, number] | null>("selftest_expected_shift").catch(() => null);
+    const shown = [Number(q<HTMLInputElement>("#pitch-num").dataset.value), Number(q<HTMLInputElement>("#formant-num").dataset.value)];
+    await record(
+      "P1-shift-restored",
+      expected !== null && Math.abs(shown[0] - expected[0]) < 1e-6 && Math.abs(shown[1] - expected[1]) < 1e-6,
+      { expected, shown, pitchText: q<HTMLInputElement>("#pitch-num").value, formantText: q<HTMLInputElement>("#formant-num").value },
+    );
     // 言葉の切り替え: 文が替わり、もう一度で戻る（選んだ言葉は試験の設定のディレクトリに覚える）
     const startEn = q("#run").textContent;
     const langBefore = document.documentElement.lang;

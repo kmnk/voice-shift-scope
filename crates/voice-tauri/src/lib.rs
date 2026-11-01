@@ -8,6 +8,7 @@ mod shot;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -22,7 +23,7 @@ use voice_dsp::DefaultAnalyzer;
 use voice_runtime::{CpalDevices, RuntimePipeline};
 
 use crate::dto::{DevicesDto, PairDto, devices_dto};
-use crate::preferences::{PreferencesStore, RememberedAnalysis, RememberedDevices};
+use crate::preferences::{PreferencesStore, RememberedAnalysis, RememberedDevices, RememberedShift};
 use crate::publisher::ChannelPublisher;
 
 type Studio = VoiceStudio<TestSourceDevices, RuntimePipeline>;
@@ -60,6 +61,8 @@ struct AppState {
     preferences: PreferencesStore,
     /// `--ui-selftest <dir>` のときの結果の置き場。試験のための入口で、画面からは選べない。
     selftest_dir: Option<PathBuf>,
+    /// ピッチとフォルマントを最後に書いた時刻（`change_shift`）。
+    shift_saved_at: Mutex<Option<Instant>>,
 }
 
 /// 画面に返す誤り。
@@ -240,10 +243,35 @@ fn stop(state: State<AppState>) -> Res<DevicesDto> {
     Ok(snapshot(&studio))
 }
 
+/// ピッチとフォルマントを替え、覚える。スライダーを動かす間は呼ばれ続けるので、書くのは SHIFT_SAVE_INTERVAL に 1 回までにし、
+/// 最後の値はアプリを閉じるときに書く（`remember_current_shift`）。
 #[tauri::command]
 fn change_shift(state: State<AppState>, semitones: f32, formant: f32) -> Res<()> {
     let shift = ShiftSettings { pitch: PitchShift::new(semitones)?, formant: FormantShift::new(formant)? };
-    Ok(state.studio.lock().expect("studio").change_shift(shift)?)
+    state.studio.lock().expect("studio").change_shift(shift)?;
+    let mut saved_at = state.shift_saved_at.lock().expect("shift_saved_at");
+    if saved_at.is_none_or(|t| t.elapsed() >= SHIFT_SAVE_INTERVAL) {
+        let _ = state.preferences.remember_shift(RememberedShift { semitones, formant });
+        *saved_at = Some(Instant::now());
+    }
+    Ok(())
+}
+
+/// ピッチとフォルマントを書く間隔の下限。
+const SHIFT_SAVE_INTERVAL: Duration = Duration::from_millis(500);
+
+/// 今のピッチとフォルマントを覚える（アプリを閉じるとき）。
+fn remember_current_shift(state: &AppState) {
+    if let Ok(studio) = state.studio.lock() {
+        let shift = studio.session().shift();
+        let _ = state.preferences.remember_shift(RememberedShift { semitones: shift.pitch.semitones(), formant: shift.formant.ratio() });
+    }
+}
+
+/// 覚えたピッチとフォルマントを、範囲の中なら設定にする。
+fn restored_shift(remembered: Option<RememberedShift>) -> Option<ShiftSettings> {
+    let r = remembered?;
+    Some(ShiftSettings { pitch: PitchShift::new(r.semitones).ok()?, formant: FormantShift::new(r.formant).ok()? })
 }
 
 #[tauri::command]
@@ -323,6 +351,19 @@ async fn save_png(app: tauri::AppHandle, bytes: Vec<u8>, file_name: String) -> R
 fn selftest_config(state: State<AppState>) -> Option<String> {
     selftest_log("selftest_config が呼ばれた");
     state.selftest_dir.as_ref().map(|d| d.display().to_string())
+}
+
+/// 画面の通しの試験で、起動したときに出ているはずのピッチとフォルマント。環境変数
+/// `VOICE_SHIFT_SCOPE_TEST_EXPECT_SHIFT`（"半音,倍率"）があればその値、無ければ既定（0 半音・1.0 倍）。
+/// 試験の入口で起動したときだけ値を返す。
+#[tauri::command]
+fn selftest_expected_shift(state: State<AppState>) -> Option<(f32, f32)> {
+    state.selftest_dir.as_ref()?;
+    let parsed = std::env::var("VOICE_SHIFT_SCOPE_TEST_EXPECT_SHIFT").ok().and_then(|v| {
+        let (a, b) = v.split_once(',')?;
+        Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+    });
+    Some(parsed.unwrap_or((0.0, 1.0)))
 }
 
 #[tauri::command]
@@ -447,7 +488,7 @@ pub fn run() {
             let devices = TestSourceDevices { inner: CpalDevices, test_source };
             let mut studio = VoiceStudio::new(devices, pipeline).map_err(|e| e.to_string())?;
             let config_dir = app.path().app_config_dir()?;
-            // 前に選んだ機器と分析の設定を戻す（一覧に無い機器や範囲の外の値は、既定のまま）
+            // 前に選んだ機器、ピッチとフォルマント、分析の設定を戻す（一覧に無い機器や範囲の外の値は、既定のまま）
             let prefs = PreferencesStore::new(config_dir.clone()).load();
             if !test_source {
                 studio.restore_devices(
@@ -455,6 +496,9 @@ pub fn run() {
                     prefs.devices.output.as_deref(),
                     prefs.devices.monitor.as_deref(),
                 );
+            }
+            if let Some(shift) = restored_shift(prefs.shift) {
+                let _ = studio.change_shift(shift);
             }
             if let Some(a) = prefs.analysis {
                 if let (Ok(ceiling), Ok(threshold), Ok(relative_limit), Ok(lpc_order)) = (
@@ -470,6 +514,7 @@ pub fn run() {
                 studio: Mutex::new(studio),
                 publisher,
                 preferences: PreferencesStore::new(config_dir),
+                shift_saved_at: Mutex::new(None),
                 selftest_dir: arg_value("--ui-selftest").map(PathBuf::from),
             });
             let view = app.state::<AppState>().preferences.view();
@@ -500,14 +545,33 @@ pub fn run() {
             finish_selftest,
             selftest_shot,
             selftest_resize,
+            selftest_expected_shift,
         ])
-        .run(tauri::generate_context!())
-        .expect("アプリを起動できませんでした");
+        .build(tauri::generate_context!())
+        .expect("アプリを起動できませんでした")
+        .run(|app, event| {
+            // 閉じるときに、最後のピッチとフォルマントを覚える（動かす間は間を空けて書いているため）
+            if let tauri::RunEvent::Exit = event
+                && let Some(state) = app.try_state::<AppState>()
+            {
+                remember_current_shift(&state);
+            }
+        });
 }
 
 #[cfg(test)]
 mod tests {
     use super::checked_test_size;
+    use super::{RememberedShift, restored_shift};
+
+    #[test]
+    fn restores_remembered_shift_only_within_range() {
+        let ok = restored_shift(Some(RememberedShift { semitones: -12.0, formant: 0.8 })).expect("範囲内");
+        assert_eq!((ok.pitch.semitones(), ok.formant.ratio()), (-12.0, 0.8));
+        assert!(restored_shift(None).is_none());
+        assert!(restored_shift(Some(RememberedShift { semitones: 99.0, formant: 1.0 })).is_none());
+        assert!(restored_shift(Some(RememberedShift { semitones: 0.0, formant: 3.0 })).is_none());
+    }
 
     #[test]
     fn test_size_accepts_the_minimum_and_default_windows() {

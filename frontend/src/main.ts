@@ -611,6 +611,11 @@ async function boot(): Promise<void> {
   const d = await call<Devices>("list_devices");
   if (d) {
     showDevices(d);
+    // 覚えておいたピッチとフォルマントを欄とスライダーに出す（声を変える処理には起動したときに渡してある）
+    shift.pitch = normalize("pitch", d.shift.semitones);
+    shift.formant = normalize("formant", d.shift.formant);
+    showShift("pitch");
+    showShift("formant");
     // 覚えておいた分析の設定を欄に入れる
     ($("ceiling") as HTMLInputElement).value = String(d.analysis.ceiling);
     ($("threshold") as HTMLInputElement).value = String(d.analysis.threshold);
