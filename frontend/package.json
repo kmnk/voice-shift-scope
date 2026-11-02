@@ -1,6 +1,7 @@
 {
   "name": "voice-shift-scope-frontend",
   "private": true,
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -3,6 +3,7 @@ name = "voice-tauri"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
 description = "voice-shift-scope の Tauri のアプリ（入る側の adapter と組み立て）"
 
 [lib]
