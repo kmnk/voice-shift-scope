@@ -1,6 +1,10 @@
 name: release
 
-# Windows の zip を作る。workflow_dispatch では artifact に上げるだけ、v で始まる tag では GitHub の release にも上げる。
+# Windows の配布物（アプリの zip、voice-cli の zip、SHA256SUMS.txt）を作る。
+# v で始まる tag の push では GitHub の release にする。workflow_dispatch では artifact に残すだけで、release は作らない。
+# job は build → sign → package → verify → publish。sign はリポジトリの変数 SIGNPATH_ENABLED が true のときだけ動き、
+# それ以外では署名の無い exe を詰める。どのフェーズでもこのファイルは同じで、変えるのは変数と push する tag だけ。
+# SignPath の OSS 向けの署名は、署名の要求に至る job がすべて GitHub がホストするランナーで動くことを求める。
 on:
   workflow_dispatch:
   push:
@@ -8,12 +12,24 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
-  windows-zip:
+  build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      unsigned-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
+      # tag のときは tag と、Cargo.toml・tauri.conf.json の版が揃っていなければ止める
+      - id: version
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { '' }
+          $version = python scripts/check_version.py $tag
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          "version=$version" >> $env:GITHUB_OUTPUT
       - uses: dtolnay/rust-toolchain@stable
       # windows-ui.yml と同じものを build するので、cache を共有する
       - uses: Swatinem/rust-cache@v2
@@ -29,28 +45,168 @@ jobs:
         run: |
           npm ci
           npm run build
-      - run: cargo build --release -p voice-tauri -p voice-cli
-      - name: Pack the zip
+      - run: cargo build --release --locked -p voice-tauri -p voice-cli
+      # crate のソースはこのランナーの cargo の置き場にしか無いので、依存のライセンスはここで集める
+      - name: Collect third-party licenses
+        run: python scripts/third_party_licenses.py --out THIRD-PARTY-LICENSES.txt
+      - name: Stage the executables
         shell: pwsh
         run: |
-          $name = "voice-shift-scope-${{ github.ref_name }}-windows-x64"
-          New-Item -ItemType Directory -Force "dist\$name\licenses" | Out-Null
-          Copy-Item target\release\voice-shift-scope.exe "dist\$name\"
-          Copy-Item target\release\voice-cli.exe "dist\$name\"
-          Copy-Item third_party\signalsmith-stretch\LICENSE.txt "dist\$name\licenses\signalsmith-stretch.txt"
-          Copy-Item third_party\signalsmith-linear\LICENSE.txt "dist\$name\licenses\signalsmith-linear.txt"
-          Copy-Item docs\windows-checklist.md "dist\$name\" -ErrorAction SilentlyContinue
-          Compress-Archive -Path "dist\$name" -DestinationPath "dist\$name.zip"
-          "ZIP=dist\$name.zip" >> $env:GITHUB_ENV
-          "FOLDER=dist\$name" >> $env:GITHUB_ENV
-          "NAME=$name" >> $env:GITHUB_ENV
-      # artifact は落とすときに GitHub が zip に包むので、zip ではなくフォルダーを上げる
+          New-Item -ItemType Directory -Force unsigned | Out-Null
+          Copy-Item target\release\voice-shift-scope.exe, target\release\voice-cli.exe unsigned\
+      # SignPath に渡す artifact。中身は 2 つの exe だけ（.signpath/artifact-configuration.xml）
+      - id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-exe
+          path: unsigned/
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.NAME }}
-          path: ${{ env.FOLDER }}
+          name: third-party-licenses
+          path: THIRD-PARTY-LICENSES.txt
+
+  sign:
+    needs: build
+    if: vars.SIGNPATH_ENABLED == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ needs.build.outputs.unsigned-artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-exe
+          path: signed/
+
+  package:
+    needs: [build, sign]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.sign.result == 'success' && 'signed-exe' || 'unsigned-exe' }}
+          path: exe
+      - uses: actions/download-artifact@v4
+        with:
+          name: third-party-licenses
+          path: licenses
+      - name: Pack the zips
+        shell: pwsh
+        run: |
+          $version = '${{ needs.build.outputs.version }}'
+          $common = 'LICENSE-MIT', 'LICENSE-APACHE', 'licenses\THIRD-PARTY-LICENSES.txt'
+          New-Item -ItemType Directory -Force release | Out-Null
+          $contents = @{
+            "voice-shift-scope-$version-windows-x64" = @('exe\voice-shift-scope.exe', 'packaging\README.txt') + $common
+            "voice-cli-$version-windows-x64" = @('exe\voice-cli.exe') + $common
+          }
+          foreach ($name in $contents.Keys) {
+            New-Item -ItemType Directory -Force "dist\$name" | Out-Null
+            Copy-Item $contents[$name] "dist\$name\"
+            Compress-Archive -Path "dist\$name" -DestinationPath "release\$name.zip"
+          }
+          Get-ChildItem release\*.zip | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content -Encoding ascii release\SHA256SUMS.txt
+          Get-Content release\SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: release/
+
+  # 新しいランナーで、配布物を利用者と同じように展開して起動する（build の残りの無い環境）
+  verify:
+    needs: [build, sign, package]
+    if: ${{ !cancelled() && needs.package.result == 'success' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: release
+      - name: Check the checksums and the contents of the zips
+        shell: pwsh
+        run: |
+          $version = '${{ needs.build.outputs.version }}'
+          foreach ($line in Get-Content release\SHA256SUMS.txt) {
+            $hash, $name = $line -split '  ', 2
+            $actual = (Get-FileHash "release\$name" -Algorithm SHA256).Hash.ToLower()
+            if ($actual -ne $hash) { Write-Error "SHA-256 が違う: $name"; exit 1 }
+            "SHA-256 OK: $name"
+          }
+          $expected = @{
+            "voice-shift-scope-$version-windows-x64" = 'LICENSE-APACHE', 'LICENSE-MIT', 'README.txt', 'THIRD-PARTY-LICENSES.txt', 'voice-shift-scope.exe'
+            "voice-cli-$version-windows-x64" = 'LICENSE-APACHE', 'LICENSE-MIT', 'THIRD-PARTY-LICENSES.txt', 'voice-cli.exe'
+          }
+          foreach ($name in $expected.Keys) {
+            Expand-Archive "release\$name.zip" -DestinationPath unpacked
+            $actual = (Get-ChildItem "unpacked\$name" -File | Sort-Object Name).Name -join ','
+            $want = ($expected[$name] | Sort-Object) -join ','
+            if ($actual -ne $want) { Write-Error "$name.zip の中身が違う: $actual"; exit 1 }
+            "contents OK: $name.zip ($actual)"
+          }
+      - name: Check the signatures
+        if: vars.SIGNPATH_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          foreach ($exe in Get-ChildItem unpacked -Recurse -Filter *.exe) {
+            $sig = Get-AuthenticodeSignature $exe.FullName
+            "$($exe.Name): $($sig.Status) $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'SignPath Foundation') { exit 1 }
+          }
+      - name: Allow desktop apps to use the microphone
+        shell: pwsh
+        run: |
+          foreach ($root in 'HKLM:', 'HKCU:') {
+            $key = "$root\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"
+            New-Item -Path $key -Force | Out-Null
+            Set-ItemProperty -Path $key -Name Value -Value Allow
+            New-Item -Path "$key\NonPackaged" -Force | Out-Null
+            Set-ItemProperty -Path "$key\NonPackaged" -Name Value -Value Allow
+          }
+      - name: Run the UI self-test with the unpacked app
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $version = '${{ needs.build.outputs.version }}'
+          & "unpacked\voice-cli-$version-windows-x64\voice-cli.exe" synth vowel --f0 150 --seconds 60 --out vowel150.wav
+          ./scripts/ui_selftest.ps1 ui-out -Exe "$PWD\unpacked\voice-shift-scope-$version-windows-x64\voice-shift-scope.exe"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-unpacked
+          path: ui-out
+
+  publish:
+    needs: [build, verify]
+    if: ${{ !cancelled() && github.ref_type == 'tag' && needs.verify.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: release
+      # 下書きで作ってファイルを上げ終えてから公開する。版の先頭が 0 なら開発版として pre-release の印を付ける
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create ${{ github.ref_name }} ${{ env.ZIP }} --title ${{ github.ref_name }} --notes "Windows x64 の zip。VB-CABLE を別に入れてから使う。"
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          notes="packaging/release-notes/$TAG.md"
+          test -f "$notes" || { echo "::error::$notes が無い"; exit 1; }
+          pre=""
+          case "$VERSION" in 0.*) pre="--prerelease" ;; esac
+          gh release create "$TAG" --draft --title "$TAG" --notes-file "$notes" $pre --verify-tag
+          gh release upload "$TAG" release/*
+          gh release edit "$TAG" --draft=false
