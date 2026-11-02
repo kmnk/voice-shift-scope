@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath に署名を頼む artifact の形。release.yml の build の job が、2 つの exe だけを artifact unsigned-exe に上げ、
+  actions/upload-artifact がそれを zip にするので、根は zip-file にする。SignPath の画面の artifact configuration に、これを写して使う。
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="voice-shift-scope.exe">
+      <authenticode-sign/>
+    </pe-file>
+    <pe-file path="voice-cli.exe">
+      <authenticode-sign/>
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
