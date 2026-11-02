@@ -16,6 +16,13 @@ pub struct BurgFormants;
 
 impl FormantEstimator for BurgFormants {
     fn estimate(&mut self, window: &[f32], rate: SampleRate, settings: &AnalysisSettings) -> [Option<Formant>; 4] {
+        lowest_four(self.candidates(window, rate, settings))
+    }
+}
+
+impl BurgFormants {
+    /// 窓の中央 50 ms の LPC の根のうち、50 Hz〜上限−50 Hz にある上半平面のものを周波数の順に全部返す（追跡の候補）。
+    pub fn candidates(&mut self, window: &[f32], rate: SampleRate, settings: &AnalysisSettings) -> Vec<Formant> {
         let fs = rate.hz() as f64;
         let len = ((LPC_WINDOW_SECONDS * fs) as usize).min(window.len());
         let start = (window.len() - len) / 2;
@@ -24,7 +31,7 @@ impl FormantEstimator for BurgFormants {
         let fs2 = 2.0 * ceiling;
         let y = prepare(&resample(&x, fs, fs2), fs2);
         let a = burg(&y, settings.lpc_order.get() as usize);
-        formants_from_lpc(&a, fs2, ceiling)
+        candidates_from_lpc(&a, fs2, ceiling)
     }
 }
 
@@ -114,6 +121,11 @@ pub fn roots(a: &[f64]) -> Vec<Complex64> {
 
 /// 根から、50 Hz〜上限−50 Hz にある上半平面の根を周波数の順に並べ、低い方から 4 つを返す。
 pub fn formants_from_lpc(a: &[f64], fs: f64, ceiling: f64) -> [Option<Formant>; 4] {
+    lowest_four(candidates_from_lpc(a, fs, ceiling))
+}
+
+/// 根から、50 Hz〜上限−50 Hz にある上半平面の根を、周波数と帯域幅にして周波数の順に全部返す。
+pub fn candidates_from_lpc(a: &[f64], fs: f64, ceiling: f64) -> Vec<Formant> {
     let mut found: Vec<(f64, f64)> = roots(a)
         .into_iter()
         .filter(|z| z.im > 0.0)
@@ -128,11 +140,20 @@ pub fn formants_from_lpc(a: &[f64], fs: f64, ceiling: f64) -> [Option<Formant>; 
         .filter(|(f, _)| *f > 50.0 && *f < ceiling - 50.0)
         .collect();
     found.sort_by(|x, y| x.0.total_cmp(&y.0));
+    found
+        .into_iter()
+        .filter_map(|(f, bw)| match (Frequency::new(f as f32), Frequency::new(bw.max(1.0) as f32)) {
+            (Ok(frequency), Ok(bandwidth)) => Some(Formant { frequency, bandwidth }),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 周波数の順の候補から、低い方から 4 つを F1〜F4 にする（追跡しない今までの手順）。
+pub fn lowest_four(candidates: Vec<Formant>) -> [Option<Formant>; 4] {
     let mut out = [None; 4];
-    for (slot, (f, bw)) in out.iter_mut().zip(found) {
-        if let (Ok(frequency), Ok(bandwidth)) = (Frequency::new(f as f32), Frequency::new(bw.max(1.0) as f32)) {
-            *slot = Some(Formant { frequency, bandwidth });
-        }
+    for (slot, c) in out.iter_mut().zip(candidates) {
+        *slot = Some(c);
     }
     out
 }

@@ -9,13 +9,27 @@ pub const HOP: usize = 480;
 
 /// 10 ms ごとに、その時刻を中心にした窓で分析する。返すのは（時刻 秒, 結果）。
 pub fn analyze_signal(x: &[f32], rate: u32, settings: &AnalysisSettings) -> Vec<(f64, AnalysisFrame)> {
-    let mut analyzer = DefaultAnalyzer::default();
+    analyze_signal_with(&mut DefaultAnalyzer::default(), x, rate, settings, None)
+}
+
+/// `analyze_signal` と同じだが、分析の部品を渡せる。`times` を渡すと、分析 1 回の処理時間（ms）を足していく。
+pub fn analyze_signal_with(
+    analyzer: &mut DefaultAnalyzer,
+    x: &[f32],
+    rate: u32,
+    settings: &AnalysisSettings,
+    mut times: Option<&mut Vec<f64>>,
+) -> Vec<(f64, AnalysisFrame)> {
     let rate_v = SampleRate::new(rate).expect("0 より大きい");
     let half = ANALYSIS_WINDOW / 2;
     let mut out = Vec::new();
     let mut center = half;
     while center + half <= x.len() {
+        let started = std::time::Instant::now();
         let frame = analyzer.analyze(&x[center - half..center + half], rate_v, settings);
+        if let Some(t) = times.as_deref_mut() {
+            t.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
         out.push((center as f64 / rate as f64, frame));
         center += HOP;
     }

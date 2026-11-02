@@ -3,6 +3,7 @@
 use voice_domain::ports::{Analyzer, FormantEstimator, HarmonicPicker, PitchEstimator};
 use voice_domain::{AnalysisFrame, AnalysisSettings, SampleRate};
 
+use crate::formant_track::FormantTracker;
 use crate::harmonics::SpectralHarmonics;
 use crate::lpc::BurgFormants;
 use crate::yin::Yin;
@@ -17,6 +18,10 @@ pub struct DefaultAnalyzer {
     pub pitch: Yin,
     pub formants: BurgFormants,
     pub harmonics: SpectralHarmonics,
+    /// F1〜F4 の追跡。返す F1〜F4 は `FORMANT_DELAY_FRAMES` 前のフレームのもの（倍音と F0 は今のフレーム）
+    pub tracker: FormantTracker,
+    /// F1〜F4 を追跡せず、各フレームの根を低い方から 4 つ取る（開発で比べるため。アプリは使わない）
+    pub raw_formants: bool,
 }
 
 impl Analyzer for DefaultAnalyzer {
@@ -24,11 +29,17 @@ impl Analyzer for DefaultAnalyzer {
         let f0 = self.pitch.estimate(window, rate);
         let mut frame = AnalysisFrame { f0, voiced: f0.is_some(), ..Default::default() };
         if let Some(f0) = f0 {
-            frame.formants = self.formants.estimate(window, rate, settings);
+            frame.formants = if self.raw_formants {
+                self.formants.estimate(window, rate, settings)
+            } else {
+                let candidates = self.formants.candidates(window, rate, settings);
+                self.tracker.push(&candidates, settings.ceiling.hz() as f64)
+            };
             let (harmonics, observed) = self.harmonics.pick(window, rate, f0, settings);
             frame.harmonics = harmonics;
             frame.observed_harmonics = observed;
         } else {
+            self.tracker.reset();
             self.harmonics.spectrum.compute(window);
         }
         frame.spectrum = display_spectrum(&self.harmonics, rate, settings);

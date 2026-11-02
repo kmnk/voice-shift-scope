@@ -1,8 +1,9 @@
-//! 信号処理の adapter: 分析の推定（YIN、Burg 法の LPC、倍音の拾い出し）と、
+//! 信号処理の adapter: 分析の推定（YIN、Burg 法の LPC と F1〜F4 の追跡、倍音の拾い出し）と、
 //! 声を変える処理の実装。domain の port を実装する。
 
 
 pub mod analyzer;
+pub mod formant_track;
 pub mod harmonics;
 pub mod hybrid;
 pub mod level;
@@ -13,6 +14,7 @@ pub mod shifter;
 pub mod yin;
 
 pub use analyzer::{ANALYSIS_WINDOW, DefaultAnalyzer};
+pub use formant_track::{FORMANT_DELAY_FRAMES, FormantTracker};
 pub use hybrid::HybridShifter;
 pub use level::{LevelMatch, LevelMatched};
 pub use psola::PsolaShifter;

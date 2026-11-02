@@ -49,6 +49,12 @@ enum Command {
         /// LPC の次数（フォルマントの数の 2 倍）
         #[arg(long, default_value_t = 10)]
         lpc_order: u32,
+        /// F1〜F4 を追跡せず、各フレームの根を低い方から 4 つ取った値を書く（追跡の前後を比べるため）
+        #[arg(long)]
+        raw_formants: bool,
+        /// 分析 1 回の処理時間の中央値と最大（ms）を JSON で標準エラーに書く
+        #[arg(long)]
+        timing: bool,
     },
     /// 受け入れの基準を試験用の信号で判定する。FAIL があれば終了コード 1
     Check {
@@ -147,7 +153,9 @@ fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Devices => devices(),
         Command::E2e { input_wav, seconds, semitones } => run_e2e(input_wav.as_deref(), seconds, semitones),
-        Command::Analyze { wav, ceiling, lpc_order } => run_analyze(&wav, ceiling, lpc_order),
+        Command::Analyze { wav, ceiling, lpc_order, raw_formants, timing } => {
+            run_analyze(&wav, ceiling, lpc_order, raw_formants, timing)
+        }
         Command::Check { criteria, ceiling, lpc_order, block_ms, shifter, json } => {
             if let Some(ms) = block_ms {
                 let _ = check::BLOCK_SECONDS.set(ms / 1000.0);
@@ -328,7 +336,7 @@ fn analysis_settings(ceiling: f32, lpc_order: u32) -> Result<voice_domain::Analy
     })
 }
 
-fn run_analyze(wav: &std::path::Path, ceiling: f32, lpc_order: u32) -> ExitCode {
+fn run_analyze(wav: &std::path::Path, ceiling: f32, lpc_order: u32, raw_formants: bool, timing: bool) -> ExitCode {
     let settings = match analysis_settings(ceiling, lpc_order) {
         Ok(s) => s,
         Err(e) => {
@@ -343,9 +351,17 @@ fn run_analyze(wav: &std::path::Path, ceiling: f32, lpc_order: u32) -> ExitCode 
             return ExitCode::FAILURE;
         }
     };
+    let mut analyzer = voice_dsp::DefaultAnalyzer { raw_formants, ..Default::default() };
+    let mut times = Vec::new();
     println!("{}", analysis::csv_header());
-    for (t, f) in analysis::analyze_signal(&x, rate, &settings) {
+    for (t, f) in analysis::analyze_signal_with(&mut analyzer, &x, rate, &settings, timing.then_some(&mut times)) {
         println!("{}", analysis::csv_row(t, &f));
+    }
+    if timing {
+        times.sort_by(f64::total_cmp);
+        let median = times.get(times.len() / 2).copied().unwrap_or(0.0);
+        let max = times.last().copied().unwrap_or(0.0);
+        eprintln!("{}", serde_json::json!({ "frames": times.len(), "median_ms": median, "max_ms": max }));
     }
     ExitCode::SUCCESS
 }
