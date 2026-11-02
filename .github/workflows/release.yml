@@ -113,9 +113,11 @@ jobs:
             Copy-Item $contents[$name] "dist\$name\"
             Compress-Archive -Path "dist\$name" -DestinationPath "release\$name.zip"
           }
-          Get-ChildItem release\*.zip | Sort-Object Name | ForEach-Object {
+          # shasum -c でも読めるように、改行は LF で書く
+          $sums = Get-ChildItem release\*.zip | Sort-Object Name | ForEach-Object {
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
-          } | Set-Content -Encoding ascii release\SHA256SUMS.txt
+          }
+          [IO.File]::WriteAllText("$PWD\release\SHA256SUMS.txt", ($sums -join "`n") + "`n")
           Get-Content release\SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
