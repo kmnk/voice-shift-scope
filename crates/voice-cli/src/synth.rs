@@ -13,7 +13,7 @@ pub struct Resonance {
     pub bandwidth: f64,
 }
 
-/// spec の合成の母音の F1〜F4（帯域幅は 60〜120 Hz の幅に置く）。
+/// 試験用の合成の母音（docs/criteria.md の「試験用の信号」）の F1〜F4（帯域幅は 60〜120 Hz の幅に置く）。
 pub const SPEC_VOWEL: [Resonance; 4] = [
     Resonance { frequency: 700.0, bandwidth: 60.0 },
     Resonance { frequency: 1200.0, bandwidth: 80.0 },
@@ -21,7 +21,7 @@ pub const SPEC_VOWEL: [Resonance; 4] = [
     Resonance { frequency: 3500.0, bandwidth: 120.0 },
 ];
 
-/// 合成の母音に使う共鳴。spec の F1〜F4 に、F5（4500 Hz）を足す。
+/// 合成の母音に使う共鳴。試験用の F1〜F4 に、F5（4500 Hz）を足す。
 /// 実際の声は上限（5500 Hz）までに 5 つ前後の共鳴を持ち、Praat と同じ既定（5 個・5500 Hz）の LPC は
 /// それを前提にしている。F1〜F4 だけの信号では、F2 と F3 の間に無い共鳴を置いてしまう。
 pub const SYNTH_VOWEL: [Resonance; 5] = [
@@ -142,7 +142,7 @@ mod tests {
     const SR: f64 = 48_000.0;
 
     /// 合成の母音の倍音の強さ（H1 との dB の差）が、共鳴のフィルタの応答から
-    /// 計算した値と ±1 dB で合う。F0 は spec の 3 通り。
+    /// 計算した値と ±1 dB で合う。F0 は試験用の 3 通り（100・150・220 Hz）。
     #[test]
     fn vowel_harmonics_follow_resonance_response() {
         for f0 in [100.0, 150.0, 220.0] {

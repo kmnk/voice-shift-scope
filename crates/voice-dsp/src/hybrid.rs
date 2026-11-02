@@ -2,7 +2,7 @@
 //!
 //! ピッチを 0 半音より下げるときは TD-PSOLA（`PsolaShifter`）、0 半音以上では Signalsmith Stretch を使う。
 //! 下げる向きで Signalsmith Stretch の周期性が大きく落ち、PSOLA の方が良かったことに依る
-//! （work リポジトリの voice-shit-scope-voice-hokan のタスクの research.md）。
+//! （判定は docs/criteria.md の Q1・Q10〜Q13）。
 //! 2 つとも毎ブロック同じ入力で動かし続け、設定が境目をまたいだら 30 ms で出力を混ぜて移る。
 //! PSOLA は Signalsmith Stretch と同じ遅れで作るので、切り替えても時刻は跳ばない。
 //! PSOLA が無声と判定した区間は、Signalsmith Stretch の出力で埋める（`PsolaShifter::process_with_fallback`）。

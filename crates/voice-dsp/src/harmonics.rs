@@ -10,7 +10,7 @@ use rustfft::{Fft, FftPlanner};
 use voice_domain::ports::HarmonicPicker;
 use voice_domain::{AnalysisSettings, Decibels, Frequency, Harmonic, SampleRate};
 
-/// 倍音を探すときの、k × F0 からの許す幅（F0 に対する比）。spec の「F0 の ±5% 以内」。
+/// 倍音を探すときの、k × F0 からの許す幅（F0 に対する比）。F0 の ±5% 以内。
 pub const PEAK_TOLERANCE: f32 = 0.05;
 /// 拾う倍音の最大の数。
 pub const MAX_HARMONICS: usize = 40;
