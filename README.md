@@ -30,7 +30,6 @@
 - 起動するとき、「Windows によって PC が保護されました」という画面が出ることがある。「詳細情報」を押してから「実行」を押すと起動する
 - Windows 11 の Smart App Control が有効な PC では、署名の無いアプリは止められて起動できない。Smart App Control を切ると起動できるが、切った後に元に戻せないことがあるので、切るかどうかは各自で判断してほしい
 
-署名は、下の「Code signing policy」のとおり、使う人が増えてから申し込む予定。
 
 ## 使い方
 
@@ -49,14 +48,6 @@
 ## ネットへの通信
 
 アプリは、ネットに何も送らず、何も受け取らない。マイクの音は手元の PC の中で変えて、選んだ機器に流すだけで、記録もしない。設定は上の `preferences.json` に、保存した画像は選んだフォルダーに、手元にだけ置く。
-
-## Code signing policy
-
-Windows の配布物のコードの署名は、使う人が増えてから SignPath Foundation（https://signpath.org/ ）に申し込む予定。SignPath Foundation は、署名する project に使われている実績を求めるため。署名が付くまでは、上の警告が出る。
-
-- 署名するもの: このリポジトリの `.github/workflows/release.yml` が GitHub Actions で build した `voice-shift-scope.exe` と `voice-cli.exe` だけ。何を署名するかは `.signpath/artifact-configuration.xml` にある
-- 役割: 作者・レビュアー・承認者は、すべて kmnk（https://github.com/kmnk ）
-- プライバシー: 上の「ネットへの通信」のとおり、アプリは利用者の情報を集めず、送らない
 
 ## 開発
 
