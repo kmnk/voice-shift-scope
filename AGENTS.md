@@ -44,10 +44,10 @@ uv run scripts/compare_praat.py /tmp/v100.wav --expect 700,1200,2600,3500 --form
 
 ## 検証
 
-変更の種類ごとに、次で確かめる。Windows でしか動かないものは GitHub Actions の Windows のランナーで動かす（ランナーは毎回作り直されるので、利用者の機器や設定に触れない）。
+変更の種類ごとに、次で確かめる。判定の名前（A1、U3-settings など）の意味と合格の条件は [docs/criteria.md](docs/criteria.md) にある。判定を足すときや条件を変えるときは、そこを直す。Windows でしか動かないものは GitHub Actions の Windows のランナーで動かす（ランナーは毎回作り直されるので、利用者の機器や設定に触れない）。
 
 - `cargo test --workspace` と `cd frontend && npm test`: 値の型と `VoiceSession` の規則、use case、分析の部品、試験用の信号、VB-CABLE を見つける処理、音声の実行の部品（時計のずれの補正など）、表示を止める状態（B5・B7・B8 の状態の移り方）
-- `cargo run --release -p voice-cli -- check --criteria A1,A2,A3,A4,B1,B3,Q2,Q3,Q4,Q5 [--json] [--block-ms 70] [--shifter app|signalsmith]`: spec の受け入れの基準を、試験用の信号で判定する。FAIL があれば終了コード 1。B1 は、同じ設定の Praat の値（`check.rs` の `PRAAT_REFERENCE`、作り直すときは `scripts/praat_reference.sh`）との差で判定する。今は A3 の F0 150 Hz・0.9 倍だけが FAIL する（CI は通るものだけ `A1,A4,B1,B3` を動かす）。Q2〜Q5 は、ピッチを下げたときの響き、2 つの処理の切り替え、変えた後の音量、無音を持ち上げないこと。`--shifter signalsmith` は変更の前の処理（Signalsmith Stretch だけ）で判定する。判定が違いを捕まえるかを確かめるのに使う
+- `cargo run --release -p voice-cli -- check --criteria A1,A2,A3,A4,B1,B3,Q2,Q3,Q4,Q5 [--json] [--block-ms 70] [--shifter app|signalsmith]`: [docs/criteria.md](docs/criteria.md) の判定を、試験用の信号で行う。FAIL があれば終了コード 1。B1 は、同じ設定の Praat の値（`check.rs` の `PRAAT_REFERENCE`、作り直すときは `scripts/praat_reference.sh`）との差で判定する。今は A3 の F0 150 Hz・0.9 倍だけが FAIL する（CI は通るものだけ `A1,A4,B1,B3` を動かす）。Q2〜Q5 は、ピッチを下げたときの響き、2 つの処理の切り替え、変えた後の音量、無音を持ち上げないこと。`--shifter signalsmith` は変更の前の処理（Signalsmith Stretch だけ）で判定する。判定が違いを捕まえるかを確かめるのに使う
 - `uv run scripts/quality_check.py [--shifter app|signalsmith] [--keep <dir>] [--speech <wav>...]`: Q1（ピッチを下げたときの周期性）。揺れのある合成の母音を `voice-cli shift` で変え、Praat の HNR を理想の出力と比べる。`--speech` に声の wav（48 kHz、mono。macOS なら `say` と `afconvert` で作れる。作り方は script の先頭）を渡すと、Q10（下げたとき元の高さの声が混ざらない）、Q11（言葉の頭で変更の前の処理より雑音が増えない）、Q12（下げた声で元の高さが聞こえない。狙いの F0 の奇数番目と偶数番目の倍音の強さの比）、Q13（さしすせそなどの子音がこもらない。子音の枠のスペクトルの重心）も判定する。合成の母音では PSOLA の有声の取りこぼしが起きないので、声の wav を渡して確かめる。先に `cargo build --release -p voice-cli` が要る
 - `cargo run --release -p voice-cli -- shift <in.wav> <out.wav> --pitch <半音> --formant <倍率> [--shifter app|signalsmith] [--timing]`: 48 kHz の wav を、アプリと同じ声を変える処理に 10 ms ずつ通して書く（機器は開かない）。`--timing` は 1 ブロックの処理時間の中央値と最大を JSON で出す。アプリの分析のスレッドと同じく、直近 4096 標本の F0 を 10 ms ごとに目安（`set_pitch_hint`）として渡す（`--no-hint` で渡さない）。目安を渡さないと、0 半音以上の音（Signalsmith Stretch）がアプリと違う音になる
 - `voice-cli analyze <wav>` の CSV を `scripts/compare_praat.py <wav> --compare <csv>` に渡すと、Praat との差を出す

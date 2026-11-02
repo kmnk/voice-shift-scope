@@ -59,7 +59,7 @@ async function resizeWindow(width: number, height: number): Promise<{ ok: boolea
 /// ピッチ・フォルマントの今の値（欄の文字は符号やマイナス記号を含むので、main.ts が書く data-value を読む）
 const shiftValue = (target: "pitch" | "formant") => Number(q<HTMLInputElement>(`#${target}-num`).dataset.value);
 
-/// ピッチ・フォルマントの欄の見た目と操作（spec の U6・U7・U8）。VB-CABLE が無くても動く
+/// ピッチ・フォルマントの欄の見た目と操作（U6・U7・U8）。VB-CABLE が無くても動く
 async function checkShiftControls(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
   // U6: スペクトルの題は文字だけになり、線の見本の凡例が付く
   const caption = q(".spectrum-panel .caption-title").textContent ?? "";
@@ -170,7 +170,7 @@ async function checkShiftControls(record: (c: string, pass: boolean, detail: unk
   );
 }
 
-/// 数値の表が欄の中に収まり（横にも縦にもはみ出さない）、2 つのスペクトログラムが同じ大きさか（spec の U4）
+/// 数値の表が欄の中に収まり（横にも縦にもはみ出さない）、2 つのスペクトログラムが同じ大きさか（U4）
 function tableFits(): { lang: string; fits: boolean; table: number[]; panel: number[]; grams: number[][] } {
   const t = q("#numbers").getBoundingClientRect();
   const p = q(".table-panel").getBoundingClientRect();
@@ -194,7 +194,7 @@ async function tableFitsBothLanguages(): Promise<ReturnType<typeof tableFits>[]>
   return [first, second];
 }
 
-/// 重ね描き（spec の U10・U11）。変えた後だけを止めた状態で呼ばれ、同じ状態に戻して終わる
+/// 重ね描き（U10・U11）。変えた後だけを止めた状態で呼ばれ、同じ状態に戻して終わる
 async function checkOverlay(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
   await sleep(500);
   const look = () =>
@@ -391,7 +391,7 @@ function blur(): void {
   (document.activeElement as HTMLElement | null)?.blur?.();
 }
 
-/// 絵文字と記号のアイコン（spec の A3 で消したもの）
+/// 絵文字と記号のアイコン（S2 で無くしたもの）
 const OLD_ICONS = /[\u25B6\u25A0\u23F8\u21C4\u21BA\u21F2\u21F1\u26A0]|\u{1F3A7}|\u{1F4F7}/u;
 
 /// S2: 見えているボタンに絵文字・記号のアイコンが無く、高さが 24px。アイコンを持つボタンは SVG を持つ
@@ -405,7 +405,7 @@ function checkButtons(): { lang: string; bad: unknown[]; checked: number } {
     const text = b.textContent ?? "";
     const needsIcon = b.dataset.icon !== undefined || ["run", "route", "view-toggle"].includes(b.id);
     const hasSvg = b.querySelector("svg.icon") !== null;
-    // ピッチとフォルマントの値の行（− と + と元に戻す）は、大きな値の欄に合わせて 32px（このタスクの spec の試作）
+    // ピッチとフォルマントの値の行（− と + と元に戻す）は、大きな値の欄に合わせて 32px
     const expected = b.closest(".value-row") ? 32 : 24;
     if (h !== expected || OLD_ICONS.test(text) || (needsIcon && !hasSvg)) bad.push({ id: b.id || b.className, h, text, needsIcon, hasSvg });
   });
@@ -431,7 +431,7 @@ function checkLegend(): { pass: boolean; detail: unknown } {
   return { pass: legendOk && tableOk, detail: { want, legends, table } };
 }
 
-/// 上の帯（spec の U1）: 部品がそろい、どれも窓の幅を越えず、帯の高さが 32px。キーの札は無く、止める切り替えの組の間に区切りの線がある
+/// 上の帯（U1）: 部品がそろい、どれも窓の幅を越えず、帯の高さが 32px。キーの札は無く、止める切り替えの組の間に区切りの線がある
 function checkBar(): { lang: string; pass: boolean; detail: unknown } {
   const bar = q(".bar").getBoundingClientRect();
   const ids = ["run", "freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open", "lang-toggle", "view-toggle"];
@@ -469,7 +469,7 @@ function checkBar(): { lang: string; pass: boolean; detail: unknown } {
   return { lang: lang(), pass, detail: { barHeight: bar.height, parts, keyHints, dividers, messageInBar, innerWidth: window.innerWidth } };
 }
 
-/// 左の列（spec の U2）: PITCH・FORMANT・DEVICES の 3 つの欄だけで、DEVICES に機器の部品があり、縦にスクロールしない
+/// 左の列（U2）: PITCH・FORMANT・DEVICES の 3 つの欄だけで、DEVICES に機器の部品があり、縦にスクロールしない
 function checkColumn(): { lang: string; pass: boolean; detail: unknown } {
   const controls = q(".controls");
   const groups = [...controls.querySelectorAll<HTMLElement>(":scope > .group")].filter((g) => g.offsetParent !== null);
@@ -494,7 +494,7 @@ async function barAndColumnBothLanguages(): Promise<{ bar: ReturnType<typeof che
   return { bar, column };
 }
 
-/// 設定の板（spec の U3）: ボタンで開き、分析の欄が中にあり、Esc と板の外を押すと閉じ、閉じると設定のボタンにフォーカスが戻る
+/// 設定の板（U3）: ボタンで開き、分析の欄が中にあり、Esc と板の外を押すと閉じ、閉じると設定のボタンにフォーカスが戻る
 async function checkSettings(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
   const panel = q("#settings");
   const open = () => panel.matches(":popover-open");
@@ -566,15 +566,15 @@ export async function runSelftest(dir: string): Promise<void> {
       startEn,
       startOther,
     });
-    // DEVICES 欄のボタンの文言が、どちらの言葉でも 1 行に収まり、列からはみ出さない（spec の D5）
+    // DEVICES 欄のボタンの文言が、どちらの言葉でも 1 行に収まり、列からはみ出さない（D5）
     const overflowing = [...fitOther, ...fitBack].filter((f) => !f.fits);
     await record("devices-fit", overflowing.length === 0, { overflowing, checked: fitOther.length + fitBack.length });
-    // 絵文字・記号のアイコンが無く、どのボタンも高さ 24px（spec の S2）
+    // 絵文字・記号のアイコンが無く、どのボタンも高さ 24px（S2）
     await record("S2-icons", buttonsOther.bad.length === 0 && buttonsBack.bad.length === 0 && buttonsOther.checked > 10, {
       other: buttonsOther,
       back: buttonsBack,
     });
-    // F1〜F4 の凡例と表の色の見本（S3）、スペクトルの dB の目盛り（S6）、止める欄の並び（S9）
+    // F1〜F4 の凡例と表の色の見本（S3）、スペクトルの dB の目盛り（S6）、止める切り替えの並び（U1。前の S9 を置き換えた）
     const legend = checkLegend();
     await record("S3-legend", legend.pass, legend.detail);
     const dbTicksText = q<HTMLCanvasElement>("#spectrum").dataset.dbTicks;
@@ -619,7 +619,7 @@ export async function runSelftest(dir: string): Promise<void> {
       closedByQuestion: !dialog.open,
     });
 
-    // モニターはチェックボックスでなくトグルボタン（spec の D3）
+    // モニターはチェックボックスでなくトグルボタン（D3）
     await checkMonitor(record);
     // 簡易表示: 右の表示と分析・一時停止の欄が消え、もう一度で戻る
     q("#message").textContent = "leftover";
@@ -685,7 +685,7 @@ export async function runSelftest(dir: string): Promise<void> {
       await sleep(5000);
       const guideAfter = q("#plot-guide").textContent ?? "";
       await record("U5-guide", guideBefore === t("guide.start") && guideAfter === "", { guideBefore, guideAfter });
-      // 開始と停止は 1 つのボタン。動いている間は STOP を出し、IN と OUT を選べない（spec の D1）
+      // 開始と停止は 1 つのボタン。動いている間は STOP を出し、IN と OUT を選べない（D1）
       const whileRunning = {
         running: q("#run").dataset.running,
         text: q("#run").textContent,
@@ -879,7 +879,7 @@ export async function runSelftest(dir: string): Promise<void> {
       const none = !frozen("before") && !frozen("after");
       await record("B8", both && none, { both, none });
 
-      // 出力とモニターに流す音の切り替え（1 つのボタンで両方。押すたびに入れ替わる。spec の D4）
+      // 出力とモニターに流す音の切り替え（1 つのボタンで両方。押すたびに入れ替わる。D4）
       const routeButtons = document.querySelectorAll("button[data-testid^=\"route\"]").length;
       const first = q("#route").dataset.source;
       click("route");

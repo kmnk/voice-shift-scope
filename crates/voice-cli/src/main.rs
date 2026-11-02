@@ -112,7 +112,7 @@ enum Command {
 
 #[derive(Subcommand)]
 enum Signal {
-    /// spec の合成の母音（F1 700・F2 1200・F3 2600・F4 3500 Hz に F5 4500 Hz を足したもの）
+    /// 試験用の合成の母音（docs/criteria.md の「試験用の信号」。F1 700・F2 1200・F3 2600・F4 3500 Hz に F5 4500 Hz を足したもの）
     Vowel {
         /// 基本周波数（Hz）
         #[arg(long)]

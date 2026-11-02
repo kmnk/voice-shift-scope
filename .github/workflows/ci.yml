@@ -11,8 +11,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# 手元（mac mini）で回せる cargo test と frontend の npm test・typecheck は CI に置かない。
-# CI は手元で回せない Windows での build と test だけを持つ。
+# 開発の機器（macOS）で回せる cargo test と frontend の npm test・typecheck は CI に置かない。
+# CI は macOS で回せない Windows での build と test だけを持つ。
 jobs:
   rust:
     runs-on: windows-latest

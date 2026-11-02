@@ -6,7 +6,7 @@ fn finite(value: f32) -> Result<f32, DomainError> {
     if value.is_finite() { Ok(value) } else { Err(DomainError::NotFinite) }
 }
 
-/// ピッチの変化（半音）。spec の最小の範囲（±12 半音）を含む −24〜+24。
+/// ピッチの変化（半音）。求める最小の範囲（±12 半音）を含む −24〜+24。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PitchShift(f32);
 
@@ -34,7 +34,7 @@ impl PitchShift {
     }
 }
 
-/// フォルマントの倍率。spec の最小の範囲（0.7〜1.4）を含む 0.5〜2.0。
+/// フォルマントの倍率。求める最小の範囲（0.7〜1.4）を含む 0.5〜2.0。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FormantShift(f32);
 

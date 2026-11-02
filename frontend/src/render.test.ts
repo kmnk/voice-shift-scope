@@ -162,7 +162,7 @@ describe("色の直書きが無い（S1）", () => {
     }
   });
 
-  it("style.css の :root に、spec の変数がすべてある", () => {
+  it("style.css の :root に、S1 の変数がすべてある", () => {
     const root = css.slice(css.indexOf(":root"), css.indexOf("}", css.indexOf(":root")));
     const names = [
       "bg", "surface", "control", "control-hover", "ink", "muted", "line", "grid", "accent", "hold", "danger", "harmonic", "before",

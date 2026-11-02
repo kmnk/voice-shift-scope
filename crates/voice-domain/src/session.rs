@@ -28,7 +28,7 @@ impl MonitorVolume {
     }
 }
 
-/// モニターの設定。起動したときは切ってある（spec の「モニターの既定」）。
+/// モニターの設定。起動したときは切ってある。
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonitorSettings {
     pub enabled: bool,
