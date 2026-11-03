@@ -1,8 +1,8 @@
 # Check names
 
-The check names (A1, U3-settings, and so on) used by `voice-cli check`, `scripts/quality_check.py`, the UI self-test (`ui-report.json` from `--ui-selftest`), `voice-cli e2e`, and the [hardware checklist](windows-checklist.md), with what each one checks and when it passes. Names such as "A1" and "S8" in code comments refer to these. When you add a check or change a pass condition, update this document.
+The check names (A1, U3-settings, and so on) used by `voice-cli check`, `scripts/quality_check.py`, the UI self-test (`ui-report.json` from `--ui-selftest`), and `voice-cli e2e`, with what each one checks and when it passes. Names such as "A1" and "S8" in code comments refer to these. When you add a check or change a pass condition, update this document. Only checks that run without a person are listed here.
 
-Abbreviations in "Checked by": `check` is `cargo run --release -p voice-cli -- check --criteria <name>`, `quality` is `uv run scripts/quality_check.py`, `selftest` is the UI self-test (`windows-ui.yml`), `e2e` is `voice-cli e2e` (`windows-e2e.yml`), and `manual` is the hardware checklist.
+Abbreviations in "Checked by": `check` is `cargo run --release -p voice-cli -- check --criteria <name>`, `quality` is `uv run scripts/quality_check.py`, `selftest` is the UI self-test (`windows-ui.yml`), and `e2e` is `voice-cli e2e` (`windows-e2e.yml`).
 
 ## Test signals
 
@@ -16,9 +16,8 @@ Most A, B, and Q checks use a synthetic vowel whose answer is known. It is a pul
 | A2 | Formants stay when the pitch moves | Under A1, the shifted F1–F3 are within ±5% of the original (F0 100 and 150 Hz) | `check` |
 | A3 | Formant | At 0 semitones with formant ×0.8, ×0.9, ×1.1, and ×1.2, F1–F3 move by that factor within ±7%, and F0 stays within ±1%. F0 150 Hz at ×0.9 does not pass because F1 comes close to a harmonic | `check` |
 | A4 | No change | At 0 semitones and ×1.0, the difference between the output and the input (after aligning the delay) is at least 30 dB below the input | `check` |
-| A5 | Latency | 150 ms or less from the microphone to the output. Does not pass on GitHub Actions runners because of their devices | `e2e`, `manual` |
-| A6 | No dropouts | Running 30 minutes with the default settings and the monitor on, the output and the monitor have 0 dropouts (buffer underruns). May not pass on runners | `e2e`, `manual` |
-| A7 | Offset between the two outputs | Under A6, the time difference between the output and the monitor is within 20 ms and does not grow over time | `manual` |
+| A5 | Latency | 150 ms or less from the wav source to the output. Does not pass on GitHub Actions runners because of their devices, so the value is kept in the report and does not decide the workflow result | `e2e` |
+| A6 | No dropouts | With the default settings, the output has 0 dropouts (buffer underruns). May not pass on runners, so the value is kept in the report and does not decide the workflow result | `e2e` |
 
 ## Q. Lowering the pitch (TD-PSOLA) and output level
 
@@ -43,7 +42,6 @@ Q6–Q9 were checked once when TD-PSOLA was added (results for raising the pitch
 | Name | What it checks | Pass condition | Checked by |
 | --- | --- | --- | --- |
 | B1 | F1–F4 estimate | For synthetic vowels (F0 100, 150, and 220 Hz), the estimated F1–F4 are within ±2% of Praat's values for the same signal with the same settings (Burg method, same ceiling and number of poles). The difference from the true values is shown for reference | `check` (Praat's values are `PRAAT_REFERENCE` in `check.rs`) |
-| B2 | Agreement on a real voice | For sustained vowels (a, i, u, e, o; 2 s each), the medians of the estimated F1–F3 are within ±5% of Praat's medians for the same recording | `manual` |
 | B3 | Harmonics | For a signal at F0 150 Hz with only H1–H8, at least 20 dB above the noise floor, the number of harmonics seen is 8 and H1–H8 are within ±1% of the true frequencies | `check` |
 | B4 | Original and shifted are aligned | For a synthetic vowel shifted by +5 semitones, the original and shifted values on screen are from the same time | `selftest` (`B4-shift`) |
 | B5 | Holding everything | After holding, the original and shifted displays stop changing and the output voice does not break up. Doing it again brings both back to the latest | `selftest` (`B5-freeze`, `B5-resume`) |
@@ -59,12 +57,12 @@ Q6–Q9 were checked once when TD-PSOLA was added (results for raising the pitch
 
 | Name | What it checks | Pass condition | Checked by |
 | --- | --- | --- | --- |
-| C1 | Other software can receive the voice | Recording the recording side of the virtual audio device (CABLE Output for VB-CABLE) in other recording software captures the shifted voice | `manual` |
-| C2 | Devices can be chosen | The input, output, and monitor lists show the devices Windows knows by name, and the app runs with the chosen device. A USB device plugged in before restarting appears in the list, and disappears after unplugging and restarting | `manual` |
-| C3 | Monitor | With headphones as the monitor, the shifted voice is heard, it can still be recorded as in C1, and changing the monitor volume does not change the recorded level. Monitor latency is 150 ms or less | `manual` |
+| C2 | Device lists | The input list does not have the VB-CABLE recording side, and the monitor cannot be the output device. Fetching the list again keeps the chosen devices that remain and clears removed ones | Unit tests (`voice-domain` `session.rs`, `voice-app`) |
 | C4 | Cannot start until an output is chosen | While no output device is chosen, the start button cannot be pressed (on the first start on Windows without VB-CABLE, the output is empty) | `selftest` |
-| C5 | Saving an image | Holding and saving writes a PNG that shows the same display and values as the held screen, the original and shifted times, whether each is held, the settings, and when it was saved. The save dialog opens in the folder last saved to, or in the Pictures folder if that folder no longer exists. Saving is not possible while both sides are live | `selftest` (`C5-save`), `manual` |
-| C6 | Devices at start | On the first start, the input is the Windows default recording device, the output is the VB-CABLE playback side (if installed; otherwise empty), and the monitor is the default playback device (empty if it is the same as the output). After choosing devices and restarting, the same devices are used; after unplugging one and restarting, the default device is used | `manual` |
+| C5 | Saving an image | Holding and saving writes a PNG that shows the same display and values as the held screen, the original and shifted times, whether each is held, the settings, and when it was saved. The save dialog opens in the folder last saved to, or in the Pictures folder if that folder no longer exists. Saving is not possible while both sides are live | `selftest` (`C5-save`), unit tests (the folder; `voice-tauri` `preferences.rs`) |
+| C6 | Devices at start | On the first start, the input is the default recording device, the output is the VB-CABLE playback side (if installed; otherwise empty), and the monitor is the default playback device (empty if it is the same as the output). Remembered devices are used at start, and remembered devices that are no longer in the list are skipped, keeping the default | Unit tests (`voice-domain` `session.rs`, `voice-app`) |
+
+A7 (offset between the output and the monitor), B2 (agreement with Praat on a real voice), C1 (other software receives the voice), and C3 (monitor) needed a person with real devices and were removed. The names are not reused.
 
 ## D. Devices section
 
@@ -97,7 +95,7 @@ Q6–Q9 were checked once when TD-PSOLA was added (results for raising the pitch
 | S19 | With focus on the volume slider, the monitor select, or the monitor button, `Space` and `Tab` still work and are `preventDefault`ed, and the selected monitor device does not change. The arrows on the slider are not `preventDefault`ed and the pitch does not change | `selftest` (`S19-focus-keys`) |
 | S20 | While typing in a number field, with Ctrl, or on key repeat, `Space`, `Tab`, and `A` change nothing | `selftest` (`S20-ignored-keys`) |
 
-S9 (key hints on the hold switches) and S14 (length of the left column) were replaced by U1 and U2. S13 checked that the self-test results did not change during that change. S11 (`S` saves) was removed with the save key; `S` now holds the original side. A synthetic `keydown` does not trigger the browser's default actions (pressing a button, opening a select, moving focus), so S16 and S19 check that those are stopped by whether the event was `preventDefault`ed. Whether they really stop is checked by hand on Windows (see [windows-checklist.md](windows-checklist.md)).
+S9 (key hints on the hold switches) and S14 (length of the left column) were replaced by U1 and U2. S13 checked that the self-test results did not change during that change. S11 (`S` saves) was removed with the save key; `S` now holds the original side. A synthetic `keydown` does not trigger the browser's default actions (pressing a button, opening a select, moving focus), so S16 and S19 check that those are stopped by whether the event was `preventDefault`ed.
 
 ## U. Top bar, left column, settings panel, and compact view
 

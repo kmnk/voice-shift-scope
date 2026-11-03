@@ -60,8 +60,7 @@ jobs:
           target/release/voice-cli loopback --input-wav vowel150.wav --out-wav recorded.wav | Tee-Object -FilePath e2e-report.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # The e2e exit code includes A5 (latency) and A6 (dropouts). On runners A5 exceeds 150 ms and A6 gets underruns,
-      # but these two are checked on the user's Windows with docs/windows-checklist.md. Here the values are kept in the report,
-      # and the result is decided only by A1 and the analysis, which can be judged on a runner.
+      # so here the values are only kept in the report, and the result is decided only by A1 and the analysis, which can be judged on a runner.
       - name: Measure latency through the audio runtime (0 semitones, 10 s)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
