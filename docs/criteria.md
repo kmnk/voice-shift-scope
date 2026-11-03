@@ -1,134 +1,134 @@
-# 判定の名前の一覧
+# Check names
 
-`voice-cli check`、`scripts/quality_check.py`、画面の自己試験（`--ui-selftest` の `ui-report.json`）、`voice-cli e2e`、[実機のチェックリスト](windows-checklist.md) が使う判定の名前（A1、U3-settings など）と、それぞれが何を確かめ、何なら合格かの一覧。コードのコメントの「A1」「S8」などもこの名前を指す。判定を足すときや合格の条件を変えるときは、この文書を直す。
+The check names (A1, U3-settings, and so on) used by `voice-cli check`, `scripts/quality_check.py`, the UI self-test (`ui-report.json` from `--ui-selftest`), `voice-cli e2e`, and the [hardware checklist](windows-checklist.md), with what each one checks and when it passes. Names such as "A1" and "S8" in code comments refer to these. When you add a check or change a pass condition, update this document.
 
-「判定する所」の略: `check` は `cargo run --release -p voice-cli -- check --criteria <名前>`、`quality` は `uv run scripts/quality_check.py`、`selftest` は画面の自己試験（`windows-ui.yml`）、`e2e` は `voice-cli e2e`（`windows-e2e.yml`）、`手` は実機のチェックリスト。
+Abbreviations in "Checked by": `check` is `cargo run --release -p voice-cli -- check --criteria <name>`, `quality` is `uv run scripts/quality_check.py`, `selftest` is the UI self-test (`windows-ui.yml`), `e2e` is `voice-cli e2e` (`windows-e2e.yml`), and `manual` is the hardware checklist.
 
-## 試験用の信号
+## Test signals
 
-A・B・Q の多くは、答えの分かる合成の母音で確かめる。決まった F0 のパルス列を、F1 700 Hz・F2 1200 Hz・F3 2600 Hz・F4 3500 Hz（帯域幅 60〜120 Hz）に F5 4500 Hz（帯域幅 150 Hz）を足した共鳴のフィルタに通したもので、F0 は 100 Hz・150 Hz・220 Hz の 3 通り（`cargo run -p voice-cli -- synth vowel`）。F5 を足すのは、実際の声が 5500 Hz までに 5 つ前後の共鳴を持ち、F1〜F4 だけの信号では Praat と同じ既定の推定が F2 と F3 の間に無い共鳴を置くため。
+Most A, B, and Q checks use a synthetic vowel whose answer is known. It is a pulse train at a fixed F0, passed through resonance filters at F1 700 Hz, F2 1200 Hz, F3 2600 Hz, and F4 3500 Hz (bandwidths 60–120 Hz) plus F5 4500 Hz (bandwidth 150 Hz), with F0 at 100 Hz, 150 Hz, or 220 Hz (`cargo run -p voice-cli -- synth vowel`). F5 is added because real voices have about 5 resonances below 5500 Hz, and with only F1–F4 the same default estimate as Praat places a resonance between F2 and F3 that is not there.
 
-## A. 声を変える
+## A. Changing the voice
 
-| 名前 | 確かめること | 合格の条件 | 判定する所 |
+| Name | What it checks | Pass condition | Checked by |
 | --- | --- | --- | --- |
-| A1 | ピッチ | フォルマント 1.0 倍のまま −12・−5・+5・+12 半音にしたとき、変えた後の F0 が変える前の 2^(半音/12) 倍から ±1% 以内 | `check`、`e2e` |
-| A2 | ピッチを動かしてもフォルマントが残る | A1 のとき、変えた後の F1〜F3 が変える前から ±5% 以内（F0 100・150 Hz） | `check` |
-| A3 | フォルマント | ピッチ 0 半音のままフォルマントを 0.8・0.9・1.1・1.2 倍にしたとき、F1〜F3 がその倍率から ±7% 以内で、F0 は ±1% 以内で変わらない。F0 150 Hz・0.9 倍は F1 が倍音の近くに来るため通らない | `check` |
-| A4 | 何も変えないとき | 0 半音・1.0 倍のとき、出る音と入れた音の差（遅れを合わせた後）が入れた音より 30 dB 以上小さい | `check` |
-| A5 | 遅れ | マイクに入ってから出力に出るまで 150 ms 以下。GitHub Actions のランナーでは機器の性質で通らない | `e2e`、`手` |
-| A6 | 途切れない | 既定の設定でモニターも入れて 30 分動かし、出力とモニターの途切れ（バッファの不足）が 0 回。ランナーでは通らないことがある | `e2e`、`手` |
-| A7 | 2 つの出し先のずれ | A6 のとき、出力とモニターの音の時刻の差が 20 ms 以内で、時間とともに広がらない | `手` |
+| A1 | Pitch | At −12, −5, +5, and +12 semitones with formant ×1.0, the shifted F0 is within ±1% of 2^(semitones/12) times the original | `check`, `e2e` |
+| A2 | Formants stay when the pitch moves | Under A1, the shifted F1–F3 are within ±5% of the original (F0 100 and 150 Hz) | `check` |
+| A3 | Formant | At 0 semitones with formant ×0.8, ×0.9, ×1.1, and ×1.2, F1–F3 move by that factor within ±7%, and F0 stays within ±1%. F0 150 Hz at ×0.9 does not pass because F1 comes close to a harmonic | `check` |
+| A4 | No change | At 0 semitones and ×1.0, the difference between the output and the input (after aligning the delay) is at least 30 dB below the input | `check` |
+| A5 | Latency | 150 ms or less from the microphone to the output. Does not pass on GitHub Actions runners because of their devices | `e2e`, `manual` |
+| A6 | No dropouts | Running 30 minutes with the default settings and the monitor on, the output and the monitor have 0 dropouts (buffer underruns). May not pass on runners | `e2e`, `manual` |
+| A7 | Offset between the two outputs | Under A6, the time difference between the output and the monitor is within 20 ms and does not grow over time | `manual` |
 
-## Q. ピッチを下げる処理（TD-PSOLA）と出力の音量
+## Q. Lowering the pitch (TD-PSOLA) and output level
 
-ピッチを 0 半音より下げるときの処理と、変えた後の音量の判定。Q1 と Q10〜Q13 は、揺れのある合成の母音か、macOS の読み上げの声（Kyoko と Daniel）を使う（作り方は `scripts/quality_check.py` の先頭）。
+Checks for the processing used below 0 semitones and for the level of the shifted voice. Q1 and Q10–Q13 use a synthetic vowel with variation, or the macOS text-to-speech voices (Kyoko and Daniel). How to make them is at the top of `scripts/quality_check.py`.
 
-| 名前 | 確かめること | 合格の条件 | 判定する所 |
+| Name | What it checks | Pass condition | Checked by |
 | --- | --- | --- | --- |
-| Q1 | 下げたときの周期性 | 揺れのある合成の母音（F0 110・220 Hz、5.5 Hz・±30 cent の vibrato、jitter 0.5%・shimmer 3%、−30 dB の息の雑音）を −5・−12 半音、フォルマント 1.0・0.8 倍で変えたとき、HNR（Praat の harmonicity、cc、10 ms、下限 30 Hz の平均）が、狙いの F0 とフォルマントで作り直した理想の出力の HNR から 2.0 dB 以内の低さ | `quality` |
-| Q2 | 下げたときの響き | A2 のうち下げる場合（F0 100・150 Hz、−5・−12 半音）で F1〜F3 が ±5% 以内。−12 半音とフォルマント 0.8・1.2 倍の組み合わせで、F1〜F3 がその倍率から ±7% 以内、F0 が狙いから ±1% 以内 | `check` |
-| Q3 | 2 つの処理の切り替え | F0 150 Hz の合成の母音で、1.0 秒に −5 → +5 半音、2.0 秒に −5 半音に戻したとき、切り替えの前後 100 ms の RMS（20 ms の窓を 5 ms ずつ）が、切り替えの前の 200 ms の RMS の中央値の 0.5〜2 倍 | `check` |
-| Q4 | 音量 | F0 100・150 Hz の合成の母音を、±5・±12 半音、フォルマント 0.8・1.2 倍、−12 半音と 0.8 倍で変えたとき、0.5 秒から後の出力の RMS が入力から ±2 dB 以内 | `check` |
-| Q5 | 無音を持ち上げない | −60 dBFS の白色雑音だけを ±12 半音で変えたとき、出力の RMS が入力より 1 dB を超えて大きくならない | `check` |
-| Q10 | 下げたとき元の高さが混ざらない | 読み上げの声を −12 半音と、−12 半音・0.8 倍で変えたとき、入力が有声の 10 ms の枠のうち、出力の F0 が入力の F0 の ±8% にある枠が 2% 以下 | `quality --speech` |
-| Q11 | 言葉の頭で雑音が増えない | Q10 と同じ声と変え方で、有声になってから 5 枠（50 ms）の出力の HNR の平均が、Signalsmith Stretch だけの処理より 0.5 dB を超えて低くならない | `quality --speech` |
-| Q12 | 下げた声で元の高さが聞こえない | Q10 と同じ声と変え方で、有声の続き（0.2 秒以上）ごとに、狙いの F0 の奇数番目と偶数番目の倍音の強さの比（3 kHz まで、10 ms ごとの中央値）が −4 dB 以上 | `quality --speech` |
-| Q13 | 子音がこもらない | Q10 と同じ声と変え方で、入力が無声で −45 dBFS より大きく、スペクトルの重心が 4 kHz より上の枠で、出力の重心の中央値が入力の重心にフォルマントの倍率を掛けたものから ±10% | `quality --speech` |
+| Q1 | Periodicity when lowered | A synthetic vowel with variation (F0 110 and 220 Hz, 5.5 Hz ±30 cent vibrato, jitter 0.5%, shimmer 3%, breath noise at −30 dB) shifted by −5 and −12 semitones with formant ×1.0 and ×0.8 has an HNR (Praat harmonicity, cc, 10 ms, mean with a 30 Hz floor) no more than 2.0 dB below that of the ideal output re-synthesised at the target F0 and formants | `quality` |
+| Q2 | Resonances when lowered | In the lowering cases of A2 (F0 100 and 150 Hz, −5 and −12 semitones), F1–F3 are within ±5%. For −12 semitones with formant ×0.8 and ×1.2, F1–F3 move by that factor within ±7% and F0 is within ±1% of the target | `check` |
+| Q3 | Switching between the two methods | With a synthetic vowel at F0 150 Hz, switching from −5 to +5 semitones at 1.0 s and back to −5 at 2.0 s, the RMS (20 ms windows every 5 ms) in the 100 ms around each switch is 0.5–2 times the median RMS of the 200 ms before the switch | `check` |
+| Q4 | Level | Synthetic vowels at F0 100 and 150 Hz shifted by ±5 and ±12 semitones, formant ×0.8 and ×1.2, and −12 semitones with ×0.8 have an output RMS after 0.5 s within ±2 dB of the input | `check` |
+| Q5 | Silence is not amplified | White noise alone at −60 dBFS shifted by ±12 semitones has an output RMS no more than 1 dB above the input | `check` |
+| Q10 | No original pitch mixed in when lowered | Text-to-speech voices shifted by −12 semitones, and by −12 semitones with ×0.8: of the 10 ms frames where the input is voiced, at most 2% have an output F0 within ±8% of the input F0 | `quality --speech` |
+| Q11 | No extra noise at word onsets | Same voices and shifts as Q10: the mean output HNR over the first 5 frames (50 ms) after voicing starts is no more than 0.5 dB below that of Signalsmith Stretch alone | `quality --speech` |
+| Q12 | The original pitch is not heard in a lowered voice | Same voices and shifts as Q10: for each voiced run (0.2 s or longer), the ratio of the odd to even harmonics of the target F0 (up to 3 kHz, median over 10 ms frames) is −4 dB or more | `quality --speech` |
+| Q13 | Consonants are not muffled | Same voices and shifts as Q10: in frames where the input is unvoiced, louder than −45 dBFS, and has a spectral centroid above 4 kHz, the median output centroid is within ±10% of the input centroid times the formant factor | `quality --speech` |
 
-Q6〜Q9 は、TD-PSOLA を入れたときに一度だけ確かめた事柄（上げる場合の結果が変わらないこと、遅れが 3360 標本のままであること、処理の重さ、Windows の workflow が通ること）で、判定する道具は無い。
+Q6–Q9 were checked once when TD-PSOLA was added (results for raising the pitch unchanged, latency still 3360 samples, processing cost, Windows workflows passing). There is no tool for them.
 
-## B. 表示する
+## B. Display
 
-| 名前 | 確かめること | 合格の条件 | 判定する所 |
+| Name | What it checks | Pass condition | Checked by |
 | --- | --- | --- | --- |
-| B1 | F1〜F4 の推定 | 合成の母音（F0 100・150・220 Hz）で、推定した F1〜F4 が、同じ信号を同じ設定（Burg 法、上限と極の数を同じにする）の Praat で分析した値から ±2% 以内。正しい値との差は参考として出す | `check`（Praat の値は `check.rs` の `PRAAT_REFERENCE`） |
-| B2 | 実際の声での一致 | 持続母音（ア・イ・ウ・エ・オ、各 2 秒）で、推定した F1〜F3 の中央値が、同じ録音の Praat の中央値から ±5% 以内 | `手` |
-| B3 | 倍音 | F0 150 Hz で H1〜H8 だけを持ち、雑音の床より 20 dB 以上高い信号で、観測できた倍音の数が 8 で、H1〜H8 の周波数が正しい値から ±1% 以内 | `check` |
-| B4 | 前と後のそろい | +5 半音にした合成の母音で、画面の前と後の数値が同じ時刻のもの | `selftest`（`B4-shift`） |
-| B5 | 全体を止める | 止めた後は前と後の表示が変わらず、出力の声は途切れない。もう一度の操作で両方が最新に替わる | `selftest`（`B5-freeze`・`B5-resume`） |
-| B6 | 表示の更新 | 更新が 1 秒に 30 回以上で、音に対する表示の遅れが 100 ms 以下 | `selftest` |
-| B7 | 片方だけを止める | 変えた後だけを止めて声を替えても、変えた後の表示は止めた時のまま、変える前は動き続け、数値の表に時刻が違う印が付く。もう一度で変えた後だけが最新に替わる。変える前だけでも同じ | `selftest` |
-| B8 | 片方を止めた後の全体の操作 | 変えた後だけを止めた状態で全体の操作をすると両方が止まり、もう一度で両方が動き出す | `selftest` |
-| B9 | 一定の声で F1〜F4 の番号がずれない | 揺れ（jitter 1%・shimmer 5%）と息の雑音（HNR 20・10 dB）を持つ一定の母音（F0 120・183・250 Hz、共鳴は「試験用の信号」と同じ 5 つ）で、流れる図の F2〜F4 の正しい値との差（対数の差の二乗平均）が 3% 以内、F1 は追跡しない値（`analyze --raw-formants`）以下、有声で値の無いフレームが 0 | `formant_stability.py` |
-| B10 | 動く声を鈍らせない | F2 が 1000↔2000 Hz を 150 ms・40 ms で動く母音で、流れる図の F2 の正しい値との差が、追跡しない値以下。流れる図の値は 2 フレーム前のものとして時刻をそろえる | `formant_stability.py` |
-| B11 | 1 フレームだけの外れ | 声の wav（`--speech`）で、前後のフレームが互いに 7% 以内なのに間のフレームだけが両方から 15% より離れる割合が、F1〜F4 のどれも 0.5% 以下 | `formant_stability.py` |
-| B12 | 声の跳びを増やさない | 声の wav で、隣のフレームとの差が 15% を超える割合が、F1〜F4 のどれも追跡しない値から 1 ポイントを超えて増えない（読み上げの声では 1 フレームが約 0.8 ポイント。実際の速い動きも数えるため、減らすことは求めない） | `formant_stability.py` |
+| B1 | F1–F4 estimate | For synthetic vowels (F0 100, 150, and 220 Hz), the estimated F1–F4 are within ±2% of Praat's values for the same signal with the same settings (Burg method, same ceiling and number of poles). The difference from the true values is shown for reference | `check` (Praat's values are `PRAAT_REFERENCE` in `check.rs`) |
+| B2 | Agreement on a real voice | For sustained vowels (a, i, u, e, o; 2 s each), the medians of the estimated F1–F3 are within ±5% of Praat's medians for the same recording | `manual` |
+| B3 | Harmonics | For a signal at F0 150 Hz with only H1–H8, at least 20 dB above the noise floor, the number of harmonics seen is 8 and H1–H8 are within ±1% of the true frequencies | `check` |
+| B4 | Original and shifted are aligned | For a synthetic vowel shifted by +5 semitones, the original and shifted values on screen are from the same time | `selftest` (`B4-shift`) |
+| B5 | Holding everything | After holding, the original and shifted displays stop changing and the output voice does not break up. Doing it again brings both back to the latest | `selftest` (`B5-freeze`, `B5-resume`) |
+| B6 | Display updates | At least 30 updates per second, and the display is at most 100 ms behind the sound | `selftest` |
+| B7 | Holding one side | With only SHIFTED held, changing the voice leaves SHIFTED as it was when held, ORIGINAL keeps moving, and the values table marks the times as different. Doing it again brings only SHIFTED back to the latest. The same holds for ORIGINAL | `selftest` |
+| B8 | ALL after holding one side | With only SHIFTED held, using ALL holds both, and using it again resumes both | `selftest` |
+| B9 | F1–F4 do not swap on a steady voice | For steady vowels with variation (jitter 1%, shimmer 5%) and breath noise (HNR 20 and 10 dB) (F0 120, 183, and 250 Hz; the same 5 resonances as in "Test signals"), the difference of the scrolling plot's F2–F4 from the true values (root mean square of the log difference) is within 3%, F1 is no worse than the untracked value (`analyze --raw-formants`), and no voiced frame lacks a value | `formant_stability.py` |
+| B10 | Moving voices are not dulled | For vowels whose F2 moves between 1000 and 2000 Hz in 150 ms and 40 ms, the difference of the scrolling plot's F2 from the true value is no worse than the untracked value. The scrolling plot's value is treated as 2 frames old when aligning times | `formant_stability.py` |
+| B11 | Single-frame outliers | For a voice wav (`--speech`), the share of frames that are more than 15% away from both neighbours while the neighbours are within 7% of each other is 0.5% or less for each of F1–F4 | `formant_stability.py` |
+| B12 | No extra jumps in a voice | For a voice wav, the share of frames that differ from the next frame by more than 15% does not rise by more than 1 point above the untracked value for any of F1–F4 (for a text-to-speech voice, 1 frame is about 0.8 points. Real fast movements also count, so a decrease is not required) | `formant_stability.py` |
 
-## C. Windows の上で
+## C. On Windows
 
-| 名前 | 確かめること | 合格の条件 | 判定する所 |
+| Name | What it checks | Pass condition | Checked by |
 | --- | --- | --- | --- |
-| C1 | 他のソフトで受け取れる | 他の録音のソフトで、仮想の音声機器の録音側（VB-CABLE なら CABLE Output）を録ると、変えた声が録れる | `手` |
-| C2 | 機器を選べる | 入力・出力・モニターの一覧に Windows が認識している機器が名前で出て、選んだ機器で動く。USB の機器を差して起動し直すと一覧に出て、抜いて起動し直すと消える | `手` |
-| C3 | モニター | モニターにヘッドホンを選ぶと変えた声が聞こえ、その間も C1 のとおり録れ、モニターの音量を変えても録れる音の大きさは変わらない。モニターの遅れは 150 ms 以下 | `手` |
-| C4 | 出力を選ぶまで開始できない | 出力の機器を選んでいない間は、開始のボタンを押せない（VB-CABLE が無い Windows で初めて起動したとき、出力は空） | `selftest` |
-| C5 | 画像の保存 | 止めて保存すると PNG が保存され、止めた画面と同じ表示・数値と、前と後の時刻・止めているか・設定、保存した日時が読める。保存先を選ぶ画面は前に保存したフォルダーで開き、そのフォルダーが無ければピクチャのフォルダーで開く。両方が動いている間は保存できない | `selftest`（`C5-save`）、`手` |
-| C6 | 起動したときの機器 | 初めて起動すると、入力は Windows の既定の録音デバイス、出力は VB-CABLE の再生側（入っていれば。無ければ空）、モニターは既定の再生デバイス（出力と同じなら空）。選んでから起動し直すと同じ機器、その機器を抜いて起動し直すと既定の機器 | `手` |
+| C1 | Other software can receive the voice | Recording the recording side of the virtual audio device (CABLE Output for VB-CABLE) in other recording software captures the shifted voice | `manual` |
+| C2 | Devices can be chosen | The input, output, and monitor lists show the devices Windows knows by name, and the app runs with the chosen device. A USB device plugged in before restarting appears in the list, and disappears after unplugging and restarting | `manual` |
+| C3 | Monitor | With headphones as the monitor, the shifted voice is heard, it can still be recorded as in C1, and changing the monitor volume does not change the recorded level. Monitor latency is 150 ms or less | `manual` |
+| C4 | Cannot start until an output is chosen | While no output device is chosen, the start button cannot be pressed (on the first start on Windows without VB-CABLE, the output is empty) | `selftest` |
+| C5 | Saving an image | Holding and saving writes a PNG that shows the same display and values as the held screen, the original and shifted times, whether each is held, the settings, and when it was saved. The save dialog opens in the folder last saved to, or in the Pictures folder if that folder no longer exists. Saving is not possible while both sides are live | `selftest` (`C5-save`), `manual` |
+| C6 | Devices at start | On the first start, the input is the Windows default recording device, the output is the VB-CABLE playback side (if installed; otherwise empty), and the monitor is the default playback device (empty if it is the same as the output). After choosing devices and restarting, the same devices are used; after unplugging one and restarting, the default device is used | `manual` |
 
-## D. 機器の欄
+## D. Devices section
 
-| 名前 | 確かめること | 判定する所 |
+| Name | What it checks | Checked by |
 | --- | --- | --- |
-| D1 | 開始と停止のボタンは 1 つで、押すと START と STOP が入れ替わる。動いている間は IN と OUT を選べない | `selftest`（`start-0st`・`run-toggle`） |
-| D2 | 出力を選んでいない間、開始のボタンは押せない | `selftest`（`C4`） |
-| D3 | モニターはチェックボックスでなく、高さ 24 px 以上のボタン。押すと `aria-pressed` が反転し、モニターが切り替わる | `selftest`（`monitor-button`・`monitor-toggle`） |
-| D4 | 出力とモニターに流す音（SRC）のボタンは 1 つで、押すたびに SHIFTED と ORIGINAL が入れ替わる | `selftest`（`routing`） |
-| D5 | 英語でも日本語でも、機器の欄の文言が 1 行に収まり、列からはみ出さない | `selftest`（`devices-fit`） |
+| D1 | Start and stop share one button that switches between START and STOP. IN and OUT cannot be changed while running | `selftest` (`start-0st`, `run-toggle`) |
+| D2 | The start button cannot be pressed while no output is chosen | `selftest` (`C4`) |
+| D3 | The monitor is a button at least 24 px high, not a checkbox. Pressing it flips `aria-pressed` and switches the monitor | `selftest` (`monitor-button`, `monitor-toggle`) |
+| D4 | The source sent to the output and monitor (SRC) is one button that switches between SHIFTED and ORIGINAL on each press | `selftest` (`routing`) |
+| D5 | In both English and Japanese, each label in the devices section fits on one line and stays within the column | `selftest` (`devices-fit`) |
 
-## S. 画面の見た目とキー操作
+## S. Appearance and keyboard
 
-| 名前 | 確かめること | 判定する所 |
+| Name | What it checks | Checked by |
 | --- | --- | --- |
-| S1 | 色・余白・角・文字の値が `style.css` の `:root` の変数にあり、`render.ts` と `png.ts` に色の直書きが無い | コードの読み合わせ |
-| S2 | 文言とボタンに絵文字・記号のアイコンが無く、アイコンは SVG で、どのボタンも高さ 24 px（英語と日本語で同じ） | `selftest`（`S2-icons`） |
-| S3 | 両方の図の題に F1〜F4 の凡例があり、色が `--formant-1`〜`4` と同じ。数値の表の F1〜F4 の行の頭に同じ色の四角がある | `selftest`（`S3-legend`） |
-| S4 | 声が出ているとき、各スペクトログラムの右の値の欄の F1〜F4 が、数値の表の同じ側の値と一致する | `selftest`（`S4-values`） |
-| S5 | 倍音の点が `--harmonic` の色で 1 px の高さで描かれる | `selftest`（`S5-harmonics`） |
-| S6 | スペクトルの左に `0`〜`−100` の dB の目盛りと `dB` がある | `selftest`（`S6-db-axis`） |
-| S7 | スペクトログラムとスペクトルの上にマウスを置くと、周波数（スペクトルでは dB も）の札が出て、マウスの位置から計算した値と一致する。外すと消え、保存した PNG に札は入らない | `selftest`（`S7-cursor`） |
-| S8 | 片側を止めると、その図の枠が 2 px の `--hold` になり、題に `HOLD <時刻> s` の札が出て、その側の切り替えが埋まり `aria-pressed` が true になる。戻すとすべて戻る。止めても図の大きさが変わらない | `selftest`（`S8-hold`・`S8-resume`・`S8-one-side`） |
-| S10 | ↑・↓・→・←（Shift あり・なし）でピッチとフォルマントの欄が決めた幅だけ変わり、変換に送られる。数の欄に入力しているときは変わらない | `selftest`（`S10-arrows`） |
-| S11 | 止めているとき `S` で PNG が保存され、止めていないときは何も起きない | `selftest`（`S11-save-key`） |
-| S12 | `?` でキー操作の一覧が開き、Esc で閉じる | `selftest`（`S12`） |
+| S1 | Colours, spacing, corners, and type values are variables in `:root` of `style.css`, and `render.ts` and `png.ts` have no hard-coded colours | Code reading |
+| S2 | No emoji or symbol icons in text or buttons; icons are SVG; every button is 24 px high (the same in English and Japanese) | `selftest` (`S2-icons`) |
+| S3 | Both plot titles have an F1–F4 legend in the colours `--formant-1` to `4`. The F1–F4 rows of the values table start with a square of the same colour | `selftest` (`S3-legend`) |
+| S4 | While there is voice, F1–F4 in the value column to the right of each spectrogram match the same side in the values table | `selftest` (`S4-values`) |
+| S5 | Harmonic dots are drawn 1 px high in the `--harmonic` colour | `selftest` (`S5-harmonics`) |
+| S6 | The spectrum has a dB scale from `0` to `−100` and a `dB` label on its left | `selftest` (`S6-db-axis`) |
+| S7 | Hovering over a spectrogram or the spectrum shows a label with the frequency (and dB on the spectrum) that matches the value computed from the pointer position. It disappears when the pointer leaves, and saved PNGs do not include it | `selftest` (`S7-cursor`) |
+| S8 | Holding one side gives that plot a 2 px `--hold` border, puts a `HOLD <time> s` label in its title, fills that side's switch, and sets its `aria-pressed` to true. Resuming undoes all of these. Holding does not change the plot size | `selftest` (`S8-hold`, `S8-resume`, `S8-one-side`) |
+| S10 | ↑, ↓, →, and ← (with and without Shift) change the pitch and formant fields by fixed steps and send them to the shifter. Nothing changes while typing in a number field | `selftest` (`S10-arrows`) |
+| S11 | While held, `S` saves a PNG; while not held, nothing happens | `selftest` (`S11-save-key`) |
+| S12 | `?` opens the list of keyboard shortcuts and Esc closes it | `selftest` (`S12`) |
 
-S9（止める欄のキーの札）と S14（左の列の長さ）は、U1 と U2 に置き換えた。S13 は、その変更のときに自己試験の結果が変わらないことを確かめたもの。
+S9 (key hints on the hold switches) and S14 (length of the left column) were replaced by U1 and U2. S13 checked that the self-test results did not change during that change.
 
-## U. 帯・左の列・設定の板・簡易表示
+## U. Top bar, left column, settings panel, and compact view
 
-| 名前 | 確かめること | 判定する所 |
+| Name | What it checks | Checked by |
 | --- | --- | --- |
-| U1 | 1280×860 と 960×640、英語と日本語で、上の帯に開始・停止、3 つの止める切り替え、保存、状態の知らせ、設定・?・言葉・表示の切り替えがあり、どの部品も窓の幅を越えず、帯の高さが 32 px。帯にキーの札が無く、止める切り替えの組の間に区切りの線（幅 1 px・高さ 16 px）が 2 本ある | `selftest`（`U1-bar`・`U1-bar-960x640`） |
-| U2 | 同じ 4 通りで、左の列が `PITCH`・`FORMANT`・`DEVICES` の 3 つの欄だけで、左の列の `scrollHeight` が `clientHeight` を越えない | `selftest`（`U2-column`・`U2-column-960x640`） |
-| U3 | 設定のボタンで板が開き、分析の設定が板の中にあり、Esc と板の外を押すと閉じ、設定のボタンにフォーカスが戻る | `selftest`（`U3-settings`） |
-| U4 | 数値の表が枠からはみ出さず、2 つのスペクトログラムの幅と高さが同じ | `selftest`（`U4-table`） |
-| U5 | 開始する前に `ORIGINAL` の図に案内が出て、開始すると消える。VB-CABLE が無いときは出力を選ぶ案内が出て、画面のどこにも `VB-CABLE` の語が無い | `selftest`（`U5-guide`・`cable-found`） |
-| U6 | スペクトルの題に `ORIGINAL`・`SHIFTED` の凡例があり、破線の見本が `--before`、実線の見本が `--accent` の色 | `selftest`（`U6-spectrum-legend`） |
-| U7 | ピッチの欄が `+5.0`・`0.0`、フォルマントの欄が `1.00` の形で出る。欄に `+5` と入れて Enter で `+5.0` になり、`abc` は前の値に戻る | `selftest`（`U7-digits`） |
-| U8 | 各値に `−`・`+` のボタンがあり、ピッチは ±0.1（Shift で ±1）、フォルマントは ±0.01（Shift で ±0.05）。ホイールも同じ幅。フォルマント ×1.00 でつまみが中央、両端が `0.50` と `2.00` | `selftest`（`U8-controls`） |
-| U9 | 保存したの知らせ・取りこぼし・誤りが帯の状態の知らせに出て、左の列に知らせの文が無い。保存したの知らせは 5 秒で消える | `selftest`（`U9-status`） |
-| U10 | 変えた後だけを止めると、変える前の図に破線が出て、その高さが数値の表の `SHIFTED` の F1〜F4 と一致し、題に `HOLD <時刻> s (SHIFTED)` の凡例が出る。逆も同じ。両側を止めるとどちらにも出ず、戻すと消える | `selftest`（`U10-overlay`） |
-| U11 | 片側だけを止めて保存した PNG の、動いている側の図の目標の高さの画素が、そのフォルマントの色 | `selftest`（`U11-overlay-png`） |
-| U12 | 簡易表示で、止める切り替え・保存・設定・? のボタンが見えず、`PITCH`・`FORMANT`・`DEVICES` の順に欄が並び、左の列の幅が 250 px | `selftest`（`U12-compact`・`compact-view`） |
+| U1 | At 1280×860 and 960×640, in English and Japanese, the top bar has start/stop, the three hold switches, save, the status message, and the settings, ?, language, and view buttons; no part is wider than the window; the bar is 32 px high. The bar has no key hints, and there are 2 divider lines (1 px wide, 16 px high) between the groups of hold switches | `selftest` (`U1-bar`, `U1-bar-960x640`) |
+| U2 | In the same 4 cases, the left column has only the `PITCH`, `FORMANT`, and `DEVICES` sections, and its `scrollHeight` does not exceed its `clientHeight` | `selftest` (`U2-column`, `U2-column-960x640`) |
+| U3 | The settings button opens the panel; the analysis settings are in the panel; Esc and clicking outside close it; focus returns to the settings button | `selftest` (`U3-settings`) |
+| U4 | The values table stays within its frame, and the two spectrograms have the same width and height | `selftest` (`U4-table`) |
+| U5 | Before starting, the `ORIGINAL` plot shows a guide that disappears on start. Without VB-CABLE, the guide asks to choose an output, and the word `VB-CABLE` appears nowhere on screen | `selftest` (`U5-guide`, `cable-found`) |
+| U6 | The spectrum title has an `ORIGINAL` and `SHIFTED` legend; the dashed sample is in `--before` and the solid sample in `--accent` | `selftest` (`U6-spectrum-legend`) |
+| U7 | The pitch field shows values like `+5.0` and `0.0`, and the formant field like `1.00`. Typing `+5` and Enter gives `+5.0`; `abc` goes back to the previous value | `selftest` (`U7-digits`) |
+| U8 | Each value has `−` and `+` buttons: pitch ±0.1 (±1 with Shift), formant ±0.01 (±0.05 with Shift). The wheel uses the same steps. At formant ×1.00 the slider is centred, and its ends are `0.50` and `2.00` | `selftest` (`U8-controls`) |
+| U9 | Saved messages, dropouts, and errors appear in the status message on the top bar, and the left column has no message text. The saved message disappears after 5 s | `selftest` (`U9-status`) |
+| U10 | With only SHIFTED held, the ORIGINAL plot shows dashed lines at the heights of SHIFTED's F1–F4 in the values table, and its title shows a `HOLD <time> s (SHIFTED)` legend. The same the other way round. With both held, neither shows them; resuming removes them | `selftest` (`U10-overlay`) |
+| U11 | In a PNG saved with one side held, the pixels at the target heights in the live side's plot are in that formant's colour | `selftest` (`U11-overlay-png`) |
+| U12 | In the compact view, the hold switches, save, settings, and ? buttons are hidden, the sections are in the order `PITCH`, `FORMANT`, `DEVICES`, and the left column is 250 px wide | `selftest` (`U12-compact`, `compact-view`) |
 
-U13 は、その変更のときに自己試験の結果が変わらないことを確かめたもの。
+U13 checked that the self-test results did not change during that change.
 
-## P. ピッチとフォルマントを覚える
+## P. Remembering the pitch and formant
 
-| 名前 | 確かめること | 判定する所 |
+| Name | What it checks | Checked by |
 | --- | --- | --- |
-| P1 | `preferences.json` に覚えた値（−12 半音・0.8 倍）があるとき、起動した画面の欄が「−12.0」「0.80」。無いときは「0.0」「1.00」 | `selftest`（`P1-shift-restored`。期待する値は環境変数 `VOICE_SHIFT_SCOPE_TEST_EXPECT_SHIFT`） |
-| P2 | 値を変えて閉じた後、`preferences.json` に最後の値が入っている | 単体の試験 |
-| P3 | 覚えた値が範囲の外なら既定になる | 単体の試験 |
-| P4 | 覚える値を足しても、他の覚える値（機器、分析の設定、言葉、表示）が残る | 単体の試験 |
-| P5 | `ci.yml` と `windows-ui.yml` が成功し、`P1-shift-restored` が PASS する | workflow |
+| P1 | When `preferences.json` has remembered values (−12 semitones, ×0.8), the fields show "−12.0" and "0.80" at start. Without them, "0.0" and "1.00" | `selftest` (`P1-shift-restored`; the expected values come from the environment variable `VOICE_SHIFT_SCOPE_TEST_EXPECT_SHIFT`) |
+| P2 | After changing the values and closing, `preferences.json` has the last values | Unit tests |
+| P3 | Remembered values out of range fall back to the defaults | Unit tests |
+| P4 | Adding the remembered values keeps the other remembered values (devices, analysis settings, language, view) | Unit tests |
+| P5 | `ci.yml` and `windows-ui.yml` succeed and `P1-shift-restored` passes | Workflows |
 
-## 名前に記号の無い自己試験の項目
+## Self-test items without a letter
 
-| 項目 | 確かめること |
+| Item | What it checks |
 | --- | --- |
-| `language-toggle` | 言葉の切り替えで文が替わり、もう一度で戻る |
-| `fits-window` | 画面が窓に収まり、縦に流さなくてよい |
-| `held-survives-resize` | 止めた図が、図の大きさが変わった後も消えずに描かれている |
-| `window-960x640`・`window-1280x860` | 窓を最小の 960×640 にして撮り、1280×860 に戻す |
-| `error` | 自己試験そのものが途中で例外で止まったときに書く。出たら FAIL |
+| `language-toggle` | The language switch changes the text, and switching again changes it back |
+| `fits-window` | The screen fits in the window without vertical scrolling |
+| `held-survives-resize` | A held plot is still drawn after the plot size changes |
+| `window-960x640`, `window-1280x860` | Shrinks the window to the minimum 960×640, takes a shot, and restores 1280×860 |
+| `error` | Written when the self-test itself stops with an exception. FAIL if present |

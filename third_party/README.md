@@ -1,6 +1,6 @@
 # third_party
 
-- `signalsmith-stretch/`: Signalsmith Stretch 1.4.0（MIT、https://github.com/Signalsmith-Audio/signalsmith-stretch の tag 1.4.0 の `signalsmith-stretch.h` と `LICENSE.txt`）
-- `signalsmith-linear/`: Signalsmith Linear 0.6.4（MIT、https://github.com/Signalsmith-Audio/linear の tag 0.6.4。`tests/` を除いた）
+- `signalsmith-stretch/`: Signalsmith Stretch 1.4.0 (MIT; `signalsmith-stretch.h` and `LICENSE.txt` from tag 1.4.0 of https://github.com/Signalsmith-Audio/signalsmith-stretch )
+- `signalsmith-linear/`: Signalsmith Linear 0.6.4 (MIT; tag 0.6.4 of https://github.com/Signalsmith-Audio/linear , without `tests/`)
 
-どちらも手を加えていない。`crates/voice-dsp/build.rs` が `crates/voice-dsp/cpp/stretch_wrapper.cpp` と一緒に build する。
+Neither is modified. `crates/voice-dsp/build.rs` builds them together with `crates/voice-dsp/cpp/stretch_wrapper.cpp`.
