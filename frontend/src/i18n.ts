@@ -1,5 +1,5 @@
-// 画面・画像・警告の言葉。日本語と英語を切り替える。アイコンは文言に入れず、icons.ts の SVG をどちらの言葉でも使う。
-// 選んだ言葉は preferences.json に覚える（初めて起動したときは英語）。
+// Words on the screen, in images, and in warnings, switchable between Japanese and English. Icons are not part of the text; the SVGs in icons.ts are used in both languages.
+// The chosen language is remembered in preferences.json (English on the first start).
 
 export type Lang = "en" | "ja";
 
@@ -251,7 +251,7 @@ export function hasKey(key: string): key is Key {
   return key in dict.en;
 }
 
-/// data-i18n（文字）と data-i18n-title（重ねると出る説明）と data-i18n-aria（読み上げの名前）の付いた要素を、今の言葉で書き直す。
+/// Rewrites elements with data-i18n (text), data-i18n-title (tooltip), and data-i18n-aria (accessible name) in the current language.
 export function applyStatic(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>("[data-i18n]").forEach((el) => {
     const key = el.dataset.i18n!;
@@ -267,5 +267,5 @@ export function applyStatic(root: ParentNode = document): void {
   });
 }
 
-/// 英語と日本語で同じ鍵を持つこと（試験で確かめる）。
+/// English and Japanese must have the same keys (checked in tests).
 export const KEYS = { en: Object.keys(dict.en), ja: Object.keys(dict.ja) };
