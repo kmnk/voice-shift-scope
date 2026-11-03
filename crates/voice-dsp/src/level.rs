@@ -1,8 +1,8 @@
-//! 声を変えた後の音量を、変える前の音量に合わせる `LevelMatched`。
+//! `LevelMatched`, which matches the level of the shifted voice to the original.
 //!
-//! 中の処理と同じ遅れだけ入力を遅らせ、遅らせた入力と出力の平方の平均（時定数 300 ms）の比から利得を求める。
-//! 利得は ±12 dB に制限し、時定数 50 ms で滑らかに追う。入力がほぼ無音（−50 dBFS 未満）の間は利得を止め、
-//! 0 半音・1.0 倍のときは利得を 1 に戻す。
+//! Delays the input as much as the inner processing and finds the gain from the ratio of the mean squares (300 ms time constant) of the delayed input and the output.
+//! The gain is limited to ±12 dB and followed smoothly with a 50 ms time constant. While the input is nearly silent (below −50 dBFS) the gain is held,
+//! and at 0 semitones and ×1.0 the gain returns to 1.
 
 use voice_domain::ShiftSettings;
 use voice_domain::ports::VoiceShifter;
@@ -12,7 +12,7 @@ const GAIN_TIME_SECONDS: f32 = 0.05;
 const MAX_GAIN_DB: f32 = 12.0;
 const GATE_DBFS: f32 = -50.0;
 
-/// 出力の音量を、同じだけ遅らせた入力の音量にそろえる部品。声を変える処理を包まずに、入力と出力の組に掛ける。
+/// Matches the output level to the input level delayed by the same amount. It does not wrap the shifter; it is applied to an input and output pair.
 pub struct LevelMatch {
     delay: Vec<f32>,
     delay_pos: usize,
@@ -27,7 +27,7 @@ pub struct LevelMatch {
 }
 
 impl LevelMatch {
-    /// `latency` は、入力から出力までの遅れ（標本）。作るときにメモリを確保するので、音声のスレッドの外で作る。
+    /// `latency` is the delay from input to output (samples). Allocates memory when created, so create it outside the audio thread.
     pub fn new(latency: usize, sample_rate: u32) -> Self {
         let fs = sample_rate as f32;
         let max_gain = 10f32.powf(MAX_GAIN_DB / 20.0);
@@ -45,7 +45,7 @@ impl LevelMatch {
         }
     }
 
-    /// `output` に利得を掛ける。`identity`（0 半音・1.0 倍）のときは利得を 1 に戻す。
+    /// Applies the gain to `output`. With `identity` (0 semitones, ×1.0) the gain returns to 1.
     pub fn apply(&mut self, input: &[f32], output: &mut [f32], identity: bool) {
         let n = self.delay.len();
         for (x, y) in input.iter().zip(output.iter_mut()) {
@@ -67,13 +67,13 @@ impl LevelMatch {
         }
     }
 
-    /// 今掛けている利得。
+    /// The gain applied now.
     pub fn gain(&self) -> f32 {
         self.gain
     }
 }
 
-/// 声を変える処理を包み、出力の音量を入力にそろえる。
+/// Wraps a shifter and matches its output level to the input.
 pub struct LevelMatched<S> {
     inner: S,
     settings: ShiftSettings,
@@ -81,7 +81,7 @@ pub struct LevelMatched<S> {
 }
 
 impl<S: VoiceShifter> LevelMatched<S> {
-    /// 作るときにメモリを確保するので、音声のスレッドの外で作る。
+    /// Allocates memory when created, so create it outside the audio thread.
     pub fn new(inner: S, sample_rate: u32) -> Self {
         let matcher = LevelMatch::new(inner.latency(), sample_rate);
         Self { inner, settings: ShiftSettings::NONE, matcher }
@@ -91,7 +91,7 @@ impl<S: VoiceShifter> LevelMatched<S> {
         &self.inner
     }
 
-    /// 今掛けている利得（試験のため）。
+    /// The gain applied now (for tests).
     pub fn gain(&self) -> f32 {
         self.matcher.gain()
     }
@@ -122,7 +122,7 @@ mod tests {
     use super::*;
     use voice_domain::{FormantShift, PitchShift};
 
-    /// 入力を `delay` 標本遅らせ、`gain` 倍して出す試験用の処理。
+    /// Test processing that delays the input by `delay` samples and multiplies it by `gain`.
     struct Scaled {
         gain: f32,
         delay: Vec<f32>,
@@ -199,7 +199,7 @@ mod tests {
     fn does_not_raise_near_silence() {
         let mut m = LevelMatched::new(Scaled::new(0.1, 3360), FS);
         m.set(shifted());
-        let x = tone(0.001, 2.0); // −63 dBFS の RMS
+        let x = tone(0.001, 2.0); // RMS of −63 dBFS
         run(&mut m, &x);
         assert!((m.gain() - 1.0).abs() < 1e-6, "{}", m.gain());
     }

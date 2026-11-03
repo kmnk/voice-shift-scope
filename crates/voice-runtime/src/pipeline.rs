@@ -1,4 +1,4 @@
-//! `AudioPipeline` と `AudioDevices` の実装（cpal、WASAPI）。
+//! Implementations of `AudioPipeline` and `AudioDevices` (cpal, WASAPI).
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -29,7 +29,7 @@ pub enum RuntimeError {
     AlreadyRunning,
 }
 
-/// cpal で機器を列挙する `AudioDevices`。
+/// `AudioDevices` that enumerates devices with cpal.
 #[derive(Default, Clone)]
 pub struct CpalDevices;
 
@@ -59,7 +59,7 @@ impl AudioDevices for CpalDevices {
 pub type ShifterFactory = Box<dyn Fn(u32) -> Box<dyn VoiceShifter> + Send>;
 pub type AnalyzerFactory = Box<dyn Fn() -> Box<dyn Analyzer> + Send>;
 
-/// 動いている間の状態と数。
+/// State and counts while running.
 #[derive(Debug, Clone, Default)]
 pub struct PipelineStats {
     pub processed_samples: u64,
@@ -68,11 +68,11 @@ pub struct PipelineStats {
     pub output_xruns: u64,
     pub monitor_xruns: u64,
     pub output_underrun_events: u64,
-    /// 最初と最後に出力が足りなくなったときの、処理していた入力の秒数。
+    /// Seconds of input processed at the first and last output underrun.
     pub first_underrun_seconds: f64,
     pub last_underrun_seconds: f64,
     pub dropped_input: u64,
-    /// Windows が録音の buffer を取りこぼした回数（cpal の Xrun）と、最後のときの秒数。
+    /// Number of times Windows dropped the recording buffer (cpal Xrun), and the seconds at the last one.
     pub input_xruns: u64,
     pub last_input_xrun_seconds: f64,
     pub output_fill_ms: f64,
@@ -126,8 +126,8 @@ fn f32_config(device: &cpal::Device, input: bool) -> Result<cpal::SupportedStrea
     Ok(config)
 }
 
-/// 出力とモニターの ring buffer に溜めておく量の既定（30 ms）。
-/// 試験で替えるときは `VOICE_SHIFT_SCOPE_OUTPUT_BUFFER_MS`（画面からは替えられない）。
+/// Default amount kept in the output and monitor ring buffers (30 ms).
+/// Tests change it with `VOICE_SHIFT_SCOPE_OUTPUT_BUFFER_MS` (it cannot be changed from the screen).
 const DEFAULT_OUTPUT_BUFFER_MS: usize = 30;
 
 fn output_target() -> usize {
@@ -148,15 +148,15 @@ impl RuntimePipeline {
         Self { shifters, analyzers, publisher, input_override: None, errors: Arc::default(), running: None }
     }
 
-    /// 試験用: 入力の機器の代わりに、`CORE_RATE` の mono の標本を実時間の速さで流す。
+    /// For tests: instead of the input device, plays mono samples at `CORE_RATE` in real time.
     pub fn with_input_samples(mut self, samples: Vec<f32>) -> Self {
         self.input_override = Some(Arc::new(samples));
         self
     }
 
-    /// 試験用: wav の音源を流し始めた時刻（入力の機器を使うときは `None`）。
+    /// For tests: when the wav source started playing (`None` when using an input device).
     pub fn source_started(&self) -> Option<std::time::Instant> {
-        self.running.as_ref().and_then(|r| *r.source_started.lock().expect("始めた時刻"))
+        self.running.as_ref().and_then(|r| *r.source_started.lock().expect("start time"))
     }
 
     pub fn stats(&self) -> PipelineStats {
@@ -203,7 +203,7 @@ impl RuntimePipeline {
             move |data: &mut [f32], _| {
                 let frames = data.len() / channels;
                 let mono = &mut mono[..frames.min(16_384)];
-                // 読み手の入れ替えのときだけロックがある。待たずに、取れなければ無音にする
+                // Only swapping the reader takes the lock. Do not wait; output silence if it cannot be taken
                 let missing = match reader.try_lock() {
                     Ok(mut guard) => match guard.as_mut() {
                         Some(r) => {
@@ -245,7 +245,7 @@ impl RuntimePipeline {
                     let counter = if is_monitor { &xrun_shared.monitor_xruns } else { &xrun_shared.output_xruns };
                     counter.fetch_add(1, Ordering::Relaxed);
                 } else if let Ok(mut errs) = errors.lock() {
-                    errs.push(format!("{}: {e}", if is_monitor { "モニター" } else { "出力" }));
+                    errs.push(format!("{}: {e}", if is_monitor { "Monitor" } else { "Output" }));
                 }
             },
             None,
@@ -263,7 +263,7 @@ impl RuntimePipeline {
         shared: &Arc<Shared>,
     ) -> Result<cpal::Stream, RuntimeError> {
         let (stream, rate) = self.open_output(id, reader.clone(), shared.clone(), true)?;
-        if let Some(r) = reader.lock().expect("読み手").as_mut() {
+        if let Some(r) = reader.lock().expect("reader").as_mut() {
             r.retarget(CORE_RATE, rate);
         }
         shared.monitor_enabled.store(true, Ordering::Relaxed);
@@ -288,13 +288,13 @@ impl AudioPipeline for RuntimePipeline {
         let (before_prod, mut before_cons) = HeapRb::<f32>::new(CORE_RATE as usize * 2).split();
         let (after_prod, mut after_cons) = HeapRb::<f32>::new(CORE_RATE as usize * 2).split();
 
-        // 出力（VB-CABLE の再生側）
+        // Output (VB-CABLE playback side)
         let out_reader = Arc::new(Mutex::new(None));
         let (output, out_rate) =
             self.open_output(config.output.raw(), out_reader.clone(), shared.clone(), false)?;
-        *out_reader.lock().expect("読み手") = Some(AdaptiveReader::new(out_cons, CORE_RATE, out_rate, output_target()));
+        *out_reader.lock().expect("reader") = Some(AdaptiveReader::new(out_cons, CORE_RATE, out_rate, output_target()));
 
-        // モニター: 読み手は始めに作って残し、機器のストリームだけを開け閉めする
+        // Monitor: the reader is made at the start and kept; only the device stream is opened and closed
         let monitor_reader =
             Arc::new(Mutex::new(Some(AdaptiveReader::new(mon_cons, CORE_RATE, CORE_RATE, output_target()))));
         let mut monitor = None;
@@ -309,7 +309,7 @@ impl AudioPipeline for RuntimePipeline {
         let mut processor = InputProcessor::new(shifter, shared.clone(), out_prod, mon_prod, before_prod, after_prod)
             .with_original_delay(shifter_latency);
 
-        // 入力
+        // Input
         let source_started = Arc::new(Mutex::new(None));
         let (input, feeder) = match self.input_override.clone() {
             Some(samples) => {
@@ -317,7 +317,7 @@ impl AudioPipeline for RuntimePipeline {
                 let started = source_started.clone();
                 let handle = std::thread::spawn(move || {
                     let start = std::time::Instant::now();
-                    *started.lock().expect("始めた時刻") = Some(start);
+                    *started.lock().expect("start time") = Some(start);
                     let silence = vec![0.0f32; BLOCK];
                     let mut sent = 0usize;
                     while !shared.stop.load(Ordering::Relaxed) {
@@ -333,9 +333,9 @@ impl AudioPipeline for RuntimePipeline {
                 (None, Some(handle))
             }
             None => {
-                // 入力のコールバックでは、mono にして速さをそろえ、ring buffer に入れるだけにする。
-                // 声を変える処理は重さに波があり、コールバックの中で動かすと Windows が録音の buffer を
-                // 取りこぼす（cpal の Xrun）ので、別の処理のスレッドで動かす
+                // The input callback only mixes to mono, converts the rate, and puts samples into the ring buffer.
+                // The shifter's cost varies, and running it in the callback makes Windows drop the recording buffer
+                // (cpal Xrun), so it runs on a separate processing thread
                 let device = find_device(config.input.raw())?;
                 let in_config = f32_config(&device, true)?;
                 let channels = in_config.channels() as usize;
@@ -361,8 +361,8 @@ impl AudioPipeline for RuntimePipeline {
                     },
                     move |e| {
                         if e.kind() == cpal::ErrorKind::Xrun {
-                            // 録音の取りこぼしは数えて、画面には回数として出す。
-                            // 録音を始めた瞬間（まだ 1 ブロックも処理していない間）の印は、音の途切れではないので数えない
+                            // Recording overruns are counted and shown on screen as a count.
+                            // The mark at the moment recording starts (before any block is processed) is not a dropout, so it is not counted
                             let at = xrun_shared.processed.load(Ordering::Relaxed);
                             if at == 0 {
                                 return;
@@ -392,7 +392,7 @@ impl AudioPipeline for RuntimePipeline {
             }
         };
 
-        // 分析のスレッド: 変えた後は声を変える処理の遅れだけ遅れて届くので、その分を捨てて前と後の時刻をそろえる
+        // Analysis thread: the shifted audio arrives late by the shifter's delay, so drop that much to align the original and shifted times
         let analysis_settings = Arc::new(Mutex::new(config.analysis));
         let published = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let analysis = {
@@ -404,7 +404,7 @@ impl AudioPipeline for RuntimePipeline {
             let mut after_an = (self.analyzers)();
             std::thread::spawn(move || {
                 let window = 4096usize;
-                let rate = SampleRate::new(CORE_RATE).expect("0 より大きい");
+                let rate = SampleRate::new(CORE_RATE).expect("greater than 0");
                 let mut before = vec![0.0f32; window];
                 let mut after = vec![0.0f32; window];
                 let mut chunk_b = vec![0.0f32; BLOCK];
@@ -421,8 +421,8 @@ impl AudioPipeline for RuntimePipeline {
                         std::thread::sleep(Duration::from_millis(3));
                         continue;
                     }
-                    // 分析が追いつかないときは、溜まったブロックを窓に流し込むだけにして、最新のブロックで分析する。
-                    // 前と後は同じ数ずつ取り出すので、時刻はそろったまま
+                    // When the analysis falls behind, only feed the buffered blocks into the window and analyse the latest block.
+                    // The same number is taken from original and shifted, so the times stay aligned
                     while before_cons.occupied_len() >= BLOCK && after_cons.occupied_len() >= BLOCK {
                         before_cons.pop_slice(&mut chunk_b);
                         after_cons.pop_slice(&mut chunk_a);
@@ -432,16 +432,16 @@ impl AudioPipeline for RuntimePipeline {
                         after[window - BLOCK..].copy_from_slice(&chunk_a);
                         position += BLOCK as u64;
                     }
-                    let analysis = *settings.lock().expect("分析の設定");
+                    let analysis = *settings.lock().expect("analysis settings");
                     if !shared.analysis_display.load(Ordering::Relaxed) {
-                        // 簡易表示: 声を変える処理に渡す F0 の目安だけを求める
+                        // Compact view: find only the F0 hint for the shifter
                         let hint = before_an.pitch_only(&before, rate, &analysis).map(|f| f.hz()).unwrap_or(0.0);
                         shared.pitch_hint.store(hint.to_bits(), Ordering::Relaxed);
                         continue;
                     }
                     let shift = shared_shift(&shared);
                     let b = before_an.analyze(&before, rate, &analysis);
-                    // 変えた後は、フォルマントを上げた分だけ上限も上げて分析する
+                    // The shifted audio is analysed with the ceiling raised as much as the formants were raised
                     let a = after_an.analyze(&after, rate, &analysis.for_shifted(shift.formant));
                     let hint = b.f0.map(|f| f.hz()).unwrap_or(0.0);
                     shared.pitch_hint.store(hint.to_bits(), Ordering::Relaxed);
@@ -496,7 +496,7 @@ impl AudioPipeline for RuntimePipeline {
 
     fn set_analysis(&mut self, analysis: AnalysisSettings) -> Result<(), RuntimeError> {
         if let Some(r) = &self.running {
-            *r.analysis_settings.lock().expect("分析の設定") = analysis;
+            *r.analysis_settings.lock().expect("analysis settings") = analysis;
         }
         Ok(())
     }
@@ -521,14 +521,14 @@ impl AudioPipeline for RuntimePipeline {
         r.shared.monitor_volume.store(monitor.volume.get().to_bits(), Ordering::Relaxed);
         let wanted = if monitor.enabled { monitor.device.as_ref().map(|d| d.raw().to_string()) } else { None };
         if wanted != r.monitor_device {
-            // モニターのストリームだけを閉じて開き直す。出力と入力は止めない
+            // Close and reopen only the monitor stream. The output and input keep running
             r.shared.monitor_enabled.store(false, Ordering::Relaxed);
             r.monitor = None;
             r.monitor_device = None;
             if let Some(id) = wanted {
                 let (reader, shared) = (r.monitor_reader.clone(), r.shared.clone());
                 let stream = self.open_monitor(&id, &reader, &shared)?;
-                let r = self.running.as_mut().expect("動いている");
+                let r = self.running.as_mut().expect("running");
                 r.monitor = Some(stream);
                 r.monitor_device = Some(id);
             }

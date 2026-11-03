@@ -1,4 +1,4 @@
-// Windows の release の build で、黒いコンソールの窓を出さない
+// Do not show a console window in Windows release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {

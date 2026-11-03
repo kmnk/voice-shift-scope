@@ -1,18 +1,18 @@
-//! domain が外の技術と話す口（port）。実装は adapter の crate が持つ。
+//! The ports through which the domain talks to outside technology. Adapter crates implement them.
 
 use crate::{
     AnalysisFrame, AnalysisPair, AnalysisSettings, DeviceId, DeviceList, Formant, Frequency, Harmonic,
     MonitorSettings, Routing, SampleRate, ShiftSettings,
 };
 
-/// 声を変える処理。音声のスレッドから呼ばれるので、`process` の中でメモリを確保しない。
+/// Changes the voice. Called from the audio thread, so `process` must not allocate memory.
 pub trait VoiceShifter: Send {
     fn set(&mut self, settings: ShiftSettings);
     fn process(&mut self, input: &[f32], output: &mut [f32]);
-    /// 入力から出力までの遅れ（標本の数）。
+    /// Delay from input to output (in samples).
     fn latency(&self) -> usize;
-    /// 入力の F0 の目安（Hz）。フォルマントの包絡を求めるのに使う方式だけが使う。
-    /// 音声のスレッドから呼ばれるので、メモリを確保しない。
+    /// A hint of the input F0 (Hz). Only methods that use it to find the formant envelope use it.
+    /// Called from the audio thread, so it must not allocate memory.
     fn set_pitch_hint(&mut self, _f0: f32) {}
 }
 
@@ -25,7 +25,7 @@ pub trait FormantEstimator: Send {
 }
 
 pub trait HarmonicPicker: Send {
-    /// 倍音と、1 番目から途切れずに観測できた倍音の数。
+    /// Harmonics, and the number of harmonics seen without a gap from the first.
     fn pick(
         &mut self,
         window: &[f32],
@@ -35,22 +35,22 @@ pub trait HarmonicPicker: Send {
     ) -> (Vec<Harmonic>, u32);
 }
 
-/// 窓の samples から `AnalysisFrame` を作る（domain service の口）。
+/// Makes an `AnalysisFrame` from the samples in a window (a domain service port).
 pub trait Analyzer: Send {
     fn analyze(&mut self, window: &[f32], rate: SampleRate, settings: &AnalysisSettings) -> AnalysisFrame;
-    /// F0 だけを求める（表示をしない間、声を変える処理に渡す目安のため）。
+    /// Finds only F0 (for the hint given to the shifter while the display is off).
     fn pitch_only(&mut self, window: &[f32], rate: SampleRate, settings: &AnalysisSettings) -> Option<Frequency> {
         self.analyze(window, rate, settings).f0
     }
 }
 
-/// 機器の一覧。呼ぶたびに今の一覧を取り直す。
+/// The device list. Each call fetches the current list again.
 pub trait AudioDevices {
     type Error: std::error::Error + Send + Sync + 'static;
     fn list(&self) -> Result<DeviceList, Self::Error>;
 }
 
-/// 音声のスレッドと分析のスレッドを始めるときの設定。
+/// Settings for starting the audio thread and the analysis thread.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PipelineConfig {
     pub input: DeviceId,
@@ -61,7 +61,7 @@ pub struct PipelineConfig {
     pub analysis: AnalysisSettings,
 }
 
-/// 音声のスレッドと分析のスレッドを始め、止め、動いている間の変更を受ける。
+/// Starts and stops the audio thread and the analysis thread, and takes changes while they run.
 pub trait AudioPipeline {
     type Error: std::error::Error + Send + Sync + 'static;
     fn start(&mut self, config: PipelineConfig) -> Result<(), Self::Error>;
@@ -70,16 +70,16 @@ pub trait AudioPipeline {
     fn set_analysis(&mut self, analysis: AnalysisSettings) -> Result<(), Self::Error>;
     fn set_monitor(&mut self, monitor: MonitorSettings) -> Result<(), Self::Error>;
     fn set_routing(&mut self, routing: Routing) -> Result<(), Self::Error>;
-    /// 表示のための分析（フォルマント・倍音・結果の送り出し）を動かすか。止めても F0 の目安は求め続ける。
+    /// Whether to run the analysis for display (formants, harmonics, sending results). F0 hints are still found while it is off.
     fn set_analysis_display(&mut self, active: bool) -> Result<(), Self::Error>;
 }
 
-/// 分析の結果の行き先。
+/// Where analysis results go.
 pub trait AnalysisPublisher: Send {
     fn publish(&self, pair: &AnalysisPair);
 }
 
-/// 変える前と後の音の行き先。今は分析だけが使う。
+/// Where the original and shifted audio go. Only the analysis uses it now.
 pub trait AudioTap: Send {
     fn push(&mut self, before: &[f32], after: &[f32]);
 }

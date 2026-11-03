@@ -1,4 +1,4 @@
-//! 開発で確かめるための CLI。アプリの機能ではない。
+//! A CLI for checks during development. Not a feature of the app.
 
 mod analysis;
 mod check;
@@ -16,7 +16,7 @@ use voice_runtime::{DeviceDirection, find_virtual_cable, probe_devices};
 #[derive(Parser)]
 #[command(
     name = "voice-cli",
-    about = "voice-shift-scope の中核を確かめる CLI。機器を開かず、ファイルの読み書きと機器の列挙だけを行う"
+    about = "A CLI for checking the core of voice-shift-scope. It does not open devices; it only reads and writes files and lists devices"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -25,91 +25,91 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// 録音と再生の機器を列挙し、JSON で出す（機器は開かない）
+    /// List the recording and playback devices as JSON (does not open them)
     Devices,
-    /// wav を VB-CABLE の再生側に流して録音側から録り返し、遅れと強さを JSON で出す。
-    /// 声を変える処理は通さない。VB-CABLE が無ければ終了コード 2
+    /// Play a wav into the VB-CABLE playback side, record it back from the recording side, and print the delay and level as JSON.
+    /// Does not go through the shifter. Exit code 2 without VB-CABLE
     Loopback {
-        /// 流す wav（mono）
+        /// The wav to play (mono)
         #[arg(long)]
         input_wav: PathBuf,
-        /// 流す前に置く無音（秒）。遅れを測る起点にする
+        /// Silence before playing (seconds). The starting point for measuring the delay
         #[arg(long, default_value_t = 0.5)]
         lead: f64,
-        /// 録り返した音を書く先
+        /// Where to write the recording
         #[arg(long)]
         out_wav: Option<PathBuf>,
     },
-    /// wav を分析し、10 ms ごとの F0・F1〜F4・倍音を CSV で標準出力に書く（開発で確かめるための道具）
+    /// Analyse a wav and write F0, F1–F4, and harmonics every 10 ms as CSV to standard output (a tool for checks during development)
     Analyze {
         wav: PathBuf,
-        /// フォルマントの上限（Hz）
+        /// Formant ceiling (Hz)
         #[arg(long, default_value_t = 5500.0)]
         ceiling: f32,
-        /// LPC の次数（フォルマントの数の 2 倍）
+        /// LPC order (twice the number of formants)
         #[arg(long, default_value_t = 10)]
         lpc_order: u32,
-        /// F1〜F4 を追跡せず、各フレームの根を低い方から 4 つ取った値を書く（追跡の前後を比べるため）
+        /// Write the 4 lowest roots of each frame without tracking F1–F4 (to compare before and after tracking)
         #[arg(long)]
         raw_formants: bool,
-        /// 分析 1 回の処理時間の中央値と最大（ms）を JSON で標準エラーに書く
+        /// Write the median and maximum processing time of one analysis (ms) as JSON to standard error
         #[arg(long)]
         timing: bool,
     },
-    /// 受け入れの基準を試験用の信号で判定する。FAIL があれば終了コード 1
+    /// Run the acceptance checks on test signals. Exit code 1 if any FAIL
     Check {
-        /// 判定する基準（カンマ区切り。今あるのは A1〜A4・B1・B3・Q2〜Q5）
+        /// Checks to run (comma-separated; available: A1–A4, B1, B3, Q2–Q5)
         #[arg(long, value_delimiter = ',', default_value = "B1,B3")]
         criteria: Vec<String>,
         #[arg(long, default_value_t = 5500.0)]
         ceiling: f32,
         #[arg(long, default_value_t = 10)]
         lpc_order: u32,
-        /// 声を変える処理の窓の長さ（ms）。省くと既定（70 ms）
+        /// Window length of the shifter (ms). Defaults to 70 ms
         #[arg(long)]
         block_ms: Option<f32>,
-        /// 判定に使う声を変える処理。app（アプリと同じ）か signalsmith（変更の前の、Signalsmith Stretch だけ）
+        /// The shifter for the checks: app (as in the app) or signalsmith (Signalsmith Stretch only, as before the change)
         #[arg(long, default_value = "app", value_parser = ["app", "signalsmith"])]
         shifter: String,
-        /// 結果を JSON で出す
+        /// Print the results as JSON
         #[arg(long)]
         json: bool,
     },
-    /// 音声の実行を、入力だけ wav（省くと F0 150 Hz の合成の母音）に替えて本物の機器で通し、
-    /// VB-CABLE から録り返して A1・A5・A6 を判定する。VB-CABLE が無ければ終了コード 2
+    /// Run the audio runtime on real devices with only the input replaced by a wav (a synthetic vowel at F0 150 Hz if omitted),
+    /// record it back from VB-CABLE, and check A1, A5, and A6. Exit code 2 without VB-CABLE
     E2e {
         #[arg(long)]
         input_wav: Option<PathBuf>,
-        /// 動かす長さ（秒）
+        /// How long to run (seconds)
         #[arg(long, default_value_t = 10.0)]
         seconds: f64,
-        /// ピッチの変化（半音）
+        /// Pitch change (semitones)
         #[arg(long, default_value_t = 5.0, allow_hyphen_values = true)]
         semitones: f32,
     },
-    /// wav（48 kHz、mono）を、アプリと同じ声を変える処理に 10 ms ずつ通し、遅れの分を前から除いて書く。
-    /// 機器は開かない
+    /// Run a wav (48 kHz, mono) through the same shifter as the app in 10 ms steps, and write it with the delay removed from the front.
+    /// Does not open devices
     Shift {
         input: PathBuf,
         output: PathBuf,
-        /// ピッチの変化（半音、−24〜+24）
+        /// Pitch change (semitones, −24 to +24)
         #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
         pitch: f32,
-        /// フォルマントの倍率（0.5〜2.0）
+        /// Formant factor (0.5 to 2.0)
         #[arg(long, default_value_t = 1.0)]
         formant: f32,
-        /// 声を変える処理。app（アプリと同じ）か signalsmith（変更の前の、Signalsmith Stretch だけ）
+        /// The shifter: app (as in the app) or signalsmith (Signalsmith Stretch only, as before the change)
         #[arg(long, default_value = "app", value_parser = ["app", "signalsmith"])]
         shifter: String,
-        /// 1 ブロック（10 ms）の処理時間の中央値と最大を、JSON で標準出力に書く
+        /// Write the median and maximum processing time of one block (10 ms) as JSON to standard output
         #[arg(long)]
         timing: bool,
-        /// F0 の目安を渡さない。省くと、アプリの分析のスレッドと同じく、直近 4096 標本の F0（YIN）を
-        /// 10 ms ごとに声を変える処理に渡す（0 のときは渡さず、前の値が残る）
+        /// Do not give F0 hints. Without this flag, as in the app's analysis thread, the F0 (YIN) of the latest 4096 samples is
+        /// given to the shifter every 10 ms (nothing is given for 0, and the previous value remains)
         #[arg(long)]
         no_hint: bool,
     },
-    /// 答えの分かる試験用の信号を wav（48 kHz、mono、32-bit float）で書く
+    /// Write test signals with known answers as wav (48 kHz, mono, 32-bit float)
     Synth {
         #[command(subcommand)]
         signal: Signal,
@@ -118,26 +118,26 @@ enum Command {
 
 #[derive(Subcommand)]
 enum Signal {
-    /// 試験用の合成の母音（docs/criteria.md の「試験用の信号」。F1 700・F2 1200・F3 2600・F4 3500 Hz に F5 4500 Hz を足したもの）
+    /// The synthetic test vowel ("Test signals" in docs/criteria.md: F1 700, F2 1200, F3 2600, F4 3500 Hz plus F5 4500 Hz)
     Vowel {
-        /// 基本周波数（Hz）
+        /// Fundamental frequency (Hz)
         #[arg(long)]
         f0: f64,
-        /// 長さ（秒）
+        /// Length (seconds)
         #[arg(long, default_value_t = 2.0)]
         seconds: f64,
-        /// 書く先
+        /// Where to write
         #[arg(long)]
         out: PathBuf,
     },
-    /// H1〜Hn を同じ強さで並べ、雑音を足した信号
+    /// H1–Hn at equal strength, plus noise
     Harmonics {
         #[arg(long)]
         f0: f64,
-        /// 倍音の数
+        /// Number of harmonics
         #[arg(long, default_value_t = 8)]
         count: usize,
-        /// 倍音より何 dB 低い雑音を足すか
+        /// How many dB below the harmonics the added noise is
         #[arg(long, default_value_t = 40.0)]
         noise_below_db: f64,
         #[arg(long, default_value_t = 2.0)]
@@ -185,7 +185,7 @@ fn main() -> ExitCode {
                     ExitCode::SUCCESS
                 }
                 Err(e) => {
-                    eprintln!("{} に書けませんでした: {e}", out.display());
+                    eprintln!("could not write {}: {e}", out.display());
                     ExitCode::FAILURE
                 }
             }
@@ -197,7 +197,7 @@ fn devices() -> ExitCode {
     let listing = match probe_devices() {
         Ok(listing) => listing,
         Err(e) => {
-            eprintln!("機器を列挙できませんでした: {e}");
+            eprintln!("could not enumerate the devices: {e}");
             return ExitCode::FAILURE;
         }
     };
@@ -220,7 +220,7 @@ fn devices() -> ExitCode {
         })
         .collect();
     let out = json!({ "host": listing.host, "devices": devices });
-    println!("{}", serde_json::to_string_pretty(&out).expect("JSON にできる"));
+    println!("{}", serde_json::to_string_pretty(&out).expect("serializable as JSON"));
     ExitCode::SUCCESS
 }
 
@@ -260,20 +260,20 @@ fn run_loopback(input_wav: &std::path::Path, lead: f64, out_wav: Option<&std::pa
     let (signal, rate) = match read_wav(input_wav) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("{} を読めませんでした: {e}", input_wav.display());
+            eprintln!("could not read {}: {e}", input_wav.display());
             return ExitCode::FAILURE;
         }
     };
     let listing = match probe_devices() {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("機器を列挙できませんでした: {e}");
+            eprintln!("could not enumerate the devices: {e}");
             return ExitCode::FAILURE;
         }
     };
     let Some(cable) = find_virtual_cable(&listing.devices) else {
-        let out = json!({ "virtual_cable": null, "error": "VB-CABLE が見つかりません。VB-CABLE を入れてから動かしてください" });
-        println!("{}", serde_json::to_string_pretty(&out).expect("JSON にできる"));
+        let out = json!({ "virtual_cable": null, "error": "VB-CABLE not found. Install VB-CABLE before running this" });
+        println!("{}", serde_json::to_string_pretty(&out).expect("serializable as JSON"));
         return ExitCode::from(2);
     };
 
@@ -282,13 +282,13 @@ fn run_loopback(input_wav: &std::path::Path, lead: f64, out_wav: Option<&std::pa
     let recording = match loopback(&played, rate, &cable.playback.id, &cable.recording.id, std::time::Duration::from_secs(1)) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("loopback に失敗しました: {e}");
+            eprintln!("loopback failed: {e}");
             return ExitCode::FAILURE;
         }
     };
     if let Some(path) = out_wav {
         if let Err(e) = write_wav(path, &recording.samples) {
-            eprintln!("{} に書けませんでした: {e}", path.display());
+            eprintln!("could not write {}: {e}", path.display());
             return ExitCode::FAILURE;
         }
     }
@@ -324,7 +324,7 @@ fn run_loopback(input_wav: &std::path::Path, lead: f64, out_wav: Option<&std::pa
         "latency_ms": latency_ms,
         "level_db": level_db,
     });
-    println!("{}", serde_json::to_string_pretty(&out).expect("JSON にできる"));
+    println!("{}", serde_json::to_string_pretty(&out).expect("serializable as JSON"));
     if recorded_onset.is_some() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
@@ -347,7 +347,7 @@ fn run_analyze(wav: &std::path::Path, ceiling: f32, lpc_order: u32, raw_formants
     let (x, rate) = match read_wav(wav) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("{} を読めませんでした: {e}", wav.display());
+            eprintln!("could not read {}: {e}", wav.display());
             return ExitCode::FAILURE;
         }
     };
@@ -386,7 +386,7 @@ fn run_check(criteria: &[String], ceiling: f32, lpc_order: u32, as_json: bool) -
             .iter()
             .map(|o| json!({ "criterion": o.criterion, "case": o.case, "result": if o.pass { "PASS" } else { "FAIL" }, "detail": o.detail }))
             .collect();
-        println!("{}", serde_json::to_string_pretty(&v).expect("JSON にできる"));
+        println!("{}", serde_json::to_string_pretty(&v).expect("serializable as JSON"));
     } else {
         for o in &outcomes {
             println!("{}\t{}\t{}\t{}", o.criterion, o.case, if o.pass { "PASS" } else { "FAIL" }, o.detail);
@@ -400,11 +400,11 @@ fn run_e2e(input_wav: Option<&std::path::Path>, seconds: f64, semitones: f32) ->
         Some(path) => match read_wav(path) {
             Ok((x, rate)) if rate == check::RATE => (x, None),
             Ok((_, rate)) => {
-                eprintln!("{} は {rate} Hz です。{} Hz の wav を渡してください", path.display(), check::RATE);
+                eprintln!("{} is {rate} Hz. Give a {} Hz wav", path.display(), check::RATE);
                 return ExitCode::FAILURE;
             }
             Err(e) => {
-                eprintln!("{} を読めませんでした: {e}", path.display());
+                eprintln!("could not read {}: {e}", path.display());
                 return ExitCode::FAILURE;
             }
         },
@@ -412,7 +412,7 @@ fn run_e2e(input_wav: Option<&std::path::Path>, seconds: f64, semitones: f32) ->
     };
     match e2e::run(&signal, input_f0, semitones, seconds) {
         Ok(o) => {
-            println!("{}", serde_json::to_string_pretty(&o.report).expect("JSON にできる"));
+            println!("{}", serde_json::to_string_pretty(&o.report).expect("serializable as JSON"));
             if o.no_cable {
                 ExitCode::from(2)
             } else if o.pass {
@@ -422,7 +422,7 @@ fn run_e2e(input_wav: Option<&std::path::Path>, seconds: f64, semitones: f32) ->
             }
         }
         Err(e) => {
-            eprintln!("e2e に失敗しました: {e}");
+            eprintln!("e2e failed: {e}");
             ExitCode::FAILURE
         }
     }
@@ -432,12 +432,12 @@ fn run_shift(input: &std::path::Path, output: &std::path::Path, pitch: f32, form
     let (x, rate) = match read_wav(input) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("{} を読めませんでした: {e}", input.display());
+            eprintln!("could not read {}: {e}", input.display());
             return ExitCode::FAILURE;
         }
     };
     if rate != check::RATE {
-        eprintln!("{} は {rate} Hz です。{} Hz の wav を渡してください", input.display(), check::RATE);
+        eprintln!("{} is {rate} Hz. Give a {} Hz wav", input.display(), check::RATE);
         return ExitCode::FAILURE;
     }
     let settings = match (voice_domain::PitchShift::new(pitch), voice_domain::FormantShift::new(formant)) {
@@ -455,11 +455,11 @@ fn run_shift(input: &std::path::Path, output: &std::path::Path, pitch: f32, form
     padded.resize(x.len() + latency + block, 0.0);
     let mut out = vec![0.0f32; padded.len()];
     let mut times = Vec::with_capacity(padded.len() / block + 1);
-    // アプリの分析のスレッドと同じく、直近 4096 標本の F0 を目安として渡す（音声のスレッドと同じく、0 と同じ値は渡さない）
+    // As in the app's analysis thread, give the F0 of the latest 4096 samples as a hint (as on the audio thread, 0 and unchanged values are not given)
     use voice_domain::ports::Analyzer;
     let mut analyzer = voice_dsp::DefaultAnalyzer::default();
     let analysis = voice_domain::AnalysisSettings::default();
-    let sample_rate = voice_domain::SampleRate::new(check::RATE).expect("0 より大きい");
+    let sample_rate = voice_domain::SampleRate::new(check::RATE).expect("greater than 0");
     let window = 4096usize;
     let mut last_hint = 0.0f32;
     for (k, (i, o)) in padded.chunks(block).zip(out.chunks_mut(block)).enumerate() {
@@ -478,7 +478,7 @@ fn run_shift(input: &std::path::Path, output: &std::path::Path, pitch: f32, form
     out.drain(..latency);
     out.truncate(x.len());
     if let Err(e) = write_wav(output, &out) {
-        eprintln!("{} に書けませんでした: {e}", output.display());
+        eprintln!("could not write {}: {e}", output.display());
         return ExitCode::FAILURE;
     }
     if timing {

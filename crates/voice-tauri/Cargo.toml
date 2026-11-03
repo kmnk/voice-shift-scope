@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 license.workspace = true
-description = "voice-shift-scope の Tauri のアプリ（入る側の adapter と組み立て）"
+description = "The Tauri app of voice-shift-scope (inbound adapter and assembly)"
 
 [lib]
 name = "voice_tauri_lib"
@@ -28,12 +28,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hound = "3.5"
 
-# 画面の通しの試験で窓の画像を撮る（src/shot.rs）。Windows でだけ使う
+# Takes window shots in the end-to-end UI test (src/shot.rs). Used only on Windows
 [target.'cfg(windows)'.dependencies]
 png = "0.18"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_Xps", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
-# `cargo build` だけで作っても、画面を frontend/dist から読むようにする（無いと開発用の http://localhost:5173 を開く）
+# Load the screen from frontend/dist even with plain `cargo build` (otherwise it opens the development server at http://localhost:5173)
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

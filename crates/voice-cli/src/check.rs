@@ -1,18 +1,18 @@
-//! 受け入れの基準を、答えの分かる試験用の信号で判定する。
+//! Runs the acceptance checks on test signals with known answers.
 
 use serde_json::{Value, json};
 use voice_domain::ports::VoiceShifter;
 use voice_domain::{AnalysisSettings, FormantShift, PitchShift, ShiftSettings};
 use voice_dsp::{DEFAULT_BLOCK_SECONDS, SignalsmithShifter, app_shifter_with_block};
 
-/// 声を変える処理の窓の長さ（秒）。`check --block-ms` で替える。
+/// Window length of the shifter (seconds). Changed with `check --block-ms`.
 pub static BLOCK_SECONDS: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
 
-/// 判定に使う声を変える処理。`app`（アプリと同じ組み立て、既定）か `signalsmith`（変更の前の、Signalsmith Stretch だけ）。
-/// `check --shifter` で替える。判定が誤りを捕まえるかを、変更の前の処理で FAIL になることで確かめるために使う。
+/// The shifter used for the checks: `app` (assembled as in the app, the default) or `signalsmith` (Signalsmith Stretch only, as before the change).
+/// Changed with `check --shifter`. Used to confirm that a check catches a fault, by seeing it FAIL with the processing from before the change.
 pub static SHIFTER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
-/// `SHIFTER` と `BLOCK_SECONDS` に従って、声を変える処理を作る。
+/// Makes the shifter according to `SHIFTER` and `BLOCK_SECONDS`.
 pub fn make_shifter() -> Box<dyn VoiceShifter> {
     let block = *BLOCK_SECONDS.get().unwrap_or(&DEFAULT_BLOCK_SECONDS);
     match SHIFTER.get().map(String::as_str) {
@@ -35,18 +35,18 @@ pub struct Outcome {
     pub detail: Value,
 }
 
-/// 試験用の母音（`synth vowel --seconds 1.5`）を、Praat（Parselmouth 0.4.7、Burg 法、5 個・5500 Hz）で分析した
-/// F1〜F4 の中央値（0.2 秒より後）。作り直すときは `scripts/praat_reference.sh`。
-/// 2026-10-18 に macOS で出した値。合成の母音や分析の既定を替えたら作り直す。
+/// Medians (after 0.2 s) of F1–F4 of the test vowel (`synth vowel --seconds 1.5`) analysed by Praat (Parselmouth 0.4.7, Burg method, 5 formants, 5500 Hz).
+/// To regenerate, use `scripts/praat_reference.sh`.
+/// Values produced on macOS on 2026-10-18. Regenerate them when the synthetic vowel or the analysis defaults change.
 pub const PRAAT_REFERENCE: [(f64, [f32; 4]); 3] = [
     (100.0, [720.0, 1215.9, 2576.4, 3471.5]),
     (150.0, [761.3, 1214.4, 2551.9, 3425.4]),
     (220.0, [710.1, 1231.8, 2606.6, 3525.2]),
 ];
 
-/// B1: 試験用の母音（F0 100・150・220 Hz）で、推定した F1〜F4 が、同じ設定の Praat の値から ±2% 以内。
-/// 正しい値（作った共鳴）との差も、参考として出す（F1 が倍音に引かれる LPC の性質で、Praat も同じだけずれる）。
-/// `resonances` は信号を作る共鳴。
+/// B1: for the test vowels (F0 100, 150, and 220 Hz), the estimated F1–F4 are within ±2% of Praat's values with the same settings.
+/// The difference from the true values (the resonances used) is also shown for reference (LPC pulls F1 towards a harmonic, and Praat is off by the same amount).
+/// `resonances` are the resonances that make the signal.
 pub fn b1(resonances: &[Resonance], settings: &AnalysisSettings) -> Vec<Outcome> {
     PRAAT_REFERENCE
         .iter()
@@ -78,8 +78,8 @@ pub fn b1(resonances: &[Resonance], settings: &AnalysisSettings) -> Vec<Outcome>
         .collect()
 }
 
-/// B3: F0 150 Hz で H1〜H8 だけを持ち、雑音より 20 dB 以上高い信号で、観測できた倍音の数が 8、
-/// H1〜H8 の周波数が ±1% 以内。
+/// B3: for a signal at F0 150 Hz with only H1–H8, at least 20 dB above the noise, the number of harmonics seen is 8,
+/// and the frequencies of H1–H8 are within ±1%.
 pub fn b3(settings: &AnalysisSettings) -> Vec<Outcome> {
     let f0 = 150.0;
     let x = synth::harmonics(f0, 8, 40.0, RATE as f64, 1.5, 0.5);
@@ -103,20 +103,20 @@ pub fn b3(settings: &AnalysisSettings) -> Vec<Outcome> {
         .collect();
     vec![Outcome {
         criterion: "B3".into(),
-        case: "F0 150 Hz、H1〜H8".into(),
+        case: "F0 150 Hz, H1–H8".into(),
         pass,
         detail: json!({ "observed_harmonics": count, "expected_observed": 8, "harmonics": freqs }),
     }]
 }
 
-/// 試験用の信号を、音声のスレッドと同じ 10 ms のブロックで声を変える処理に通す。
-/// `input_f0` は入力の F0（Hz）で、フォルマントの包絡の目安に使う。
-/// 返すのは、遅れの分を前から除いた出力と、その遅れ（標本）。
+/// Runs a test signal through the shifter in 10 ms blocks, as on the audio thread.
+/// `input_f0` is the input F0 (Hz), used as the formant envelope hint.
+/// Returns the output with the delay removed from the front, and the delay (samples).
 pub fn shift_signal(x: &[f32], settings: ShiftSettings, input_f0: Option<f32>) -> (Vec<f32>, usize) {
     shift_signal_switching(x, &[(0, settings)], input_f0)
 }
 
-/// `shift_signal` の、途中で設定を変えるもの。`schedule` は（入力の標本の位置, 設定）を位置の順に並べたもの。
+/// `shift_signal` with settings changed along the way. `schedule` lists (input sample position, settings) in position order.
 pub fn shift_signal_switching(
     x: &[f32],
     schedule: &[(usize, ShiftSettings)],
@@ -145,14 +145,14 @@ pub fn shift_signal_switching(
 }
 
 fn shift(pitch: f32, formant: f32) -> ShiftSettings {
-    ShiftSettings { pitch: PitchShift::new(pitch).expect("範囲内"), formant: FormantShift::new(formant).expect("範囲内") }
+    ShiftSettings { pitch: PitchShift::new(pitch).expect("within range"), formant: FormantShift::new(formant).expect("within range") }
 }
 
 fn f0_median(frames: &[(f64, voice_domain::AnalysisFrame)], skip: f64) -> Option<f32> {
     median(frames.iter().filter(|(t, _)| *t >= skip).filter_map(|(_, f)| f.f0.map(|v| v.hz())).collect())
 }
 
-/// A1 と A2: フォルマント 1.0 倍のまま、ピッチを −12・−5・+5・+12 半音にしたときの F0 と F1〜F3。
+/// A1 and A2: F0 and F1–F3 at −12, −5, +5, and +12 semitones, with formant ×1.0.
 pub fn a1_a2(settings: &AnalysisSettings) -> Vec<Outcome> {
     let mut out = Vec::new();
     for f0 in [100.0, 150.0] {
@@ -169,7 +169,7 @@ pub fn a1_a2(settings: &AnalysisSettings) -> Vec<Outcome> {
             let a1 = f0_diff.is_some_and(|d| d.abs() <= 1.0);
             out.push(Outcome {
                 criterion: "A1".into(),
-                case: format!("F0 {f0} Hz、{st:+} 半音"),
+                case: format!("F0 {f0} Hz, {st:+} st"),
                 pass: a1,
                 detail: json!({ "before_f0": before_f0, "after_f0": after_f0, "expected_f0": expected, "diff_percent": f0_diff, "tolerance_percent": 1.0 }),
             });
@@ -183,13 +183,13 @@ pub fn a1_a2(settings: &AnalysisSettings) -> Vec<Outcome> {
                     json!({ "formant": format!("F{}", i + 1), "before": before_fm[i], "after": after_fm[i], "diff_percent": d, "pass": ok })
                 })
                 .collect();
-            out.push(Outcome { criterion: "A2".into(), case: format!("F0 {f0} Hz、{st:+} 半音"), pass: a2, detail: json!(rows) });
+            out.push(Outcome { criterion: "A2".into(), case: format!("F0 {f0} Hz, {st:+} st"), pass: a2, detail: json!(rows) });
         }
     }
     out
 }
 
-/// A3: ピッチ 0 半音のまま、フォルマントを 0.8・0.9・1.1・1.2 倍にしたときの F1〜F3 と F0。
+/// A3: F1–F3 and F0 at formant ×0.8, ×0.9, ×1.1, and ×1.2, with the pitch at 0 semitones.
 pub fn a3(settings: &AnalysisSettings) -> Vec<Outcome> {
     let mut out = Vec::new();
     for f0 in [100.0, 150.0] {
@@ -199,8 +199,8 @@ pub fn a3(settings: &AnalysisSettings) -> Vec<Outcome> {
         let before_fm = formant_medians(&before, SKIP);
         for ratio in [0.8f32, 0.9, 1.1, 1.2] {
             let (y, _) = shift_signal(&x, shift(0.0, ratio), before_f0);
-            // アプリと同じく、変えた後はフォルマントの倍率だけ上限も変えて分析する
-            let after = analyze_signal(&y, RATE, &settings.for_shifted(FormantShift::new(ratio).expect("範囲内")));
+            // As in the app, the shifted audio is analysed with the ceiling changed by the formant factor
+            let after = analyze_signal(&y, RATE, &settings.for_shifted(FormantShift::new(ratio).expect("within range")));
             let after_f0 = f0_median(&after, 0.5);
             let f0_diff = after_f0.zip(before_f0).map(|(a, b)| (a / b - 1.0) * 100.0);
             let mut pass = f0_diff.is_some_and(|d| d.abs() <= 1.0);
@@ -215,7 +215,7 @@ pub fn a3(settings: &AnalysisSettings) -> Vec<Outcome> {
                 .collect();
             out.push(Outcome {
                 criterion: "A3".into(),
-                case: format!("F0 {f0} Hz、フォルマント {ratio} 倍"),
+                case: format!("F0 {f0} Hz, formant ×{ratio}"),
                 pass,
                 detail: json!({ "f0_diff_percent": f0_diff, "formants": rows }),
             });
@@ -224,7 +224,7 @@ pub fn a3(settings: &AnalysisSettings) -> Vec<Outcome> {
     out
 }
 
-/// A4: 0 半音・1.0 倍のとき、出る音と入れた音の差が、入れた音より 30 dB 以上小さい。
+/// A4: at 0 semitones and ×1.0, the difference between the output and the input is at least 30 dB below the input.
 pub fn a4() -> Vec<Outcome> {
     let x = synth::vowel(150.0, &SYNTH_VOWEL, RATE as f64, 2.0, 0.5);
     let (y, latency) = shift_signal(&x, ShiftSettings::NONE, Some(150.0));
@@ -237,7 +237,7 @@ pub fn a4() -> Vec<Outcome> {
     let null_db = 10.0 * (err / sig).log10();
     vec![Outcome {
         criterion: "A4".into(),
-        case: "0 半音・1.0 倍".into(),
+        case: "0 st, ×1.0".into(),
         pass: null_db <= -30.0,
         detail: json!({ "difference_db": null_db, "required_db": -30.0, "latency_samples": latency }),
     }]
@@ -248,9 +248,9 @@ fn rms_db(x: &[f32]) -> f64 {
     10.0 * p.max(1e-30).log10()
 }
 
-/// Q2: ピッチを下げたとき（F0 100・150 Hz）の F1〜F3 と F0。
-/// −5・−12 半音（フォルマント 1.0 倍）は変える前から ±5%、−12 半音とフォルマント 0.8・1.2 倍は変える前のその倍率から ±7%。
-/// どの場合も F0 は狙いから ±1%。
+/// Q2: F1–F3 and F0 when lowering the pitch (F0 100 and 150 Hz).
+/// −5 and −12 semitones (formant ×1.0) are within ±5% of the original; −12 semitones with formant ×0.8 and ×1.2 within ±7% of the original times that factor.
+/// In every case, F0 is within ±1% of the target.
 pub fn q2(settings: &AnalysisSettings) -> Vec<Outcome> {
     let mut out = Vec::new();
     for f0 in [100.0, 150.0] {
@@ -260,7 +260,7 @@ pub fn q2(settings: &AnalysisSettings) -> Vec<Outcome> {
         let before_fm = formant_medians(&before, SKIP);
         for (st, ratio, tolerance) in [(-5.0f32, 1.0f32, 5.0f32), (-12.0, 1.0, 5.0), (-12.0, 0.8, 7.0), (-12.0, 1.2, 7.0)] {
             let (y, _) = shift_signal(&x, shift(st, ratio), before_f0);
-            let after = analyze_signal(&y, RATE, &settings.for_shifted(FormantShift::new(ratio).expect("範囲内")));
+            let after = analyze_signal(&y, RATE, &settings.for_shifted(FormantShift::new(ratio).expect("within range")));
             let after_f0 = f0_median(&after, 0.5);
             let expected_f0 = before_f0.map(|b| b * 2f32.powf(st / 12.0));
             let f0_diff = after_f0.zip(expected_f0).map(|(a, e)| (a / e - 1.0) * 100.0);
@@ -276,7 +276,7 @@ pub fn q2(settings: &AnalysisSettings) -> Vec<Outcome> {
                 .collect();
             out.push(Outcome {
                 criterion: "Q2".into(),
-                case: format!("F0 {f0} Hz、{st:+} 半音、フォルマント {ratio} 倍"),
+                case: format!("F0 {f0} Hz, {st:+} st, formant ×{ratio}"),
                 pass,
                 detail: json!({ "expected_f0": expected_f0, "after_f0": after_f0, "f0_diff_percent": f0_diff, "formants": rows }),
             });
@@ -285,21 +285,21 @@ pub fn q2(settings: &AnalysisSettings) -> Vec<Outcome> {
     out
 }
 
-/// Q3: F0 150 Hz の合成の母音で、1.0 秒に −5 → +5 半音、2.0 秒に −5 半音へ切り替えたとき、
-/// 切り替えの前後 100 ms の RMS（20 ms の窓、5 ms ごと）が、その前の 200 ms の同じ RMS の中央値の 0.5〜2 倍に収まる。
-/// 切り替えは処理の時刻で起き、出力では遅れの分だけ前の時刻に当たるので、両方を含む範囲を見る。
+/// Q3: for a synthetic vowel at F0 150 Hz, switching from −5 to +5 semitones at 1.0 s and to −5 semitones at 2.0 s,
+/// the RMS (20 ms windows, every 5 ms) in the 100 ms around each switch stays within 0.5–2 times the median of the same RMS over the 200 ms before.
+/// The switch happens at processing time, which is earlier in the output by the delay, so the range covers both.
 pub fn q3() -> Vec<Outcome> {
     let x = synth::vowel(150.0, &SYNTH_VOWEL, RATE as f64, 3.0, 0.5);
     let r = RATE as usize;
     let schedule = [(0, shift(-5.0, 1.0)), (r, shift(5.0, 1.0)), (2 * r, shift(-5.0, 1.0))];
     let (y, latency) = shift_signal_switching(&x, &schedule, Some(150.0));
-    // 20 ms の窓を 5 ms ずつずらす。窓は出力の 1 周期（F0 が 50 Hz まで）より長くし、脈の間の枠を落ち込みと数えない
+    // 20 ms windows every 5 ms. A window longer than one output period (F0 down to 50 Hz) keeps frames between pulses from counting as dips
     let hop = r / 200;
     let width = r / 50;
     let frame_rms = |a: usize, b: usize| -> Vec<f64> {
         (a / hop..b / hop).map(|k| rms_db(&y[k * hop - width / 2..k * hop + width / 2])).collect()
     };
-    [(r, "−5 → +5 半音"), (2 * r, "+5 → −5 半音")]
+    [(r, "−5 → +5 st"), (2 * r, "+5 → −5 st")]
         .iter()
         .map(|&(at, name)| {
             let lo = at.saturating_sub(latency) - r / 10;
@@ -319,7 +319,7 @@ pub fn q3() -> Vec<Outcome> {
         .collect()
 }
 
-/// Q4: 変えた後の音量（0.5 秒から後の RMS）が、変える前から ±2 dB 以内。
+/// Q4: the shifted level (RMS after 0.5 s) is within ±2 dB of the original.
 pub fn q4() -> Vec<Outcome> {
     let cases = [(-12.0, 1.0), (-5.0, 1.0), (5.0, 1.0), (12.0, 1.0), (0.0, 0.8), (0.0, 1.2), (-12.0, 0.8)];
     let mut out = Vec::new();
@@ -333,7 +333,7 @@ pub fn q4() -> Vec<Outcome> {
             let diff = output_db - input_db;
             out.push(Outcome {
                 criterion: "Q4".into(),
-                case: format!("F0 {f0} Hz、{st:+} 半音、フォルマント {ratio} 倍"),
+                case: format!("F0 {f0} Hz, {st:+} st, formant ×{ratio}"),
                 pass: diff.abs() <= 2.0,
                 detail: json!({ "input_db": input_db, "output_db": output_db, "diff_db": diff, "tolerance_db": 2.0 }),
             });
@@ -342,10 +342,10 @@ pub fn q4() -> Vec<Outcome> {
     out
 }
 
-/// Q5: −60 dBFS の白色雑音だけを ±12 半音で変えたとき、出力の RMS が入力より 1 dB を超えて大きくならない。
+/// Q5: shifting white noise alone at −60 dBFS by ±12 semitones does not raise the output RMS more than 1 dB above the input.
 pub fn q5() -> Vec<Outcome> {
     let n = 2 * RATE as usize;
-    // 決まった種の線形合同法で、RMS が −60 dBFS の一様な雑音を作る（一様分布 [−a, a] の RMS は a / √3）
+    // Uniform noise with an RMS of −60 dBFS from a fixed-seed linear congruential generator (the RMS of a uniform distribution [−a, a] is a / √3)
     let a = 1e-3f32 * 3f32.sqrt();
     let mut state = 0x1234_5678u32;
     let x: Vec<f32> = (0..n)
@@ -363,7 +363,7 @@ pub fn q5() -> Vec<Outcome> {
             let output_db = rms_db(&y[start..]);
             Outcome {
                 criterion: "Q5".into(),
-                case: format!("−60 dBFS の白色雑音、{st:+} 半音"),
+                case: format!("−60 dBFS white noise, {st:+} st"),
                 pass: output_db <= input_db + 1.0,
                 detail: json!({ "input_db": input_db, "output_db": output_db, "allowed_increase_db": 1.0 }),
             }
@@ -389,7 +389,7 @@ pub fn run(criteria: &[String], settings: &AnalysisSettings) -> Result<Vec<Outco
             "Q3" => out.extend(q3()),
             "Q4" => out.extend(q4()),
             "Q5" => out.extend(q5()),
-            other => return Err(format!("{other} はまだ判定できません（今あるのは A1〜A4・B1・B3・Q2〜Q5）")),
+            other => return Err(format!("{other} cannot be checked yet (available: A1–A4, B1, B3, Q2–Q5)")),
         }
     }
     Ok(out)
@@ -399,7 +399,7 @@ pub fn run(criteria: &[String], settings: &AnalysisSettings) -> Result<Vec<Outco
 mod tests {
     use super::*;
 
-    /// F1 を 20% ずらして作った信号では、Praat の値（ずらす前の信号のもの）から外れて、B1 が FAIL になる。
+    /// A signal made with F1 moved by 20% falls outside Praat's values (for the signal before the move), and B1 FAILs.
     #[test]
     fn b1_fails_when_signal_f1_is_off_by_twenty_percent() {
         let mut shifted = SYNTH_VOWEL;

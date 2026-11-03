@@ -1,5 +1,5 @@
-//! 音声の実行（cpal での機器の列挙、音声のスレッド、分析のスレッド）。
-//! 機器の列挙、VB-CABLE を見つける処理、`AudioPipeline` の実装、試験の道具の loopback を持つ。
+//! Audio runtime (device enumeration with cpal, the audio thread, the analysis thread).
+//! Holds device enumeration, finding VB-CABLE, the `AudioPipeline` implementation, and the loopback test tool.
 
 mod devices;
 pub mod engine;

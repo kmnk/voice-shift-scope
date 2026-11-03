@@ -1,4 +1,4 @@
-//! 機器の一覧と、一覧から作る機器の値。
+//! The device list, and device values made from the list.
 
 use crate::DomainError;
 
@@ -8,7 +8,7 @@ pub enum DeviceDirection {
     Output,
 }
 
-/// adapter が返す機器の情報。`raw_id` は adapter の中の識別子で、domain は中身を解さない。
+/// Device information returned by an adapter. `raw_id` is the adapter's own identifier; the domain does not interpret it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceInfo {
     pub raw_id: String,
@@ -17,8 +17,8 @@ pub struct DeviceInfo {
     pub is_default: bool,
 }
 
-/// 機器を指す値。`DeviceList` の中にあるものからしか作れない。
-/// 画面から来た任意の文字列で機器を指せないようにするため。
+/// A value that points to a device. It can only be made from what is in a `DeviceList`,
+/// so that an arbitrary string from the screen cannot point to a device.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DeviceId {
     raw: String,
@@ -35,14 +35,14 @@ impl DeviceId {
     }
 }
 
-/// 出力の先（VB-CABLE）の再生側と録音側。
+/// The playback and recording sides of the output (VB-CABLE).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VirtualCable {
     pub playback: DeviceId,
     pub recording: DeviceId,
 }
 
-/// その時点の機器の一覧と、見つかった仮想マイクの機器。
+/// The device list at a point in time, and the virtual microphone device found in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceList {
     devices: Vec<DeviceInfo>,
@@ -50,7 +50,7 @@ pub struct DeviceList {
 }
 
 impl DeviceList {
-    /// adapter の列挙の結果から作る。`cable` は一覧の中の `raw_id` で指す。
+    /// Made from the adapter's enumeration. `cable` is given as a `raw_id` in the list.
     pub fn new(devices: Vec<DeviceInfo>, cable: Option<(&str, &str)>) -> Self {
         let mut list = Self { devices, cable: None };
         list.cable = cable.and_then(|(playback, recording)| {
@@ -62,7 +62,7 @@ impl DeviceList {
         list
     }
 
-    /// 入力の機器を 1 つ足した一覧（試験の音源のため）。既定の入力は足したものにする。
+    /// The list with one more input device (for the test source). The added device becomes the default input.
     pub fn with_extra_input(mut self, info: DeviceInfo) -> Self {
         if info.is_default {
             for d in self.devices.iter_mut().filter(|d| d.direction == DeviceDirection::Input) {
@@ -73,7 +73,7 @@ impl DeviceList {
         self
     }
 
-    /// `raw_id` の機器の名前。
+    /// The name of the device with `raw_id`.
     pub fn name(&self, raw_id: &str) -> Option<&str> {
         self.devices.iter().find(|d| d.raw_id == raw_id).map(|d| d.name.as_str())
     }
@@ -82,7 +82,7 @@ impl DeviceList {
         self.cable.as_ref()
     }
 
-    /// 一覧の中の機器を指す値を作る。
+    /// Makes a value that points to a device in the list.
     pub fn id(&self, raw_id: &str, direction: DeviceDirection) -> Result<DeviceId, DomainError> {
         self.devices
             .iter()
@@ -97,17 +97,17 @@ impl DeviceList {
             .is_some_and(|c| c.playback.raw == info.raw_id || c.recording.raw == info.raw_id)
     }
 
-    /// 画面に出す入力の一覧。VB-CABLE の端を外す。
+    /// The input list shown on screen. Leaves out the VB-CABLE ends.
     pub fn inputs(&self) -> impl Iterator<Item = &DeviceInfo> {
         self.devices.iter().filter(|d| d.direction == DeviceDirection::Input && !self.is_cable_end(d))
     }
 
-    /// 画面に出す出力とモニターの一覧（再生デバイスすべて）。モニターの一覧から出力と同じ機器を外すのは画面の側。
+    /// The output and monitor list shown on screen (all playback devices). Removing the output device from the monitor list is done by the screen.
     pub fn outputs(&self) -> impl Iterator<Item = &DeviceInfo> {
         self.devices.iter().filter(|d| d.direction == DeviceDirection::Output)
     }
 
-    /// Windows の既定の機器。VB-CABLE の端なら `None`。
+    /// The Windows default device. `None` if it is a VB-CABLE end.
     pub fn default_device(&self, direction: DeviceDirection) -> Option<DeviceId> {
         self.devices
             .iter()

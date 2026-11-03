@@ -1,4 +1,4 @@
-//! 利用者が画面から変える設定の値。範囲は仮置きで、実装で詰める。
+//! Setting values the user changes on screen. The ranges are provisional and settled during implementation.
 
 use crate::DomainError;
 
@@ -6,7 +6,7 @@ fn finite(value: f32) -> Result<f32, DomainError> {
     if value.is_finite() { Ok(value) } else { Err(DomainError::NotFinite) }
 }
 
-/// ピッチの変化（半音）。求める最小の範囲（±12 半音）を含む −24〜+24。
+/// Pitch change (semitones). −24 to +24, which covers the minimum required range (±12 semitones).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PitchShift(f32);
 
@@ -28,13 +28,13 @@ impl PitchShift {
         self.0
     }
 
-    /// 周波数の比（2^(半音/12)）。
+    /// Frequency ratio (2^(semitones/12)).
     pub fn ratio(self) -> f32 {
         2f32.powf(self.0 / 12.0)
     }
 }
 
-/// フォルマントの倍率。求める最小の範囲（0.7〜1.4）を含む 0.5〜2.0。
+/// Formant factor. 0.5 to 2.0, which covers the minimum required range (0.7 to 1.4).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FormantShift(f32);
 
@@ -57,7 +57,7 @@ impl FormantShift {
     }
 }
 
-/// 声を変える設定。ピッチとフォルマントは独立に変える。
+/// Settings for changing the voice. Pitch and formant change independently.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShiftSettings {
     pub pitch: PitchShift,
@@ -74,7 +74,7 @@ impl Default for ShiftSettings {
     }
 }
 
-/// フォルマントの推定の上限（Hz）。Praat と同じく既定 5500。
+/// Upper limit of the formant estimate (Hz). Defaults to 5500, as in Praat.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FormantCeiling(f32);
 
@@ -97,7 +97,7 @@ impl FormantCeiling {
     }
 }
 
-/// 倍音を「観測できた」とみなす、雑音の床からの差（dB）。既定 10 は仮置き。
+/// How far above the noise floor a harmonic must be to count as seen (dB). The default of 10 is provisional.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HarmonicThreshold(f32);
 
@@ -120,8 +120,8 @@ impl HarmonicThreshold {
     }
 }
 
-/// 倍音を「観測できた」とみなす、最も強い倍音からの差の上限（dB）。既定 40 は仮置き。
-/// 雑音の床との差だけでは、静かな部屋で裏声の弱い高い倍音まで数えてしまうので、2 つ目の条件として置く。
+/// How far below the strongest harmonic a harmonic may be to count as seen (dB). The default of 40 is provisional.
+/// The noise floor alone would count weak high harmonics of a falsetto in a quiet room, so this is a second condition.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HarmonicRelativeLimit(f32);
 
@@ -144,7 +144,7 @@ impl HarmonicRelativeLimit {
     }
 }
 
-/// LPC の次数（極の数）。Praat と同じく、フォルマントの数の 2 倍。既定 10（5 個）。
+/// LPC order (number of poles). Twice the number of formants, as in Praat. Defaults to 10 (5 formants).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LpcOrder(u32);
 
@@ -166,7 +166,7 @@ impl LpcOrder {
     }
 }
 
-/// 分析の設定。
+/// Analysis settings.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AnalysisSettings {
     pub ceiling: FormantCeiling,
@@ -176,8 +176,8 @@ pub struct AnalysisSettings {
 }
 
 impl AnalysisSettings {
-    /// 変えた後の声を分析するときの設定。フォルマントを上げた分だけ上限も上げる（上限の範囲で止める）。
-    /// 上限のままだと、上がった上の方の共鳴が上限を超え、無い所にフォルマントを置いてしまう。
+    /// Settings for analysing the shifted voice. The ceiling rises as much as the formants were raised (up to the top of its range).
+    /// Keeping the ceiling would push the raised upper resonances above it and place formants where there are none.
     pub fn for_shifted(self, formant: crate::FormantShift) -> Self {
         let scaled = (self.ceiling.hz() * formant.ratio()).clamp(FormantCeiling::MIN, FormantCeiling::MAX);
         Self { ceiling: FormantCeiling(scaled), ..self }

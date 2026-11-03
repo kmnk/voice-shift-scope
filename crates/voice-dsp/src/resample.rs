@@ -1,11 +1,11 @@
-//! 帯域制限のリサンプリング（Hann の窓を掛けた sinc）。分析の前処理に使う。音声のスレッドでは使わない。
+//! Band-limited resampling (Hann-windowed sinc). Used to prepare the analysis. Not used on the audio thread.
 
 use std::f64::consts::PI;
 
-/// `x`（`from` Hz）を `to` Hz に直す。`to < from` のときは `to / 2` の手前で帯域を切る。
+/// Converts `x` (`from` Hz) to `to` Hz. When `to < from`, the band is cut just below `to / 2`.
 pub fn resample(x: &[f64], from: f64, to: f64) -> Vec<f64> {
     let ratio = to / from;
-    let cutoff = ratio.min(1.0) * 0.95; // 入力の Nyquist に対する比
+    let cutoff = ratio.min(1.0) * 0.95; // ratio to the input Nyquist
     let half_taps = 32.0 / cutoff;
     let n = (x.len() as f64 * ratio).floor() as usize;
     (0..n)

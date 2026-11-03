@@ -1,4 +1,4 @@
-//! 取り込んだ Signalsmith Stretch が build でき、ピッチとフォルマントを別々に設定してブロックを処理できる。
+//! The bundled Signalsmith Stretch builds, and can process a block with pitch and formant set separately.
 
 use voice_domain::ports::VoiceShifter;
 use voice_domain::{FormantShift, PitchShift, ShiftSettings};

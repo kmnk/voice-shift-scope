@@ -1,5 +1,5 @@
-//! 音声の実行（voice-runtime）を、入力だけ wav の音源に替えて本物の機器で通す。
-//! 出力は VB-CABLE の再生側に出し、録音側から録り返して判定する。
+//! Runs the audio runtime (voice-runtime) on real devices, with only the input replaced by a wav source.
+//! The output goes to the VB-CABLE playback side and is recorded back from the recording side for the checks.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -24,10 +24,10 @@ struct Collect {
 impl AnalysisPublisher for Collect {
     fn publish(&self, pair: &AnalysisPair) {
         if let Some(f) = pair.before.f0 {
-            self.before_f0.lock().expect("集計").push(f.hz());
+            self.before_f0.lock().expect("collector").push(f.hz());
         }
         if let Some(f) = pair.after.f0 {
-            self.after_f0.lock().expect("集計").push(f.hz());
+            self.after_f0.lock().expect("collector").push(f.hz());
         }
     }
 }
@@ -38,19 +38,19 @@ pub struct E2eOutcome {
     pub no_cable: bool,
 }
 
-/// `signal`（`RATE`、mono）を流し、`semitones` 半音だけ変えた声が VB-CABLE から録れるかを確かめる。
+/// Plays `signal` (`RATE`, mono) and checks that the voice shifted by `semitones` can be recorded from VB-CABLE.
 pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) -> Result<E2eOutcome, String> {
     let devices = CpalDevices;
     let list = devices.list().map_err(|e| e.to_string())?;
     let Some(cable) = list.cable().cloned() else {
         return Ok(E2eOutcome {
-            report: json!({ "virtual_cable": null, "error": "VB-CABLE が見つかりません。VB-CABLE を入れてから動かしてください" }),
+            report: json!({ "virtual_cable": null, "error": "VB-CABLE not found. Install VB-CABLE before running this" }),
             pass: false,
             no_cable: true,
         });
     };
 
-    // 流す信号: 0.5 秒の無音のあと、`seconds` 秒まで繰り返す
+    // The signal: 0.5 s of silence, then repeated up to `seconds` seconds
     let lead = (0.5 * RATE as f64) as usize;
     let total = lead + (seconds * RATE as f64) as usize;
     let mut played = vec![0.0f32; lead];
@@ -70,9 +70,9 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
         pitch: PitchShift::new(semitones).map_err(|e| e.to_string())?,
         formant: FormantShift::NONE,
     };
-    // 入力は wav の音源に替えてあるので、入力の機器の値は使われない。CI のランナーには
-    // VB-CABLE 以外の録音の機器が無く、use case の規則（VB-CABLE の録音側は入力に選べない）を
-    // 満たせないので、ここでは use case を通さずに port を直に呼ぶ
+    // The input is replaced by the wav source, so the input device value is not used. CI runners have
+    // no recording device other than VB-CABLE, which cannot satisfy the use case rule (the VB-CABLE recording side cannot
+    // be the input), so the port is called directly here instead of going through the use case
     let placeholder_input = list.id(cable.recording.raw(), DeviceDirection::Input).map_err(|e| e.to_string())?;
     let config = PipelineConfig {
         input: placeholder_input,
@@ -94,7 +94,7 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
     let recorded = resample_linear(&recorded, rec_rate, RATE);
 
     let peak = signal.iter().fold(0.0f32, |m, v| m.max(v.abs()));
-    // 録音と音源は別々に始まるので、それぞれが始まった時刻の差を足す
+    // Recording and the source start separately, so add the difference between their start times
     let start_offset_ms = match (source_started, recording_started) {
         (Some(src), Some(rec)) => Some(if rec >= src {
             (rec - src).as_secs_f64() * 1000.0
@@ -112,11 +112,11 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
     let recorded_f0 = median(frames.iter().filter(|(t, _)| *t >= start_t).filter_map(|(_, f)| f.f0.map(|v| v.hz())).collect());
     let expected_f0 = input_f0.map(|f| f * 2f32.powf(semitones / 12.0));
     let f0_diff = recorded_f0.zip(expected_f0).map(|(r, e)| (r / e - 1.0) * 100.0);
-    let before_f0 = median(collect.before_f0.lock().expect("集計").clone());
-    let after_f0 = median(collect.after_f0.lock().expect("集計").clone());
+    let before_f0 = median(collect.before_f0.lock().expect("collector").clone());
+    let after_f0 = median(collect.after_f0.lock().expect("collector").clone());
 
     let a1 = f0_diff.is_some_and(|d| d.abs() <= 1.0);
-    // 遅れは、声を変える処理がほぼ素通しになる 0 半音のときだけ、波形の立ち上がりで測れる
+    // The delay can be measured from the waveform onset only at 0 semitones, where the shifter is nearly transparent
     let a5 = latency_ms.is_some_and(|l| l <= 150.0);
     let measure_latency = semitones == 0.0;
     let a6 = stats.output_underruns == 0 && stats.dropped_input == 0;
@@ -127,7 +127,7 @@ pub fn run(signal: &[f32], input_f0: Option<f32>, semitones: f32, seconds: f64) 
         "seconds": seconds,
         "recording_rate": rec_rate,
         "A1": { "result": pass_str(a1), "input_f0": input_f0, "expected_f0": expected_f0, "recorded_f0": recorded_f0, "diff_percent": f0_diff },
-        "A5": if measure_latency { json!({ "result": pass_str(a5), "latency_ms": latency_ms, "recording_minus_source_start_ms": start_offset_ms, "limit_ms": 150, "note": "wav の音源から CABLE Output まで。マイクの入力のバッファを含まない" }) } else { json!({ "result": "SKIP", "note": "--semitones 0 のときだけ測る" }) },
+        "A5": if measure_latency { json!({ "result": pass_str(a5), "latency_ms": latency_ms, "recording_minus_source_start_ms": start_offset_ms, "limit_ms": 150, "note": "From the wav source to CABLE Output. Does not include the microphone input buffer" }) } else { json!({ "result": "SKIP", "note": "Measured only with --semitones 0" }) },
         "A6": { "result": pass_str(a6), "output_underruns": stats.output_underruns, "output_underrun_events": stats.output_underrun_events, "first_underrun_seconds": stats.first_underrun_seconds, "last_underrun_seconds": stats.last_underrun_seconds, "dropped_input": stats.dropped_input },
         "analysis": { "result": pass_str(analysis_ok), "published_pairs": stats.published_pairs, "before_f0_median": before_f0, "after_f0_median": after_f0 },
         "shifter_latency_samples": stats.shifter_latency,

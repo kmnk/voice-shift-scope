@@ -1,8 +1,8 @@
-//! 分析の結果の値。
+//! Values of analysis results.
 
 use crate::{AnalysisSettings, DomainError, ShiftSettings};
 
-/// 標本化の速さ（Hz）。
+/// Sample rate (Hz).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SampleRate(u32);
 
@@ -16,11 +16,11 @@ impl SampleRate {
     }
 }
 
-/// 入力を始めてからの標本の数。時刻はこれで表す。
+/// Number of samples since the input started. Times are expressed with this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SamplePosition(pub u64);
 
-/// 周波数（Hz、0 より大きい）。
+/// Frequency (Hz, greater than 0).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Frequency(f32);
 
@@ -34,7 +34,7 @@ impl Frequency {
     }
 }
 
-/// 強さ（dB）。
+/// Level (dB).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Decibels(f32);
 
@@ -48,39 +48,39 @@ impl Decibels {
     }
 }
 
-/// 1 つのフォルマント。
+/// One formant.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Formant {
     pub frequency: Frequency,
     pub bandwidth: Frequency,
 }
 
-/// 1 本の倍音。`number` は 1 が基本周波数。
+/// One harmonic. `number` 1 is the fundamental.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Harmonic {
     pub number: u32,
     pub frequency: Frequency,
     pub level: Decibels,
-    /// 雑音の床からしきい値を超えて、k × F0 の近くに山がある。
+    /// There is a peak near k × F0 that rises above the noise floor by more than the threshold.
     pub observed: bool,
 }
 
-/// 1 つの時刻の分析の結果。
+/// The analysis result at one time.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AnalysisFrame {
     pub f0: Option<Frequency>,
     pub voiced: bool,
     pub formants: [Option<Formant>; 4],
     pub harmonics: Vec<Harmonic>,
-    /// 1 番目から途切れずに観測できた倍音の数。
+    /// Number of harmonics seen without a gap from the first.
     pub observed_harmonics: u32,
-    /// 画面の描画に使う列（dB）。
+    /// Columns used to draw the screen (dB).
     pub spectrum: Vec<f32>,
     pub envelope: Vec<f32>,
     pub noise_floor: Vec<f32>,
 }
 
-/// 同じ時刻の、変える前と変えた後の分析の結果と、その時の設定。
+/// The original and shifted analysis results at the same time, with the settings at that time.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnalysisPair {
     pub position: SamplePosition,

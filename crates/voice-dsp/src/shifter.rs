@@ -1,4 +1,4 @@
-//! 声を変える処理の実装: Signalsmith Stretch 1.4.0（MIT、third_party に取り込んだもの）を包む `VoiceShifter`。
+//! A voice shifter: `VoiceShifter`, which wraps Signalsmith Stretch 1.4.0 (MIT, bundled in third_party).
 
 use voice_domain::ShiftSettings;
 use voice_domain::ports::VoiceShifter;
@@ -20,12 +20,12 @@ unsafe extern "C" {
     fn vss_stretch_process(s: *mut RawStretch, input: *const f32, input_len: i32, output: *mut f32, output_len: i32);
 }
 
-/// 窓の長さの既定。遅れはほぼこの長さになる。
-/// 既定の 120 ms と比べ、70 ms でも受け入れの基準 A1〜A4 の結果はほぼ同じで（試験用の母音で FAIL の数は同じ 2 つ）、
-/// 50 ms では F0 100 Hz の声で崩れた（voice-cli check --block-ms で比べた）。
+/// Default window length. The delay is about this length.
+/// Compared with the default 120 ms, 70 ms gives almost the same results for acceptance checks A1–A4 (the same 2 FAILs on the test vowels),
+/// and 50 ms broke down on a voice at F0 100 Hz (compared with voice-cli check --block-ms).
 pub const DEFAULT_BLOCK_SECONDS: f32 = 0.07;
 
-/// フォルマントの包絡の目安に渡す F0 の比。入力の F0 の半分が、F0 100・150 Hz の試験用の母音でずれが一番小さかった。
+/// Ratio of F0 given as the formant envelope hint. Half the input F0 gave the smallest error on the test vowels at F0 100 and 150 Hz.
 pub const FORMANT_BASE_RATIO: f32 = 0.5;
 
 pub struct SignalsmithShifter {
@@ -34,22 +34,22 @@ pub struct SignalsmithShifter {
     settings: ShiftSettings,
 }
 
-// 1 つのスレッドからしか触らない（音声のスレッドへは所有ごと渡す）。
+// Touched from only one thread (ownership is moved to the audio thread).
 unsafe impl Send for SignalsmithShifter {}
 
 impl SignalsmithShifter {
-    /// mono、`sample_rate` Hz、窓 `DEFAULT_BLOCK_SECONDS`。
-    /// 作るときにメモリを確保するので、音声のスレッドの外で作る。
+    /// Mono, `sample_rate` Hz, window `DEFAULT_BLOCK_SECONDS`.
+    /// Allocates memory when created, so create it outside the audio thread.
     pub fn new(sample_rate: u32) -> Self {
         Self::with_block(sample_rate, DEFAULT_BLOCK_SECONDS, DEFAULT_BLOCK_SECONDS / 4.0)
     }
 
-    /// Signalsmith Stretch の既定の窓（約 120 ms、遅れも約 120 ms）。
+    /// Signalsmith Stretch's default window (about 120 ms, with about 120 ms of delay).
     pub fn with_preset_default(sample_rate: u32) -> Self {
         Self::from_raw(unsafe { vss_stretch_create(sample_rate as f32) }, sample_rate)
     }
 
-    /// 窓と間隔を秒で指定する。窓を短くすると遅れが減り、低い声の質が落ちる。
+    /// Sets the window and interval in seconds. A shorter window reduces the delay and lowers the quality of low voices.
     pub fn with_block(sample_rate: u32, block_seconds: f32, interval_seconds: f32) -> Self {
         let block = (block_seconds * sample_rate as f32) as i32;
         let interval = (interval_seconds * sample_rate as f32) as i32;
@@ -66,12 +66,12 @@ impl SignalsmithShifter {
     fn apply(&mut self) {
         unsafe {
             vss_stretch_set_transpose_semitones(self.raw, self.settings.pitch.semitones(), 0.0);
-            // compensate_pitch: ピッチを動かしてもフォルマントを元の位置に残し、その上で倍率を掛ける
+            // compensate_pitch: keep the formants in place when the pitch moves, then apply the factor
             vss_stretch_set_formant_factor(self.raw, self.settings.formant.ratio(), 1);
         }
     }
 
-    /// フォルマントの包絡を求めるときの F0 の目安（Hz）。0 なら Signalsmith Stretch が自分で推定する。
+    /// F0 hint (Hz) for finding the formant envelope. With 0, Signalsmith Stretch estimates it itself.
     pub fn set_formant_base_hz(&mut self, f0: f32) {
         unsafe { vss_stretch_set_formant_base(self.raw, f0 / self.sample_rate as f32) }
     }
@@ -101,7 +101,7 @@ impl VoiceShifter for SignalsmithShifter {
         unsafe { (vss_stretch_input_latency(self.raw) + vss_stretch_output_latency(self.raw)) as usize }
     }
 
-    /// 入力の F0 の半分を、フォルマントの包絡の目安として渡す（試験用の母音で一番ずれが小さかった比）。
+    /// Gives half the input F0 as the formant envelope hint (the ratio with the smallest error on the test vowels).
     fn set_pitch_hint(&mut self, f0: f32) {
         if f0 > 0.0 {
             self.set_formant_base_hz(f0 * FORMANT_BASE_RATIO);

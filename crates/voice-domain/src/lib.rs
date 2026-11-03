@@ -1,6 +1,6 @@
-//! domain: value object、`VoiceSession`（aggregate）、port の trait。
-//! 外の技術（cpal、Signalsmith Stretch、Tauri）に依らない。
-//! 値は生成の関数で検査してから作り、field は外から触れない。serde は付けない。
+//! domain: value objects, `VoiceSession` (aggregate), and port traits.
+//! Does not depend on outside technology (cpal, Signalsmith Stretch, Tauri).
+//! Values are checked by their constructors, and fields are not reachable from outside. No serde.
 
 mod analysis;
 mod devices;

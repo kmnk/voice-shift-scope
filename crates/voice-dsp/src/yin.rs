@@ -1,4 +1,4 @@
-//! YIN による F0 の推定（de Cheveigné & Kawahara 2002）。
+//! F0 estimation with YIN (de Cheveigné & Kawahara 2002).
 
 use std::sync::Arc;
 
@@ -10,9 +10,9 @@ use voice_domain::{Frequency, SampleRate};
 pub struct Yin {
     pub min_f0: f32,
     pub max_f0: f32,
-    /// 累積平均で正規化した差の関数のしきい値。
+    /// Threshold of the cumulative-mean-normalised difference function.
     pub threshold: f32,
-    /// これより小さい RMS（dBFS）は無声とする。
+    /// An RMS (dBFS) below this is unvoiced.
     pub silence_dbfs: f32,
     diff: Vec<f32>,
     fft: Option<(usize, Arc<dyn Fft<f32>>, Arc<dyn Fft<f32>>)>,
@@ -38,14 +38,14 @@ impl Default for Yin {
 }
 
 impl Yin {
-    /// d(τ) = Σ_{j<w} (x_j − x_{j+τ})² を、FFT の相互相関で求める（d = e₀ + e(τ) − 2 r(τ)）。
+    /// Finds d(τ) = Σ_{j<w} (x_j − x_{j+τ})² with an FFT cross-correlation (d = e₀ + e(τ) − 2 r(τ)).
     fn difference(&mut self, x: &[f32], w: usize, max_tau: usize) {
         let n = (w + max_tau + 1).next_power_of_two() * 2;
         if self.fft.as_ref().map(|f| f.0) != Some(n) {
             let mut planner = FftPlanner::new();
             self.fft = Some((n, planner.plan_fft_forward(n), planner.plan_fft_inverse(n)));
         }
-        let (_, fwd, inv) = self.fft.as_ref().expect("用意した");
+        let (_, fwd, inv) = self.fft.as_ref().expect("prepared");
         self.a.clear();
         self.a.resize(n, Complex32::default());
         self.b.clear();
@@ -95,7 +95,7 @@ impl PitchEstimator for Yin {
         }
         let w = window.len() - tau_max - 1;
         self.difference(window, w, tau_max + 1);
-        // 累積平均で正規化
+        // Normalise by the cumulative mean
         let mut running = 0.0f32;
         self.diff[0] = 1.0;
         for tau in 1..=tau_max + 1 {
@@ -115,7 +115,7 @@ impl PitchEstimator for Yin {
             tau += 1;
         }
         let tau = found?;
-        // 放物線で補間
+        // Parabolic interpolation
         let (a, b, c) = (self.diff[tau - 1], self.diff[tau], self.diff[tau + 1]);
         let denom = a - 2.0 * b + c;
         let shift = if denom.abs() > 1e-12 { 0.5 * (a - c) / denom } else { 0.0 };
@@ -139,7 +139,7 @@ mod tests {
         let rate = SampleRate::new(48_000).unwrap();
         for f0 in [80.0, 100.0, 150.0, 220.0, 440.0] {
             let x = harmonic_tone(f0, 48_000.0, 4096);
-            let est = yin.estimate(&x, rate).expect("有声").hz();
+            let est = yin.estimate(&x, rate).expect("voiced").hz();
             assert!((est / f0 - 1.0).abs() < 0.001, "{f0}: {est}");
         }
     }

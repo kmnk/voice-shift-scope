@@ -1,4 +1,4 @@
-//! 3 つの推定を組み合わせて `AnalysisFrame` を作る。
+//! Builds an `AnalysisFrame` from three estimates.
 
 use voice_domain::ports::{Analyzer, FormantEstimator, HarmonicPicker, PitchEstimator};
 use voice_domain::{AnalysisFrame, AnalysisSettings, SampleRate};
@@ -8,9 +8,9 @@ use crate::harmonics::SpectralHarmonics;
 use crate::lpc::BurgFormants;
 use crate::yin::Yin;
 
-/// 分析の窓の長さ（48 kHz で約 85 ms）。倍音の山を分けるのに要る長さ。
+/// Length of the analysis window (about 85 ms at 48 kHz). Long enough to separate the harmonic peaks.
 pub const ANALYSIS_WINDOW: usize = 4096;
-/// 画面に送るスペクトルの点の数（0〜上限）。
+/// Number of spectrum points sent to the screen (0 to the ceiling).
 pub const DISPLAY_POINTS: usize = 256;
 
 #[derive(Default)]
@@ -18,9 +18,9 @@ pub struct DefaultAnalyzer {
     pub pitch: Yin,
     pub formants: BurgFormants,
     pub harmonics: SpectralHarmonics,
-    /// F1〜F4 の追跡。返す F1〜F4 は `FORMANT_DELAY_FRAMES` 前のフレームのもの（倍音と F0 は今のフレーム）
+    /// F1–F4 tracking. The F1–F4 returned are from `FORMANT_DELAY_FRAMES` frames earlier (harmonics and F0 are from the current frame)
     pub tracker: FormantTracker,
-    /// F1〜F4 を追跡せず、各フレームの根を低い方から 4 つ取る（開発で比べるため。アプリは使わない）
+    /// Do not track F1–F4; take the 4 lowest roots of each frame (for comparison during development; the app does not use it)
     pub raw_formants: bool,
 }
 
@@ -51,7 +51,7 @@ impl Analyzer for DefaultAnalyzer {
     }
 }
 
-/// 0〜上限を `DISPLAY_POINTS` に分け、各区間の最大の振幅（dB）を取る。
+/// Splits 0 to the ceiling into `DISPLAY_POINTS` bins and takes the largest amplitude (dB) in each.
 fn display_spectrum(h: &SpectralHarmonics, rate: SampleRate, settings: &AnalysisSettings) -> Vec<f32> {
     let bin = h.spectrum.bin_hz(rate.hz() as f32);
     let per_point = settings.ceiling.hz() / DISPLAY_POINTS as f32;
