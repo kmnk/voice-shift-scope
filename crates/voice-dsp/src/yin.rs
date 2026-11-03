@@ -15,11 +15,14 @@ pub struct Yin {
     /// An RMS (dBFS) below this is unvoiced.
     pub silence_dbfs: f32,
     diff: Vec<f32>,
-    fft: Option<(usize, Arc<dyn Fft<f32>>, Arc<dyn Fft<f32>>)>,
+    fft: Option<PreparedFft>,
     a: Vec<Complex32>,
     b: Vec<Complex32>,
     square_prefix: Vec<f32>,
 }
+
+/// The FFT size and the forward and inverse plans for it.
+type PreparedFft = (usize, Arc<dyn Fft<f32>>, Arc<dyn Fft<f32>>);
 
 impl Default for Yin {
     fn default() -> Self {
@@ -50,8 +53,8 @@ impl Yin {
         self.a.resize(n, Complex32::default());
         self.b.clear();
         self.b.resize(n, Complex32::default());
-        for j in 0..w {
-            self.a[j].re = x[j];
+        for (a, v) in self.a.iter_mut().zip(&x[..w]) {
+            a.re = *v;
         }
         for (j, v) in x.iter().enumerate().take(w + max_tau) {
             self.b[j].re = *v;

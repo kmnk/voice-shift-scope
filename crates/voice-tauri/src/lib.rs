@@ -245,13 +245,13 @@ fn apply_view(app: &tauri::AppHandle, view: &str, content_height: Option<f64>) {
     let _ = window.unmaximize();
     let _ = window.set_size(tauri::LogicalSize::new(w, h));
     // When the inner height does not come out as requested (for example when it is decided including the window frame), correct by the difference
-    if compact {
-        if let (Ok(inner), Ok(scale)) = (window.inner_size(), window.scale_factor()) {
-            let actual = inner.height as f64 / scale;
-            let diff = h - actual;
-            if diff.abs() > 1.0 {
-                let _ = window.set_size(tauri::LogicalSize::new(w, h + diff));
-            }
+    if compact
+        && let (Ok(inner), Ok(scale)) = (window.inner_size(), window.scale_factor())
+    {
+        let actual = inner.height as f64 / scale;
+        let diff = h - actual;
+        if diff.abs() > 1.0 {
+            let _ = window.set_size(tauri::LogicalSize::new(w, h + diff));
         }
     }
 }
@@ -542,15 +542,15 @@ pub fn run() {
             if let Some(shift) = restored_shift(prefs.shift) {
                 let _ = studio.change_shift(shift);
             }
-            if let Some(a) = prefs.analysis {
-                if let (Ok(ceiling), Ok(threshold), Ok(relative_limit), Ok(lpc_order)) = (
+            if let Some(a) = prefs.analysis
+                && let (Ok(ceiling), Ok(threshold), Ok(relative_limit), Ok(lpc_order)) = (
                     FormantCeiling::new(a.ceiling),
                     HarmonicThreshold::new(a.threshold),
                     HarmonicRelativeLimit::new(a.relative_limit),
                     LpcOrder::new(a.lpc_order),
-                ) {
-                    let _ = studio.change_analysis(AnalysisSettings { ceiling, threshold, relative_limit, lpc_order });
-                }
+                )
+            {
+                let _ = studio.change_analysis(AnalysisSettings { ceiling, threshold, relative_limit, lpc_order });
             }
             app.manage(AppState {
                 studio: Mutex::new(studio),

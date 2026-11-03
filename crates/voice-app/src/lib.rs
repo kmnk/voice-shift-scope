@@ -100,16 +100,16 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
     pub fn set_monitor(&mut self, enabled: bool, raw_id: Option<&str>) -> Result<(), AppError> {
         let id = raw_id.map(|r| self.list.id(r, DeviceDirection::Output)).transpose()?;
         self.session.set_monitor(enabled, id)?;
-        if self.session.state() == SessionState::Running {
-            self.pipeline
-                .set_monitor(self.session.monitor().clone())
-                .map_err(|e| AppError::Pipeline(Box::new(e)))?;
-        }
-        Ok(())
+        self.apply_monitor()
     }
 
     pub fn set_monitor_volume(&mut self, volume: MonitorVolume) -> Result<(), AppError> {
         self.session.set_monitor_volume(volume);
+        self.apply_monitor()
+    }
+
+    /// Gives the session's monitor settings to the pipeline while running.
+    fn apply_monitor(&mut self) -> Result<(), AppError> {
         if self.session.state() == SessionState::Running {
             self.pipeline
                 .set_monitor(self.session.monitor().clone())
@@ -264,7 +264,9 @@ mod tests {
         )
     }
 
-    fn studio(with_cable: bool) -> (VoiceStudio<FakeDevices, FakePipeline>, Rc<RefCell<Vec<Call>>>, Rc<RefCell<DeviceList>>) {
+    type TestStudio = (VoiceStudio<FakeDevices, FakePipeline>, Rc<RefCell<Vec<Call>>>, Rc<RefCell<DeviceList>>);
+
+    fn studio(with_cable: bool) -> TestStudio {
         let shared = Rc::new(RefCell::new(list(with_cable)));
         let pipeline = FakePipeline::default();
         let calls = pipeline.calls.clone();
