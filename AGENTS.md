@@ -1,69 +1,73 @@
 # voice-shift-scope
 
-声の研究のための Windows のアプリ。マイクの声のピッチとフォルマントを別々に変えて、選んだ出力の機器（声を他のアプリに渡すときは VB-CABLE などの仮想の機器。いつも使う前提にはしない）に出し、変える前と後の F0・F1〜F4・倍音を 1 つの画面に並べて表示する。Rust（Cargo の workspace）と Tauri（フェーズ 5 で入れる）で作る。
+A Windows app for voice research. It changes the pitch and the formants of the microphone voice separately, sends the result to a chosen output device (a virtual device such as VB-CABLE when passing the voice to another app; this is not assumed), and shows F0, F1–F4, and the harmonics of the original and shifted voice side by side on one screen. Built with Rust (a Cargo workspace) and Tauri (added in phase 5).
 
-## 構成
+## Language
 
-依存は下の行から上の行へだけ向く。Tauri に依るのは `voice-tauri` だけにする。
+Write documents, comments, doc comments, test names, commit messages, PR descriptions, and messages from the app, `voice-cli`, scripts, and workflows in English, so that people who do not read Japanese (including reviewers of applications such as code signing) can read the project. The only Japanese in the repository is the Japanese UI text in `frontend/src/i18n.ts` (the screen can switch between English and Japanese), the tests of that text, and the Japanese sentences given to the Kyoko text-to-speech voice in `scripts/quality_check.py` and `scripts/formant_stability.py`. When adding a UI string, add both the English and the Japanese text to `i18n.ts`.
 
-| crate | 層 | 持つもの |
+## Structure
+
+Dependencies point only from lower rows to upper rows. Only `voice-tauri` depends on Tauri.
+
+| crate | Layer | Holds |
 | --- | --- | --- |
-| `crates/voice-domain` | domain | value object、`VoiceSession`、port の trait。外の技術に依らない |
-| `crates/voice-app` | application | use case。port を generics で受け取る |
-| `crates/voice-dsp` | 出る側の adapter | 分析の推定（F1〜F4 は LPC の根を前のフレームとのつながりで割り当てて追跡し、直近 5 フレームの中央値を 2 フレーム遅れで返す。`formant_track.rs`）と、声を変える処理（`app_shifter`: ピッチを下げるときは TD-PSOLA、それ以外は Signalsmith Stretch。どちらも出力の音量を入力にそろえる） |
-| `crates/voice-runtime` | 出る側の adapter | cpal での機器の列挙、音声のスレッド、分析のスレッド |
-| `crates/voice-tauri` | 入る側の adapter と組み立て | Tauri の command と channel |
-| `crates/voice-cli` | 確かめる道具 | 開発で確かめるための CLI。アプリの機能ではない |
-| `frontend/` | 画面 | TypeScript の描画と、表示を止める状態 |
+| `crates/voice-domain` | domain | Value objects, `VoiceSession`, and port traits. Does not depend on outside technology |
+| `crates/voice-app` | application | Use cases. Takes the ports as generics |
+| `crates/voice-dsp` | outbound adapter | Analysis estimates (F1–F4 are tracked by assigning LPC roots by their continuity with the previous frame, returning the median of the last 5 frames 2 frames late; `formant_track.rs`) and the voice shifter (`app_shifter`: TD-PSOLA when lowering the pitch, Signalsmith Stretch otherwise; both match the output level to the input) |
+| `crates/voice-runtime` | outbound adapter | Device enumeration with cpal, the audio thread, and the analysis thread |
+| `crates/voice-tauri` | inbound adapter and assembly | Tauri commands and channels |
+| `crates/voice-cli` | checking tool | A CLI for checks during development. Not a feature of the app |
+| `frontend/` | screen | Drawing in TypeScript and the hold state of the display |
 
-音声のスレッドの中では、メモリの確保・ロック・drop をしない。
+On the audio thread, do not allocate memory, take locks, or drop values.
 
-## build と test
+## Build and test
 
 ```
 cargo test --workspace
-cargo run -p voice-cli -- devices      # 録音と再生の機器を JSON で出す（機器は開かない）
+cargo run -p voice-cli -- devices      # print the recording and playback devices as JSON (does not open them)
 cd frontend && npm ci && npm test && npm run typecheck
 ```
 
-Praat（Parselmouth）と突き合わせる:
+Compare with Praat (Parselmouth):
 
 ```
 cargo run -p voice-cli -- synth vowel --f0 100 --out /tmp/v100.wav
 uv run scripts/compare_praat.py /tmp/v100.wav --expect 700,1200,2600,3500 --formants 4 --ceiling 5000
 ```
 
-- `scripts/compare_praat.py` はファイルを読むだけで書かない。`--expect` か `--compare` を渡すと、許す差（既定 F1〜F3 5%、F4 8%）を超えたとき終了コード 1
-- 合成の母音は共鳴を F1〜F4 の 4 つしか持たないので、Praat の既定（5 個、5500 Hz）では F2 と F3 の間に無い共鳴を置く。合成の母音には `--formants 4 --ceiling 5000` を使う
-- sandbox の中では `UV_CACHE_DIR=$TMPDIR/uv` を付ける
+- `scripts/compare_praat.py` only reads files and writes nothing. With `--expect` or `--compare`, it exits with 1 when a difference exceeds the allowed one (by default 5% for F1–F3 and 8% for F4)
+- The synthetic vowel has only 4 resonances (F1–F4), so Praat's default (5 formants, 5500 Hz) places a resonance between F2 and F3 that is not there. Use `--formants 4 --ceiling 5000` for synthetic vowels
+- In a sandbox, add `UV_CACHE_DIR=$TMPDIR/uv`
 
-- 声を変える処理は `voice_dsp::app_shifter` で組み立てる（`crates/voice-dsp/src/hybrid.rs`）。ピッチが 0 半音より下なら `psola.rs` の TD-PSOLA、0 半音以上なら Signalsmith Stretch を使い、境目をまたいだら 30 ms で混ぜる。2 つは毎ブロックどちらも動かし、PSOLA は Signalsmith Stretch と同じ遅れ（3360 標本）で出す。PSOLA が無声と判定した区間は、周期性の無い雑音（子音）なら音程を動かさずに通し、それ以外は Signalsmith Stretch の出力で埋める（有声の取りこぼしで元の高さの声が混ざらないように）。どちらの出力も `level.rs` の `LevelMatch` で、同じだけ遅らせた入力の音量にそろえる（0 半音・1.0 倍のときはそろえない）。アプリ（`voice-tauri`）と試験の道具（`voice-cli` の `check`・`e2e`・`shift`）は、どれも `app_shifter` を使う
-- Signalsmith Stretch は、`third_party/` に取り込んだ Signalsmith Stretch 1.4.0（C++、MIT）を、`crates/voice-dsp/cpp/stretch_wrapper.cpp` と `crates/voice-dsp/build.rs`（`cc` crate）で build して呼ぶ。C++17 のコンパイラが要る（macOS は Xcode の Command Line Tools、Windows は MSVC）。crates.io の `signalsmith-stretch` 0.1.3 は、中の版が古くフォルマントの包絡が粗いことと、`set_formant_base` が `setFormantSemitones` を呼ぶ誤りがあるので使わない
-- sandbox の中で動かすエージェントは、home ディレクトリの `.cargo` に書けないので、`CARGO_HOME=$PWD/.cargo-home` を付けて動かす（`.gitignore` 済み）。npm は `--cache "$TMPDIR/npm-cache"` を付ける
-- Windows でしか動かないもの（WASAPI、VB-CABLE、Tauri の Windows の build）は、GitHub Actions の `windows-latest` で確かめる。`gh workflow run ci.yml` で動かし、`gh run watch` で待つ
+- The voice shifter is assembled in `voice_dsp::app_shifter` (`crates/voice-dsp/src/hybrid.rs`). Below 0 semitones it uses TD-PSOLA in `psola.rs`; at 0 semitones and above, Signalsmith Stretch, crossfading over 30 ms when the setting crosses the boundary. Both run every block, and PSOLA outputs with the same delay as Signalsmith Stretch (3360 samples). Parts PSOLA judges unvoiced pass through with the pitch unchanged if they are aperiodic noise (consonants), and are otherwise filled with the Signalsmith Stretch output (so that missed voicing does not let the original pitch through). Both outputs are matched by `LevelMatch` in `level.rs` to the level of the input delayed by the same amount (not at 0 semitones and ×1.0). The app (`voice-tauri`) and the test tools (`check`, `e2e`, and `shift` of `voice-cli`) all use `app_shifter`
+- Signalsmith Stretch is the Signalsmith Stretch 1.4.0 (C++, MIT) bundled in `third_party/`, built and called through `crates/voice-dsp/cpp/stretch_wrapper.cpp` and `crates/voice-dsp/build.rs` (the `cc` crate). It needs a C++17 compiler (the Xcode Command Line Tools on macOS, MSVC on Windows). The crates.io `signalsmith-stretch` 0.1.3 is not used, because its bundled version is old with a coarse formant envelope, and its `set_formant_base` wrongly calls `setFormantSemitones`
+- Agents running in a sandbox cannot write to `.cargo` in the home directory, so run with `CARGO_HOME=$PWD/.cargo-home` (in `.gitignore`). Give npm `--cache "$TMPDIR/npm-cache"`
+- What runs only on Windows (WASAPI, VB-CABLE, the Windows build of Tauri) is checked on GitHub Actions `windows-latest`. Run with `gh workflow run ci.yml` and wait with `gh run watch`
 
-## 検証
+## Verification
 
-変更の種類ごとに、次で確かめる。判定の名前（A1、U3-settings など）の意味と合格の条件は [docs/criteria.md](docs/criteria.md) にある。判定を足すときや条件を変えるときは、そこを直す。Windows でしか動かないものは GitHub Actions の Windows のランナーで動かす（ランナーは毎回作り直されるので、利用者の機器や設定に触れない）。
+Check each kind of change as follows. The meaning and pass conditions of the check names (A1, U3-settings, and so on) are in [docs/criteria.md](docs/criteria.md). When adding a check or changing a condition, update that document. What runs only on Windows runs on GitHub Actions Windows runners (the runners are created fresh each time, so the user's devices and settings are not touched).
 
-- `cargo test --workspace` と `cd frontend && npm test`: 値の型と `VoiceSession` の規則、use case、分析の部品、試験用の信号、VB-CABLE を見つける処理、音声の実行の部品（時計のずれの補正など）、表示を止める状態（B5・B7・B8 の状態の移り方）
-- `cargo run --release -p voice-cli -- check --criteria A1,A2,A3,A4,B1,B3,Q2,Q3,Q4,Q5 [--json] [--block-ms 70] [--shifter app|signalsmith]`: [docs/criteria.md](docs/criteria.md) の判定を、試験用の信号で行う。FAIL があれば終了コード 1。B1 は、同じ設定の Praat の値（`check.rs` の `PRAAT_REFERENCE`、作り直すときは `scripts/praat_reference.sh`）との差で判定する。今は A3 の F0 150 Hz・0.9 倍だけが FAIL する（CI は通るものだけ `A1,A4,B1,B3` を動かす）。Q2〜Q5 は、ピッチを下げたときの響き、2 つの処理の切り替え、変えた後の音量、無音を持ち上げないこと。`--shifter signalsmith` は変更の前の処理（Signalsmith Stretch だけ）で判定する。判定が違いを捕まえるかを確かめるのに使う
-- `uv run scripts/quality_check.py [--shifter app|signalsmith] [--keep <dir>] [--speech <wav>...]`: Q1（ピッチを下げたときの周期性）。揺れのある合成の母音を `voice-cli shift` で変え、Praat の HNR を理想の出力と比べる。`--speech` に声の wav（48 kHz、mono。macOS なら `say` と `afconvert` で作れる。作り方は script の先頭）を渡すと、Q10（下げたとき元の高さの声が混ざらない）、Q11（言葉の頭で変更の前の処理より雑音が増えない）、Q12（下げた声で元の高さが聞こえない。狙いの F0 の奇数番目と偶数番目の倍音の強さの比）、Q13（さしすせそなどの子音がこもらない。子音の枠のスペクトルの重心）も判定する。合成の母音では PSOLA の有声の取りこぼしが起きないので、声の wav を渡して確かめる。先に `cargo build --release -p voice-cli` が要る
-- `cargo run --release -p voice-cli -- shift <in.wav> <out.wav> --pitch <半音> --formant <倍率> [--shifter app|signalsmith] [--timing]`: 48 kHz の wav を、アプリと同じ声を変える処理に 10 ms ずつ通して書く（機器は開かない）。`--timing` は 1 ブロックの処理時間の中央値と最大を JSON で出す。アプリの分析のスレッドと同じく、直近 4096 標本の F0 を 10 ms ごとに目安（`set_pitch_hint`）として渡す（`--no-hint` で渡さない）。目安を渡さないと、0 半音以上の音（Signalsmith Stretch）がアプリと違う音になる
-- `voice-cli analyze <wav>` の CSV を `scripts/compare_praat.py <wav> --compare <csv>` に渡すと、Praat との差を出す
-- `uv run scripts/formant_stability.py [--keep <dir>] [--json] [--speech <wav>[:<上限 Hz>]...]`: B9〜B12（流れる図の F1〜F4 の安定）。揺れと息の雑音を持つ母音と F2 が動く母音を作り、`voice-cli analyze`（アプリと同じ追跡を通した値）を `voice-cli analyze --raw-formants`（追跡しない、根を低い方から 4 つ取った値）と正しい値に比べる。流れる図の値は追跡の後の中央値のために 2 フレーム（`voice_dsp::FORMANT_DELAY_FRAMES`）前のものなので、その分ずらして比べる。`--speech` に声の wav を渡すと、1 フレームだけの外れ（B11）と跳び（B12）も判定する（`quality_check.py` と同じく `say` で作れる。上限を変えて試すときは `kyoko.wav:6500`）。F1〜F4 の推定（`lpc.rs`・`formant_track.rs`・`analyzer.rs`）を変えたら動かす。機器は開かず、`--keep` が無ければ一時ディレクトリに書いて消す。先に `cargo build --release -p voice-cli` が要る
-- `voice-cli analyze --timing` は、分析 1 回の処理時間の中央値と最大を JSON で標準エラーに書く。追跡の有無（`--raw-formants`）で比べると、追跡の分の時間が分かる
-- `windows-e2e.yml`（`gh workflow run windows-e2e.yml`、結果は `gh run download <id> -n e2e-report`）: VB-CABLE を入れたランナーで、`voice-cli loopback`（声を変える処理を通さない VB-CABLE の経路）と `voice-cli e2e`（音声の実行を wav の音源で通し、VB-CABLE から録り返す）を動かす。`e2e-*.json` に A1・A5（0 半音のときだけ）・A6 と、出力の ring buffer の量と補正が出る。0 半音（`e2e-latency.json`）、+5 半音（`e2e-runtime.json`、Signalsmith Stretch の側）、−12 半音（`e2e-runtime-lowered.json`、PSOLA の側）の 3 つを動かす。ランナーでは A5 と A6 は FAIL する（ランナーの機器と時計の性質による。利用者の Windows で `docs/windows-checklist.md` のとおりに確かめる）。そのため workflow の合否は、A1 と分析と `errors` だけで決める（`scripts/e2e_gate.ps1`）。VB-CABLE が無いときに `loopback` と `e2e` が終了コード 2 で止まることは、同じ job で VB-CABLE を入れる前に確かめる
-- `windows-ui.yml`: アプリを `--input-wav <wav> --ui-selftest <dir>` で起動し、画面の側（`frontend/src/selftest.ts`）が利用者と同じ操作を順に行って `<dir>/ui-report.json` を書く。全部 PASS なら終了コード 0。保存した PNG は `<dir>/saved/` にあり、artifact に上がる。1 つの job で、VB-CABLE を入れる前と後に 1 回ずつ動かし（`scripts/ui_selftest.ps1`）、入れる前の回で C4 を確かめる。結果は artifact の `ui-without-vb-cable` と `ui-with-vb-cable`
-  - 録音の機器を開くために、workflow の中でマイクのプライバシーの設定を許している。消すと WASAPI が「Access is denied」を返す
-  - 受け入れ基準の項目を判定するたびに、その時点の窓の client 領域を `<dir>/shots/<項目>.png` に書く（簡易表示の状態は `compact-view-compact.png`）。撮るのは Rust 側の `selftest_shot`（`crates/voice-tauri/src/shot.rs`、Windows の `PrintWindow` に `PW_RENDERFULLCONTENT` を付けて WebView2 の中身も描かせる）で、Windows でだけ撮る。他の OS では撮らずに理由を `<dir>/app-log.txt` に書く。撮れないことは試験の合否に入れない。`shots/` は `<dir>` ごと artifact に上がる。UI を変えたら、項目の画像を開いて変えた所を照らす
-  - 窓の大きさ: 最後に、試験のときだけの command `selftest_resize`（`crates/voice-tauri/src/lib.rs`。`--ui-selftest` で起動したときだけ動き、960×640〜2560×1600 に限る）で窓を最小の 960×640 にし、`window-960x640` の項目と `shots/size-960x640.png` を書いてから 1280×860 に戻す（`window-1280x860`）。小さい窓での配置は、この画像と、項目を足すときはこの間に判定を置いて確かめる
-  - Mac の debug build（`cargo build -p voice-tauri` の `target/debug/voice-shift-scope`）でも `--input-wav <wav> --ui-selftest <dir>` で動く。VB-CABLE が無いので、音を流す項目（B4〜B8・S4・S5・S7・S8・U10・U11 など）は動かず、画像も撮れない。`compact-view` は Mac でだけ FAIL する（窓の高さの読み方。変更に依らない）。`monitor-button` の判定に 2 分ほどかかるので、時間の上限は 5 分以上にする
-  - 試験のときだけの入口: `--input-wav`（入力の機器の代わりに wav を流す。一覧に「試験の音源」が出る）、`--ui-selftest`、環境変数 `VOICE_SHIFT_SCOPE_CONFIG_DIR`（`preferences.json` の置き場）・`VOICE_SHIFT_SCOPE_TEST_EXPECT_SHIFT`（"半音,倍率"。起動したときに欄に出ているはずのピッチとフォルマントで、自己試験の `P1-shift-restored` が比べる。無ければ既定の 0 半音・1.0 倍）・`VOICE_SHIFT_SCOPE_TEST_SAVE_DIR`（保存先を選ぶ画面を出さずに画像を書く）・`VOICE_SHIFT_SCOPE_OUTPUT_BUFFER_MS`（出力の ring buffer の量）
-- `voice-cli loopback` と `voice-cli e2e` を利用者の Windows で動かすと、VB-CABLE に音を流す。動いている他のソフトが CABLE Output を録っていると、その音が入る
-- `preferences.json` は、画像の保存先・言葉・表示・機器・分析の設定・ピッチとフォルマントを覚える（`crates/voice-tauri/src/preferences.rs`）。ピッチとフォルマントは、値を変えたら 0.5 秒に 1 回まで書き、アプリを閉じるとき（`RunEvent::Exit`）にも書く。範囲の外の値が入っていたら既定のまま起動する。覚えた値で起動するのを Mac で確かめるには、`preferences.json` に `{"shift":{"semitones":-12.0,"formant":0.8}}` を置き、`VOICE_SHIFT_SCOPE_TEST_EXPECT_SHIFT=-12,0.8` を付けて自己試験を動かす
-- Tauri のアプリは、`voice-tauri` の既定の feature の `custom-protocol` で、`cargo build` だけでも build した画面（`frontend/dist`）を開く。先に `cd frontend && npm run build` が要る
+- `cargo test --workspace` and `cd frontend && npm test`: value types and the rules of `VoiceSession`, use cases, analysis parts, test signals, finding VB-CABLE, audio runtime parts (such as clock drift correction), and the display hold state (the state transitions of B5, B7, and B8)
+- `cargo run --release -p voice-cli -- check --criteria A1,A2,A3,A4,B1,B3,Q2,Q3,Q4,Q5 [--json] [--block-ms 70] [--shifter app|signalsmith]`: runs the checks of [docs/criteria.md](docs/criteria.md) on test signals. Exit code 1 if any FAIL. B1 is judged by the difference from Praat's values with the same settings (`PRAAT_REFERENCE` in `check.rs`; regenerate with `scripts/praat_reference.sh`). Now only A3 at F0 150 Hz with ×0.9 FAILs (CI runs only the passing `A1,A4,B1,B3`). Q2–Q5 are the resonances when lowering the pitch, switching between the two methods, the shifted level, and not amplifying silence. `--shifter signalsmith` checks with the processing before the change (Signalsmith Stretch only); use it to confirm that a check catches the difference
+- `uv run scripts/quality_check.py [--shifter app|signalsmith] [--keep <dir>] [--speech <wav>...]`: Q1 (periodicity when lowering the pitch). Shifts synthetic vowels with variation through `voice-cli shift` and compares Praat's HNR with the ideal output. Given voice wavs with `--speech` (48 kHz, mono; on macOS they can be made with `say` and `afconvert`, as described at the top of the script), it also checks Q10 (no original pitch mixed in when lowered), Q11 (no more noise at word onsets than the processing before the change), Q12 (the original pitch is not heard in a lowered voice; the ratio of the odd to even harmonics of the target F0), and Q13 (consonants such as s and sh are not muffled; the spectral centroid of consonant frames). PSOLA does not miss voicing on synthetic vowels, so check with voice wavs. Needs `cargo build --release -p voice-cli` first
+- `cargo run --release -p voice-cli -- shift <in.wav> <out.wav> --pitch <semitones> --formant <factor> [--shifter app|signalsmith] [--timing]`: runs a 48 kHz wav through the same shifter as the app in 10 ms steps and writes it (does not open devices). `--timing` prints the median and maximum processing time of one block as JSON. As in the app's analysis thread, it gives the F0 of the latest 4096 samples as a hint (`set_pitch_hint`) every 10 ms (`--no-hint` disables this). Without hints, sounds at 0 semitones and above (Signalsmith Stretch) differ from the app
+- Passing the CSV from `voice-cli analyze <wav>` to `scripts/compare_praat.py <wav> --compare <csv>` prints the difference from Praat
+- `uv run scripts/formant_stability.py [--keep <dir>] [--json] [--speech <wav>[:<ceiling Hz>]...]`: B9–B12 (stability of F1–F4 in the scrolling plots). Makes vowels with variation and breath noise and vowels whose F2 moves, and compares `voice-cli analyze` (values after the same tracking as the app) with `voice-cli analyze --raw-formants` (no tracking; the 4 lowest roots) and with the true values. The scrolling plot's values are 2 frames old (`voice_dsp::FORMANT_DELAY_FRAMES`) because of the median after tracking, so they are shifted by that much before comparing. Given voice wavs with `--speech`, it also checks single-frame outliers (B11) and jumps (B12) (made with `say` as for `quality_check.py`; to try another ceiling, use `kyoko.wav:6500`). Run it after changing the F1–F4 estimate (`lpc.rs`, `formant_track.rs`, `analyzer.rs`). It does not open devices, and without `--keep` it writes to a temporary directory and deletes it. Needs `cargo build --release -p voice-cli` first
+- `voice-cli analyze --timing` writes the median and maximum processing time of one analysis as JSON to standard error. Comparing with and without tracking (`--raw-formants`) shows the cost of tracking
+- `windows-e2e.yml` (`gh workflow run windows-e2e.yml`; results with `gh run download <id> -n e2e-report`): on a runner with VB-CABLE installed, runs `voice-cli loopback` (the VB-CABLE path without the shifter) and `voice-cli e2e` (the audio runtime with a wav source, recorded back from VB-CABLE). `e2e-*.json` has A1, A5 (only at 0 semitones), and A6, and the amount in the output ring buffer and its correction. It runs 0 semitones (`e2e-latency.json`), +5 semitones (`e2e-runtime.json`, the Signalsmith Stretch side), and −12 semitones (`e2e-runtime-lowered.json`, the PSOLA side). On runners A5 and A6 FAIL (because of the runners' devices and clocks; check them on the user's Windows with `docs/windows-checklist.md`). So the workflow result is decided only by A1, the analysis, and `errors` (`scripts/e2e_gate.ps1`). That `loopback` and `e2e` stop with exit code 2 without VB-CABLE is checked in the same job before installing VB-CABLE
+- `windows-ui.yml`: starts the app with `--input-wav <wav> --ui-selftest <dir>`; the screen (`frontend/src/selftest.ts`) performs the same operations as a user in order and writes `<dir>/ui-report.json`. Exit code 0 if all PASS. Saved PNGs are in `<dir>/saved/` and uploaded as an artifact. One job runs it once before and once after installing VB-CABLE (`scripts/ui_selftest.ps1`), and the run before checks C4. The results are the artifacts `ui-without-vb-cable` and `ui-with-vb-cable`
+  - To open the recording device, the workflow allows microphone access in the privacy settings. Without it, WASAPI returns "Access is denied"
+  - Each time an acceptance item is checked, the window's client area at that moment is written to `<dir>/shots/<item>.png` (the compact view is `compact-view-compact.png`). The shots are taken by `selftest_shot` on the Rust side (`crates/voice-tauri/src/shot.rs`, Windows `PrintWindow` with `PW_RENDERFULLCONTENT` so the WebView2 content is drawn too), only on Windows. On other OSes it does not take them and writes the reason to `<dir>/app-log.txt`. Failing to take a shot does not count in the test results. `shots/` is uploaded with `<dir>` as an artifact. After changing the UI, open the item images and check the changed parts
+  - Window size: at the end, the test-only command `selftest_resize` (`crates/voice-tauri/src/lib.rs`; it works only when started with `--ui-selftest`, and only from 960×640 to 2560×1600) shrinks the window to the minimum 960×640, writes the `window-960x640` item and `shots/size-960x640.png`, and restores 1280×860 (`window-1280x860`). Check the layout in a small window with this image, and when adding items, put checks between these
+  - It also runs on a Mac debug build (`target/debug/voice-shift-scope` from `cargo build -p voice-tauri`) with `--input-wav <wav> --ui-selftest <dir>`. Without VB-CABLE, the items that play sound (B4–B8, S4, S5, S7, S8, U10, U11, and so on) do not run, and no images are taken. `compact-view` FAILs only on a Mac (how the window height is read; it does not depend on the change). The `monitor-button` check takes about 2 minutes, so set the time limit to 5 minutes or more
+  - Test-only entry points: `--input-wav` (plays a wav instead of the input device; "Test source" appears in the list), `--ui-selftest`, and the environment variables `VOICE_SHIFT_SCOPE_CONFIG_DIR` (where `preferences.json` goes), `VOICE_SHIFT_SCOPE_TEST_EXPECT_SHIFT` ("semitones,factor": the pitch and formant expected in the fields at start, compared by the self-test's `P1-shift-restored`; without it, the defaults of 0 semitones and ×1.0), `VOICE_SHIFT_SCOPE_TEST_SAVE_DIR` (writes images without the save dialog), and `VOICE_SHIFT_SCOPE_OUTPUT_BUFFER_MS` (the amount in the output ring buffer)
+- Running `voice-cli loopback` and `voice-cli e2e` on the user's Windows plays sound into VB-CABLE. If other software is recording CABLE Output, it will pick up that sound
+- `preferences.json` remembers the image folder, the language, the view, the devices, the analysis settings, and the pitch and formant (`crates/voice-tauri/src/preferences.rs`). The pitch and formant are written at most once every 0.5 seconds when changed, and also when the app closes (`RunEvent::Exit`). If a value is out of range, the app starts with the default. To check on a Mac that the app starts with remembered values, put `{"shift":{"semitones":-12.0,"formant":0.8}}` in `preferences.json` and run the self-test with `VOICE_SHIFT_SCOPE_TEST_EXPECT_SHIFT=-12,0.8`
+- With the default feature `custom-protocol` of `voice-tauri`, the Tauri app opens the built screen (`frontend/dist`) even with plain `cargo build`. Run `cd frontend && npm run build` first
 
-## commit
+## Commits
 
-短い命令形の英語（例 `Add device probing to voice-runtime`）。
+Short imperative English (for example `Add device probing to voice-runtime`).

@@ -1,50 +1,50 @@
-# Windows の実機での確かめ
+# Checks on real Windows hardware
 
-GitHub Actions のランナーでは確かめられないもの（本物のマイク・ヘッドホン・USB の機器の抜き差し・自分の声・Windows の標準の画面）を、利用者の Windows で確かめるためのチェックリスト。結果の欄を埋めて、GitHub の issue に貼るか、共有のフォルダーに置く。
+A checklist for checking, on the user's Windows, what cannot be checked on GitHub Actions runners (a real microphone and headphones, plugging and unplugging USB devices, your own voice, and the standard Windows screens). Fill in the result columns and paste them into a GitHub issue or put them in a shared folder.
 
-基準の番号は [criteria.md](criteria.md) の名前と同じ。
+The check names are the same as in [criteria.md](criteria.md).
 
-## 用意
+## Preparation
 
-- VB-CABLE を入れておく（https://vb-audio.com/Cable/ ）
-- release の zip を展開する。前の版があれば、そのフォルダーを消してから展開する
-- 中の `voice-shift-scope.exe` がアプリ、`voice-cli.exe` が確かめるための道具
+- Install VB-CABLE (https://vb-audio.com/Cable/ )
+- Unpack the release zips. If an earlier version is there, delete its folder before unpacking
+- `voice-shift-scope.exe` inside is the app, and `voice-cli.exe` is the tool for checks
 
-## 1. 道具で確かめる（コマンド）
+## 1. Checks with the tool (commands)
 
-zip を展開したフォルダーで PowerShell を開く。
+Open PowerShell in the folder where the zip was unpacked.
 
 1. `.\voice-cli.exe devices > devices.json`
-   - 確かめること: `devices.json` に VB-CABLE の機器が 2 つあり、どちらも `"driver": "VB-Audio Virtual Cable"` である
-   - 結果:
+   - Check: `devices.json` has 2 VB-CABLE devices, both with `"driver": "VB-Audio Virtual Cable"`
+   - Result:
 2. `.\voice-cli.exe e2e --seconds 10 --semitones 0 > e2e-latency.json`
-   - VB-CABLE に試験用の音を流す。CABLE Output を録っている他のソフトがあれば止めておく
-   - 確かめること: `A5` の `latency_ms`（マイクを含まない遅れ）と、`A6` の `output_underruns` が 0 か
-   - 結果:
-3. `.\voice-cli.exe e2e --seconds 1800 --semitones 5 > e2e-30min.json`（30 分かかる）
-   - 確かめること: `A6` の `output_underruns` が 0（A6）
-   - 結果:
+   - This plays a test sound into VB-CABLE. Stop any other software recording CABLE Output first
+   - Check: `latency_ms` of `A5` (the delay without the microphone), and whether `output_underruns` of `A6` is 0
+   - Result:
+3. `.\voice-cli.exe e2e --seconds 1800 --semitones 5 > e2e-30min.json` (takes 30 minutes)
+   - Check: `output_underruns` of `A6` is 0 (A6)
+   - Result:
 
-`devices.json`・`e2e-latency.json`・`e2e-30min.json` を渡してください。
+Please send `devices.json`, `e2e-latency.json`, and `e2e-30min.json`.
 
-## 2. 画面で確かめる
+## 2. Checks on screen
 
-| 基準 | すること | 確かめること | 結果 |
+| Check | What to do | What to check | Result |
 | --- | --- | --- | --- |
-| C6 | アプリを起動する | 入力に Windows の既定の録音デバイス、モニターの欄に既定の再生デバイスが選ばれている | |
-| C6 | Windows のサウンドの設定で既定の再生デバイスを CABLE Input にしてから起動する（終わったら戻す） | モニターの欄が「選んでいない」になっている | |
-| C2 | 入力とモニターの一覧を開く | 入力に CABLE Output が無く、モニターに CABLE Input が無い。他の機器は名前で並んでいる | |
-| C2 | USB の機器を差してから起動し直す。抜いてから起動し直す | 差すと一覧に出て、抜くと消える | |
-| C1 | 開始し、ピッチを +5 にして話す。ボイスレコーダーか Audacity で CABLE Output を録る | 変えた声が録れる | |
-| C3 | モニターを入れてヘッドホンを選び、音量を変える | 変えた声が聞こえる。モニターの音量を変えても、C1 で録れる音の大きさは変わらない | |
-| A7 | モニターを入れたまま 30 分動かし、最後に出力とモニターを聞き比べる | ずれが聞き取れない | |
-| A5 | マイクの前で手を叩き、Audacity でマイク（CABLE Output とは別の録音）とヘッドホンの音を同時に録る | 波形の山の差が 150 ms 以下 | |
-| C5 | 全体を止めて「画像を保存」。保存先を選んで保存する | PNG が保存され、Windows の標準の画像ビューアーで 3 つの表示と数値、前と後の時刻・設定、保存した日時が読める | |
-| C5 | アプリを閉じて起動し直し、止めて保存する | 保存先を選ぶ画面が前のフォルダーで開く | |
-| C5 | そのフォルダーを消してから保存する | ピクチャのフォルダーで開く | |
-| C5 | 両方をリアルタイムにする | 「画像を保存」が押せない | |
+| C6 | Start the app | The input is the Windows default recording device, and the monitor is the default playback device | |
+| C6 | Set the default playback device to CABLE Input in the Windows sound settings, then start the app (change it back afterwards) | The monitor is `(none)` | |
+| C2 | Open the input and monitor lists | The input list has no CABLE Output and the monitor list has no CABLE Input. Other devices are listed by name | |
+| C2 | Plug in a USB device and restart the app. Unplug it and restart | It appears in the list when plugged in and disappears when unplugged | |
+| C1 | Start, set the pitch to +5, and speak. Record CABLE Output with Voice Recorder or Audacity | The shifted voice is recorded | |
+| C3 | Turn the monitor on, choose headphones, and change the volume | The shifted voice is heard. Changing the monitor volume does not change the level recorded in C1 | |
+| A7 | Run for 30 minutes with the monitor on, then compare the output and the monitor by ear | No offset can be heard | |
+| A5 | Clap in front of the microphone, and record the microphone (a recording separate from CABLE Output) and the headphone sound at the same time in Audacity | The peaks of the waveforms are 150 ms or less apart | |
+| C5 | Hold ALL and press SNAPSHOT. Choose where to save and save | A PNG is saved, and in the standard Windows image viewer the three displays and the values, the original and shifted times and settings, and when it was saved can be read | |
+| C5 | Close and restart the app, hold, and save | The save dialog opens in the previous folder | |
+| C5 | Delete that folder, then save | The dialog opens in the Pictures folder | |
+| C5 | Set both sides to LIVE | SNAPSHOT cannot be pressed | |
 
-## 3. 自分の声と Praat（B2）
+## 3. Your own voice and Praat (B2)
 
-1. ア・イ・ウ・エ・オを 2 秒ずつ伸ばして、48 kHz の wav で 1 つずつ録る（Audacity など）
-2. wav を渡す。録音はリポジトリには入れず、判定の数だけを残す
+1. Record a, i, u, e, and o, each held for 2 seconds, as separate 48 kHz wavs (with Audacity or similar)
+2. Send the wavs. The recordings do not go into the repository; only the check results are kept
