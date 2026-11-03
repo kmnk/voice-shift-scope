@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  SignPath に署名を頼む artifact の形。release.yml の build の job が、2 つの exe だけを artifact unsigned-exe に上げ、
-  actions/upload-artifact がそれを zip にするので、根は zip-file にする。SignPath の画面の artifact configuration に、これを写して使う。
+  The shape of the artifact sent to SignPath for signing. The build job of release.yml uploads only the 2 exes as the artifact unsigned-exe,
+  and actions/upload-artifact zips it, so the root is zip-file. Copy this into the artifact configuration on the SignPath site.
 -->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <zip-file>

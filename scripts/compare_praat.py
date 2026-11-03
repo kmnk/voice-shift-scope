@@ -2,13 +2,13 @@
 # requires-python = ">=3.11"
 # dependencies = ["praat-parselmouth==0.4.7", "numpy>=2"]
 # ///
-"""wav を Praat（Burg 法）で分析し、F1〜F4 の中央値を出す。
+"""Analyses a wav with Praat (Burg method) and prints the medians of F1–F4.
 
-`--expect F1,F2,F3,F4` を渡すと、正しい値との差（%）を出し、
-`--tolerance` を超えたものがあれば終了コード 1 で終わる。
-`--compare <voice-cli analyze の CSV>` を渡すと、同じ wav の voice-cli の推定値との差を出す（フェーズ 2 で使う）。
+With `--expect F1,F2,F3,F4`, prints the difference (%) from the true values,
+and exits with 1 if any exceeds `--tolerance`.
+With `--compare <CSV from voice-cli analyze>`, prints the difference from voice-cli's estimates for the same wav (used in phase 2).
 
-ファイルを読むだけで、何も書かない。
+Only reads files; writes nothing.
 """
 
 import argparse
@@ -32,7 +32,7 @@ def praat_formants(path, ceiling, n_formants, skip):
             if t < skip:
                 continue
             v = formant.get_value_at_time(i, t)
-            if v == v:  # NaN を除く
+            if v == v:  # skip NaN
                 values.append(v)
         medians.append(statistics.median(values) if values else None)
     return medians
@@ -57,12 +57,12 @@ def diff_percent(a, b):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("wav")
-    p.add_argument("--ceiling", type=float, default=5500.0, help="フォルマントの上限（Hz）")
-    p.add_argument("--formants", type=float, default=5.0, help="極の数の半分（Praat の max number of formants）")
-    p.add_argument("--skip", type=float, default=0.1, help="始めの何秒を除くか")
-    p.add_argument("--expect", help="正しい F1〜F4（カンマ区切り）")
-    p.add_argument("--compare", help="voice-cli analyze の CSV")
-    p.add_argument("--tolerance", default="5,5,5,8", help="F1〜F4 の許す差（%%、カンマ区切り）")
+    p.add_argument("--ceiling", type=float, default=5500.0, help="formant ceiling (Hz)")
+    p.add_argument("--formants", type=float, default=5.0, help="half the number of poles (Praat's max number of formants)")
+    p.add_argument("--skip", type=float, default=0.1, help="seconds to skip at the start")
+    p.add_argument("--expect", help="true F1–F4 (comma-separated)")
+    p.add_argument("--compare", help="CSV from voice-cli analyze")
+    p.add_argument("--tolerance", default="5,5,5,8", help="allowed difference for F1–F4 (%%, comma-separated)")
     args = p.parse_args()
 
     praat = praat_formants(args.wav, args.ceiling, args.formants, args.skip)

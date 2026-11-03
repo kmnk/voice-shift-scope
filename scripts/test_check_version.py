@@ -1,4 +1,4 @@
-"""check_version.py の試験。python3 -m unittest scripts/test_check_version.py で動く。"""
+"""Tests for check_version.py. Run with python3 -m unittest scripts/test_check_version.py."""
 
 import json
 import sys

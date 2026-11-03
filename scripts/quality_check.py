@@ -2,32 +2,32 @@
 # requires-python = ">=3.11"
 # dependencies = ["praat-parselmouth==0.4.7", "numpy>=2", "scipy>=1.11", "soundfile>=0.12"]
 # ///
-"""Q1（ピッチを下げたときの周期性）を判定する。
+"""Checks Q1 (periodicity when the pitch is lowered).
 
-揺れのある合成の母音（あいうえお、各 0.7 秒。vibrato 5.5 Hz・±30 cent、ゆっくりした揺れ、
-jitter 0.5%・shimmer 3%、−30 dB の息の雑音、F1〜F5 の共鳴）を F0 110 Hz と 220 Hz で作り、
-`voice-cli shift` でピッチ −5・−12 半音、フォルマント 1.0・0.8 倍に変える。
-狙いの F0 とフォルマントで作り直した理想の出力と、Praat の HNR（harmonicity cc、10 ms、下限 30 Hz の平均）を比べ、
-変えた後が理想より 2.0 dB を超えて低ければ FAIL。
+Makes synthetic vowels with variation (a, i, u, e, o, 0.7 s each; 5.5 Hz ±30 cent vibrato, slow drift,
+jitter 0.5%, shimmer 3%, breath noise at −30 dB, resonances F1–F5) at F0 110 Hz and 220 Hz, and
+shifts them with `voice-cli shift` by −5 and −12 semitones with formant ×1.0 and ×0.8.
+Compares Praat's HNR (harmonicity cc, 10 ms, mean with a 30 Hz floor) with the ideal output re-synthesised at the target F0 and formants,
+and FAILs if the shifted output is more than 2.0 dB below the ideal.
 
-`--speech <wav>...` を渡すと、Q10（ピッチを下げたとき元の高さが混ざらない）も判定する。渡した声（48 kHz、mono）を
-−12 半音と、−12 半音・フォルマント 0.8 倍で変え、入力が有声の 10 ms の枠のうち、出力の F0 が入力の F0 の ±8% に
-ある枠（元の高さのまま出た枠）が 2% を超えれば FAIL。同じ声で Q11（言葉の頭で今の処理より雑音が増えない）も
-判定する。入力が有声になってから 5 枠（50 ms）の時刻での出力の HNR の平均が、変更の前の処理（`--shifter signalsmith`）
-の同じ値より 0.5 dB を超えて低ければ FAIL。Q12（下げた声で元の高さが聞こえない）も判定する。入力の有声の続きのうち
-0.2 秒以上のものごとに、出力の狙いの F0 の奇数番目の倍音と偶数番目の倍音（偶数番目は元の声の倍音と同じ周波数）の
-強さの比（3 kHz まで、10 ms ごと、中央値）を求め、−4 dB より小さい続きがあれば FAIL。Q13（子音がこもらない）も
-判定する。入力が無声で −45 dBFS より大きく、スペクトルの重心が 4 kHz より上の 10 ms の枠（さしすせその子音などの
-摩擦の音）での出力のスペクトルの重心の中央値が、
-入力の同じ値にフォルマントの倍率を掛けたものから ±10% に無ければ FAIL。macOS なら、たとえば次で作れる:
+With `--speech <wav>...`, also checks Q10 (no original pitch mixed in when lowered). Shifts the given voice (48 kHz, mono)
+by −12 semitones, and by −12 semitones with formant ×0.8, and FAILs if more than 2% of the 10 ms frames where the input is voiced
+have an output F0 within ±8% of the input F0 (frames that came out at the original pitch). The same voice also checks Q11
+(no extra noise at word onsets compared with the earlier processing): FAILs if the mean output HNR over the first 5 frames (50 ms) after the input becomes voiced
+is more than 0.5 dB below the same value for the processing before the change (`--shifter signalsmith`). It also checks Q12 (the original pitch is not heard in a lowered voice): for each voiced
+run of the input of 0.2 s or longer, finds the ratio of the odd to even harmonics of the output's target F0 (the even ones are at the original voice's harmonic frequencies)
+(up to 3 kHz, every 10 ms, median), and FAILs if any run is below −4 dB. It also checks Q13 (consonants are not muffled):
+FAILs if, in 10 ms frames where the input is unvoiced, louder than −45 dBFS, and has a spectral centroid above 4 kHz (fricatives such as the consonants
+s and sh), the median spectral centroid of the output is not
+within ±10% of the same input value times the formant factor. On macOS, a voice can be made with, for example:
 
     say -v Kyoko -o kyoko.aiff "あいうえお。今日はいい天気ですね。" && afconvert -f WAVE -d LEF32@48000 -c 1 kyoko.aiff kyoko.wav
 
-FAIL があれば終了コード 1。
+Exit code 1 if any FAIL.
 
     uv run scripts/quality_check.py [--voice-cli target/release/voice-cli] [--shifter app|signalsmith] [--keep <dir>] [--speech <wav>...]
 
-wav は一時ディレクトリに書いて消す。`--keep` を渡すと、そこに残す。先に `cargo build --release -p voice-cli` が要る。
+The wavs are written to a temporary directory and deleted. With `--keep`, they are kept there. Needs `cargo build --release -p voice-cli` first.
 """
 
 import argparse
@@ -63,7 +63,7 @@ CONSONANT_MIN_CENTROID = 4000.0
 
 
 def synth_vowels(f0, formant_scale, seed=1):
-    """揺れのある合成の母音。同じ seed なら同じ揺れになる。"""
+    """A synthetic vowel with variation. The same seed gives the same variation."""
     rng = np.random.default_rng(seed)
     seq, seg = "aiueo", 0.7
     n = int(seg * len(seq) * SR)
@@ -117,7 +117,7 @@ def pitch_track(y):
 
 
 def original_pitch_fraction(x, y):
-    """入力が有声の枠のうち、出力の F0 が入力の F0 の ±8% にある枠の割合。"""
+    """Share of the frames where the input is voiced whose output F0 is within ±8% of the input F0."""
     a, b = pitch_track(x), pitch_track(y)
     n = min(len(a), len(b))
     a, b = a[:n], b[:n]
@@ -126,7 +126,7 @@ def original_pitch_fraction(x, y):
 
 
 def onset_hnr(x, y):
-    """入力が有声になってから ONSET_FRAMES 枠（10 ms ごと）の時刻での、出力の HNR の平均。"""
+    """Mean output HNR over the ONSET_FRAMES frames (every 10 ms) after the input becomes voiced."""
     pitch = parselmouth.Sound(x.astype(np.float64), SR).to_pitch_ac(0.01, 40, 600)
     f0, times = pitch.selected_array["frequency"], pitch.xs()
     run = np.zeros(len(f0), int)
@@ -139,7 +139,7 @@ def onset_hnr(x, y):
 
 
 def odd_even_runs(x, y, ratio):
-    """入力の有声の続き（ODD_EVEN_MIN_RUN 秒以上）ごとの、出力の奇数番目と偶数番目の倍音の強さの比（dB、中央値）。"""
+    """For each voiced run of the input (ODD_EVEN_MIN_RUN seconds or longer), the ratio of the odd to even harmonics of the output (dB, median)."""
     pitch = parselmouth.Sound(x.astype(np.float64), SR).to_pitch_ac(0.01, 40, 600)
     f0, times = pitch.selected_array["frequency"], pitch.xs()
     w = int(0.04 * SR)
@@ -174,8 +174,8 @@ def odd_even_runs(x, y, ratio):
 
 
 def consonant_centroid(x, y):
-    """入力が無声で CONSONANT_MIN_DBFS より大きく、重心が CONSONANT_MIN_CENTROID より上の枠での、
-    入力と出力のスペクトルの重心（Hz、中央値）。重心の低い無声の枠は、かすれた声など音程を下げるのが正しい所を含む。"""
+    """Spectral centroids (Hz, median) of the input and output in frames where the input is unvoiced, louder than CONSONANT_MIN_DBFS, and has a centroid
+    above CONSONANT_MIN_CENTROID. Unvoiced frames with a low centroid include places where lowering the pitch is right, such as a husky voice."""
     pitch = parselmouth.Sound(x.astype(np.float64), SR).to_pitch_ac(0.01, 40, 600)
     w = 960
     freqs = np.fft.rfftfreq(w, 1 / SR)
@@ -228,7 +228,7 @@ def main():
         for wav in args.speech:
             x, rate = sf.read(wav, dtype="float32")
             if rate != SR:
-                sys.exit(f"{wav} は {rate} Hz です。{SR} Hz の wav を渡してください")
+                sys.exit(f"{wav} is {rate} Hz. Give a {SR} Hz wav")
             for st, fm in [(-12.0, 1.0), (-12.0, 0.8)]:
                 out = d / f"{wav.stem}_{st:+.0f}_{fm}.wav"
                 subprocess.run(

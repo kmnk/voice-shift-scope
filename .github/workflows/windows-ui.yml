@@ -1,11 +1,11 @@
 name: windows-ui
 
-# 画面の通しの試験。アプリを --ui-selftest で起動すると、画面の側がボタンを押す・値を入れる操作を順に行い、
-# 画面に出たものを読んで判定し、ui-report.json を書いて終わる（終了コード 0 が成功）。
-# tauri-driver（WebDriver）は、このランナーで「DevToolsActivePort file doesn't exist」でアプリにつながらなかったので使わない。
-# 入力は --input-wav の試験用の母音、設定と画像の保存先はランナーの一時的な場所。ランナーは毎回作り直される。
-# build を 1 回で済ませるため、1 つの job で VB-CABLE を入れる前と後に 1 回ずつ動かす。
-# 自己試験は、その時点で VB-CABLE があるかを読んで、無ければ C4、あれば cable-found を判定する。
+# End-to-end UI test. Started with --ui-selftest, the app's screen presses buttons and enters values in order,
+# judges by reading what appears on screen, writes ui-report.json, and exits (exit code 0 is success).
+# tauri-driver (WebDriver) is not used, because on this runner it could not connect to the app ("DevToolsActivePort file doesn't exist").
+# The input is the test vowel through --input-wav; settings and saved images go to temporary places on the runner. The runner is created fresh each time.
+# To build only once, one job runs the test once before and once after installing VB-CABLE.
+# The self-test reads whether VB-CABLE is present at that point, and checks C4 if not and cable-found if so.
 on:
   workflow_dispatch:
   push:
@@ -16,7 +16,7 @@ on:
       - ".github/workflows/windows-ui.yml"
       - "scripts/ui_selftest.ps1"
 
-# 続けて push したときは、同じブランチの古い実行を止める
+# When pushed again in a row, cancel the older run on the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # release.yml と同じものを build するので、cache を共有する
+      # Builds the same thing as release.yml, so the cache is shared
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: windows-release-app

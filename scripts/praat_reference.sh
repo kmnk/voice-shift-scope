@@ -1,6 +1,6 @@
 #!/bin/sh
-# B1 の参照の値（crates/voice-cli/src/check.rs の PRAAT_REFERENCE）を作り直す。
-# 試験用の母音を書き、Praat（Parselmouth）で F1〜F4 の中央値を出す。ファイルは一時的な場所にだけ書く。
+# Regenerates the B1 reference values (PRAAT_REFERENCE in crates/voice-cli/src/check.rs).
+# Writes the test vowels and prints the F1–F4 medians from Praat (Parselmouth). Files are written only to a temporary place.
 set -eu
 dir=$(mktemp -d)
 cargo build -q --release -p voice-cli

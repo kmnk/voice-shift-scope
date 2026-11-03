@@ -1,8 +1,8 @@
 name: windows-e2e
 
-# Windows のランナーに VB-CABLE を入れ、本物の WASAPI の経路を通して確かめる。
-# loopback は声を変える処理を通さずに VB-CABLE の経路だけを、e2e は音声の実行（voice-runtime）を wav の音源で通す。
-# ランナーは毎回作り直されるので、利用者の機器や設定には触れない。
+# Installs VB-CABLE on a Windows runner and checks the real WASAPI path.
+# loopback checks only the VB-CABLE path without the shifter; e2e runs the audio runtime (voice-runtime) with a wav source.
+# The runner is created fresh each time, so the user's devices and settings are not touched.
 on:
   workflow_dispatch:
   push:
@@ -13,13 +13,13 @@ on:
       - ".github/workflows/windows-e2e.yml"
       - "scripts/e2e_gate.ps1"
 
-# 続けて push したときは、同じブランチの古い実行を止める
+# When pushed again in a row, cancel the older run on the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # VB-CABLE が無いときの振る舞いを先に確かめてから VB-CABLE を入れ、build を 1 回で済ませる
+  # Check the behaviour without VB-CABLE first, then install VB-CABLE, building only once
   e2e:
     runs-on: windows-latest
     steps:
@@ -59,31 +59,31 @@ jobs:
         run: |
           target/release/voice-cli loopback --input-wav vowel150.wav --out-wav recorded.wav | Tee-Object -FilePath e2e-report.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      # e2e の終了コードは A5（遅れ）と A6（途切れ）も含む。ランナーでは A5 が 150 ms を超え、A6 で underrun が出るが、
-      # この 2 つは利用者の Windows で docs/windows-checklist.md の手順で確かめる。ここでは値を report に残し、
-      # 合否はランナーで判定できる A1 と分析だけで決める。
+      # The e2e exit code includes A5 (latency) and A6 (dropouts). On runners A5 exceeds 150 ms and A6 gets underruns,
+      # but these two are checked on the user's Windows with docs/windows-checklist.md. Here the values are kept in the report,
+      # and the result is decided only by A1 and the analysis, which can be judged on a runner.
       - name: Measure latency through the audio runtime (0 semitones, 10 s)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: |
           target/release/voice-cli e2e --seconds 10 --semitones 0 | Tee-Object -FilePath e2e-latency.json
-          if ($LASTEXITCODE -eq 2) { Write-Error "VB-CABLE が見つからない"; exit 1 }
+          if ($LASTEXITCODE -eq 2) { Write-Error "VB-CABLE not found"; exit 1 }
           ./scripts/e2e_gate.ps1 e2e-latency.json A1 analysis
       - name: Run the audio runtime through VB-CABLE (+5 semitones, 20 s)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: |
           target/release/voice-cli e2e --seconds 20 --semitones 5 | Tee-Object -FilePath e2e-runtime.json
-          if ($LASTEXITCODE -eq 2) { Write-Error "VB-CABLE が見つからない"; exit 1 }
+          if ($LASTEXITCODE -eq 2) { Write-Error "VB-CABLE not found"; exit 1 }
           ./scripts/e2e_gate.ps1 e2e-runtime.json A1 analysis
-      # ピッチを 0 半音より下げると、声を変える処理が TD-PSOLA に切り替わる（crates/voice-dsp/src/hybrid.rs）。
-      # その側も音声の実行で通す
+      # Lowering the pitch below 0 semitones switches the shifter to TD-PSOLA (crates/voice-dsp/src/hybrid.rs).
+      # Run that side through the audio runtime too
       - name: Run the audio runtime through VB-CABLE (-12 semitones, PSOLA, 20 s)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: |
           target/release/voice-cli e2e --seconds 20 --semitones -12 | Tee-Object -FilePath e2e-runtime-lowered.json
-          if ($LASTEXITCODE -eq 2) { Write-Error "VB-CABLE が見つからない"; exit 1 }
+          if ($LASTEXITCODE -eq 2) { Write-Error "VB-CABLE not found"; exit 1 }
           ./scripts/e2e_gate.ps1 e2e-runtime-lowered.json A1 analysis
       - uses: actions/upload-artifact@v4
         if: always()

@@ -1,6 +1,6 @@
-"""third_party_licenses.py の 2 つの検査の試験。
+"""Tests for the two checks in third_party_licenses.py.
 
-python3 -m unittest scripts/test_third_party_licenses.py で動く（cargo と npm は呼ばない）。
+Run with python3 -m unittest scripts/test_third_party_licenses.py (does not call cargo or npm).
 """
 
 import sys
