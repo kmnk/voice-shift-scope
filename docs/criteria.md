@@ -78,7 +78,7 @@ A7 (offset between the output and the monitor), B2 (agreement with Praat on a re
 
 | Name | What it checks | Checked by |
 | --- | --- | --- |
-| S1 | Colours, spacing, corners, and type values are variables in `:root` of `style.css`, and `render.ts` and `png.ts` have no hard-coded colours | Code reading |
+| S1 | Outside `:root`, `style.css` has no colour values (hex, `rgb()`, `hsl()`); the TypeScript sources (including `render.ts` and `png.ts`) have none either; `:root` defines the spacing (`--space-1` to `3`), corner (`--radius-s`, `-m`), and type (`--text-s` to `l`) variables | Unit tests (`frontend/src/tokens.test.ts`) |
 | S2 | No emoji or symbol icons in text or buttons; icons are SVG; every button is 24 px high (the same in English and Japanese) | `selftest` (`S2-icons`) |
 | S3 | Both plot titles have an F1–F4 legend in the colours `--formant-1` to `4`. The F1–F4 rows of the values table start with a square of the same colour | `selftest` (`S3-legend`) |
 | S4 | While there is voice, F1–F4 in the value column to the right of each spectrogram match the same side in the values table | `selftest` (`S4-values`) |
