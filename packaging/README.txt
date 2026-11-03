@@ -1,36 +1,40 @@
 voice-shift-scope
 
-マイクの声のピッチとフォルマントを別々に変えて出力の機器に流し、変える前と後の
-F0・F1〜F4・倍音を 1 つの画面に並べて表示する Windows のアプリ。
+A Windows app that changes the pitch and the formants of your microphone
+voice separately, sends it to an output device, and shows F0, F1-F4, and
+the harmonics of the original and shifted voice side by side on one screen.
 
-詳しい説明、使い方、ソースは GitHub にある。
+The full description, usage, and source are on GitHub:
 https://github.com/kmnk/voice-shift-scope
 
 
-動く環境
+Requirements
 
-- Windows 10・11 の x64
-- Microsoft Edge WebView2 Runtime（Windows 11 には含まれる。起動しないときは
-  https://developer.microsoft.com/microsoft-edge/webview2/ から入れる）
-- 変えた声を他のアプリにマイクとして渡すときだけ、VB-CABLE などの仮想の音声機器
-
-
-起動
-
-このフォルダーの voice-shift-scope.exe を起動する。インストールはしない。
-設定は %APPDATA%\dev.kmnk.voice-shift-scope\preferences.json に残る。
+- Windows 10 or 11, x64
+- Microsoft Edge WebView2 Runtime (included in Windows 11; if the app does
+  not start, install it from
+  https://developer.microsoft.com/microsoft-edge/webview2/ )
+- Only to pass the shifted voice to another app as a microphone: a virtual
+  audio device such as VB-CABLE
 
 
-起動するときに出る警告
+Start
 
-この版にはコードの署名が無い。
-- 「Windows によって PC が保護されました」と出たら、「詳細情報」を押してから
-  「実行」を押すと起動する
-- Windows 11 の Smart App Control が有効な PC では起動できない
+Start voice-shift-scope.exe in this folder. There is no installer.
+Settings are kept in %APPDATA%\dev.kmnk.voice-shift-scope\preferences.json
 
 
-ライセンス
+Warnings when starting
 
-voice-shift-scope は MIT License（LICENSE-MIT）と Apache License 2.0
-（LICENSE-APACHE）の、どちらかを選んで使える。
-使っている第三者のソフトウェアのライセンスは THIRD-PARTY-LICENSES.txt にある。
+This version is not code-signed.
+- If "Windows protected your PC" appears, press "More info" and then
+  "Run anyway" to start
+- On PCs with Windows 11 Smart App Control turned on, it cannot start
+
+
+License
+
+voice-shift-scope may be used under either the MIT License (LICENSE-MIT) or
+the Apache License 2.0 (LICENSE-APACHE), at your option.
+The licenses of the third-party software used are in
+THIRD-PARTY-LICENSES.txt.
