@@ -1,4 +1,4 @@
-//! 分析の結果を Tauri の channel で画面に送る `AnalysisPublisher`。
+//! `AnalysisPublisher`, which sends analysis results to the screen over a Tauri channel.
 
 use std::sync::Mutex;
 
@@ -8,7 +8,7 @@ use voice_domain::ports::AnalysisPublisher;
 
 use crate::dto::PairDto;
 
-/// 開始のたびに画面から受けた channel に差し替える。
+/// Replaced with the channel received from the screen on each start.
 #[derive(Default)]
 pub struct ChannelPublisher {
     channel: Mutex<Option<Channel<PairDto>>>,

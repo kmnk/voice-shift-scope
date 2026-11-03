@@ -1,14 +1,14 @@
-//! 出力の先（VB-CABLE）を機器の一覧から見つける。
+//! Finds the output (VB-CABLE) in the device list.
 //!
-//! 名前の前半（「CABLE Input」「Speakers」など）は版や入れ方で変わり、利用者も変えられるので、
-//! cpal が返す driver の名前で探す。driver が取れないときに限り、名前の括弧の中を見る。
+//! The first part of the name ("CABLE Input", "Speakers", and so on) varies with the version and installation, and users can change it,
+//! so it searches by the driver name cpal returns. Only when the driver is not available does it look inside the parentheses of the name.
 
 use crate::{DeviceDirection, ProbedDevice};
 
-/// VB-CABLE の driver の名前。
+/// The VB-CABLE driver name.
 pub const VB_CABLE_DRIVER: &str = "VB-Audio Virtual Cable";
 
-/// 見つかった VB-CABLE の再生側と録音側。
+/// The VB-CABLE playback and recording sides found.
 #[derive(Debug, Clone)]
 pub struct VirtualCable {
     pub playback: ProbedDevice,
@@ -22,7 +22,7 @@ fn is_vb_cable(device: &ProbedDevice) -> bool {
     }
 }
 
-/// 一覧から VB-CABLE の再生側と録音側を 1 つずつ探す。どちらかが無ければ `None`。
+/// Finds one VB-CABLE playback side and one recording side in the list. `None` if either is missing.
 pub fn find_virtual_cable(devices: &[ProbedDevice]) -> Option<VirtualCable> {
     let pick = |direction| {
         devices
@@ -52,7 +52,7 @@ mod tests {
         }
     }
 
-    /// CI のランナーで cpal が返した形（再生側の名前が Speakers）でも見つかる。
+    /// Found even in the form cpal returned on a CI runner (playback side named Speakers).
     #[test]
     fn finds_cable_by_driver_as_seen_on_ci_runner() {
         let devices = vec![
@@ -61,22 +61,22 @@ mod tests {
             device(DeviceDirection::Output, "Speakers (VB-Audio Virtual Cable)", Some(VB_CABLE_DRIVER)),
             device(DeviceDirection::Output, "Headphones (USB)", Some("USB Audio")),
         ];
-        let cable = find_virtual_cable(&devices).expect("見つかる");
+        let cable = find_virtual_cable(&devices).expect("found");
         assert_eq!(cable.playback.name, "Speakers (VB-Audio Virtual Cable)");
         assert_eq!(cable.recording.name, "CABLE Output (VB-Audio Virtual Cable)");
     }
 
-    /// 利用者が名前の前半を変えても、driver が同じなら見つかる。
+    /// Found when the user changes the first part of the name, as long as the driver is the same.
     #[test]
     fn finds_renamed_cable_by_driver() {
         let devices = vec![
-            device(DeviceDirection::Input, "仮想マイク", Some(VB_CABLE_DRIVER)),
-            device(DeviceDirection::Output, "声の出口", Some(VB_CABLE_DRIVER)),
+            device(DeviceDirection::Input, "Virtual mic", Some(VB_CABLE_DRIVER)),
+            device(DeviceDirection::Output, "Voice out", Some(VB_CABLE_DRIVER)),
         ];
         assert!(find_virtual_cable(&devices).is_some());
     }
 
-    /// 片側しか無い・別の driver のときは見つからない。
+    /// Not found with only one side or with a different driver.
     #[test]
     fn missing_side_or_other_driver_is_none() {
         let only_output = vec![device(DeviceDirection::Output, "CABLE Input (VB-Audio Virtual Cable)", Some(VB_CABLE_DRIVER))];
@@ -88,7 +88,7 @@ mod tests {
         assert!(find_virtual_cable(&other).is_none());
     }
 
-    /// driver が取れないときは、名前の括弧の中で探す。
+    /// When the driver is not available, searches inside the parentheses of the name.
     #[test]
     fn falls_back_to_name_suffix_without_driver() {
         let devices = vec![

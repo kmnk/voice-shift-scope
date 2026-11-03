@@ -1,14 +1,14 @@
 use cpal::traits::{DeviceTrait, HostTrait};
 
-/// 機器が録音側か再生側か。
+/// Whether a device is a recording or a playback device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceDirection {
     Input,
     Output,
 }
 
-/// cpal が返した機器の情報。VB-CABLE を見つける手掛かりを確かめるため、
-/// 名前のほかに driver・manufacturer・extended も持つ。
+/// Device information returned by cpal. Besides the name, it keeps driver, manufacturer, and extended,
+/// to check the clues for finding VB-CABLE.
 #[derive(Debug, Clone)]
 pub struct ProbedDevice {
     pub direction: DeviceDirection,
@@ -20,14 +20,14 @@ pub struct ProbedDevice {
     pub is_default: bool,
 }
 
-/// 既定の host の機器の一覧。
+/// The device list of the default host.
 #[derive(Debug, Clone)]
 pub struct DeviceListing {
     pub host: String,
     pub devices: Vec<ProbedDevice>,
 }
 
-/// 既定の host の録音と再生の機器を列挙する。機器を開かない。
+/// Enumerates the recording and playback devices of the default host. Does not open any device.
 pub fn probe_devices() -> Result<DeviceListing, cpal::Error> {
     let host = cpal::default_host();
     let default_input = host.default_input_device().and_then(|d| d.id().ok());
@@ -68,10 +68,10 @@ fn probe(
 mod tests {
     use super::*;
 
-    /// 機器が無い CI でも、列挙そのものは誤りにならない。
+    /// Even on CI without devices, enumeration itself is not an error.
     #[test]
     fn probe_devices_does_not_fail() {
-        let listing = probe_devices().expect("列挙できる");
+        let listing = probe_devices().expect("can enumerate");
         for d in &listing.devices {
             println!("{:?} {:?} {:?} driver={:?}", d.direction, d.name, d.id, d.driver);
         }

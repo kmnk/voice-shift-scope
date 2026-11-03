@@ -1,19 +1,19 @@
-//! 受け入れの基準に使う、答えの分かる試験用の信号を作る。
+//! Makes test signals with known answers for the acceptance checks.
 //!
-//! 合成の母音: F0 の倍音を同じ強さで並べた帯域制限のパルス列を、
-//! F1〜F4 の 2 次の共鳴のフィルタに順に通す。
-//! 倍音だけの信号: H1〜Hn を同じ強さで並べ、白色雑音を足す。
+//! Synthetic vowel: a band-limited pulse train with the harmonics of F0 at equal strength,
+//! passed through second-order resonance filters for F1–F4 in turn.
+//! Harmonics-only signal: H1–Hn at equal strength, plus white noise.
 
 use std::f64::consts::PI;
 
-/// 2 次の共鳴（極が 1 組の all-pole）のフィルタ。
+/// A second-order resonance filter (all-pole with one pole pair).
 #[derive(Debug, Clone, Copy)]
 pub struct Resonance {
     pub frequency: f64,
     pub bandwidth: f64,
 }
 
-/// 試験用の合成の母音（docs/criteria.md の「試験用の信号」）の F1〜F4（帯域幅は 60〜120 Hz の幅に置く）。
+/// F1–F4 of the synthetic test vowel ("Test signals" in docs/criteria.md), with bandwidths placed between 60 and 120 Hz.
 pub const SPEC_VOWEL: [Resonance; 4] = [
     Resonance { frequency: 700.0, bandwidth: 60.0 },
     Resonance { frequency: 1200.0, bandwidth: 80.0 },
@@ -21,9 +21,9 @@ pub const SPEC_VOWEL: [Resonance; 4] = [
     Resonance { frequency: 3500.0, bandwidth: 120.0 },
 ];
 
-/// 合成の母音に使う共鳴。試験用の F1〜F4 に、F5（4500 Hz）を足す。
-/// 実際の声は上限（5500 Hz）までに 5 つ前後の共鳴を持ち、Praat と同じ既定（5 個・5500 Hz）の LPC は
-/// それを前提にしている。F1〜F4 だけの信号では、F2 と F3 の間に無い共鳴を置いてしまう。
+/// Resonances used for the synthetic vowel: the test F1–F4 plus F5 (4500 Hz).
+/// Real voices have about 5 resonances below the ceiling (5500 Hz), and LPC with Praat's defaults (5 formants, 5500 Hz)
+/// assumes this. With only F1–F4, it places a resonance between F2 and F3 that is not there.
 pub const SYNTH_VOWEL: [Resonance; 5] = [
     SPEC_VOWEL[0],
     SPEC_VOWEL[1],
@@ -33,8 +33,8 @@ pub const SYNTH_VOWEL: [Resonance; 5] = [
 ];
 
 impl Resonance {
-    /// 差分方程式 y[n] = g x[n] + a1 y[n-1] + a2 y[n-2] の係数。
-    /// g は 0 Hz の利得を 1 にする。
+    /// Coefficients of the difference equation y[n] = g x[n] + a1 y[n-1] + a2 y[n-2].
+    /// g makes the gain at 0 Hz 1.
     fn coefficients(&self, sample_rate: f64) -> (f64, f64, f64) {
         let r = (-PI * self.bandwidth / sample_rate).exp();
         let theta = 2.0 * PI * self.frequency / sample_rate;
@@ -44,7 +44,7 @@ impl Resonance {
         (g, a1, a2)
     }
 
-    /// 周波数 `f` での振幅の応答。
+    /// Amplitude response at frequency `f`.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn magnitude(&self, f: f64, sample_rate: f64) -> f64 {
         let (g, a1, a2) = self.coefficients(sample_rate);
@@ -56,7 +56,7 @@ impl Resonance {
     }
 }
 
-/// 帯域制限のパルス列を共鳴に通した合成の母音。最大の振幅を `peak` にそろえる。
+/// A synthetic vowel: a band-limited pulse train through the resonances. The peak amplitude is scaled to `peak`.
 pub fn vowel(f0: f64, resonances: &[Resonance], sample_rate: f64, seconds: f64, peak: f64) -> Vec<f32> {
     let n = (sample_rate * seconds) as usize;
     let harmonics = ((sample_rate / 2.0 - 1.0) / f0).floor() as usize;
@@ -79,12 +79,12 @@ pub fn vowel(f0: f64, resonances: &[Resonance], sample_rate: f64, seconds: f64, 
     normalize(&x, peak)
 }
 
-/// H1〜H`count` を同じ強さで並べ、各倍音より `noise_below_db` だけ低い白色雑音を足した信号。
+/// H1–H`count` at equal strength, plus white noise `noise_below_db` below each harmonic.
 pub fn harmonics(f0: f64, count: usize, noise_below_db: f64, sample_rate: f64, seconds: f64, peak: f64) -> Vec<f32> {
     let n = (sample_rate * seconds) as usize;
     let mut rng = XorShift(0x9E37_79B9_7F4A_7C15);
-    // 1 本の倍音（振幅 1 の cos）の電力は 1/2。雑音の電力を、窓の 1 bin あたりで比べると
-    // 長さに依るので、ここでは全帯域の雑音の標準偏差を倍音の振幅から決める。
+    // The power of one harmonic (a cos of amplitude 1) is 1/2. Comparing the noise power per window bin
+    // depends on the length, so here the standard deviation of the full-band noise is set from the harmonic amplitude.
     let noise_sd = 10f64.powf(-noise_below_db / 20.0);
     let x: Vec<f64> = (0..n)
         .map(|i| {
@@ -102,7 +102,7 @@ fn normalize(x: &[f64], peak: f64) -> Vec<f32> {
     x.iter().map(|v| (v * scale) as f32).collect()
 }
 
-/// 試験の信号を毎回同じにするための小さな乱数。
+/// A small random generator that makes the test signals the same every time.
 struct XorShift(u64);
 
 impl XorShift {
@@ -121,7 +121,7 @@ impl XorShift {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-/// Hann の窓を掛けた、周波数 `f` での振幅（Goertzel と同じ値を直に計算する）。
+/// Hann-windowed amplitude at frequency `f` (computes the same value as Goertzel directly).
 pub fn amplitude_at(x: &[f32], f: f64, sample_rate: f64) -> f64 {
     let n = x.len();
     let (mut re, mut im, mut wsum) = (0.0, 0.0, 0.0);
@@ -141,8 +141,8 @@ mod tests {
 
     const SR: f64 = 48_000.0;
 
-    /// 合成の母音の倍音の強さ（H1 との dB の差）が、共鳴のフィルタの応答から
-    /// 計算した値と ±1 dB で合う。F0 は試験用の 3 通り（100・150・220 Hz）。
+    /// The harmonic levels of the synthetic vowel (dB relative to H1) match the values computed from the
+    /// resonance filter response within ±1 dB. F0 takes the 3 test values (100, 150, and 220 Hz).
     #[test]
     fn vowel_harmonics_follow_resonance_response() {
         for f0 in [100.0, 150.0, 220.0] {
@@ -164,7 +164,7 @@ mod tests {
         }
     }
 
-    /// 倍音だけの信号は、H1〜H8 が雑音の床より 20 dB 以上高く、H9 の位置には山が無い。
+    /// In the harmonics-only signal, H1–H8 are at least 20 dB above the noise floor, and there is no peak at H9.
     #[test]
     fn harmonics_signal_has_eight_partials_above_noise() {
         let x = harmonics(150.0, 8, 40.0, SR, 1.0, 0.5);

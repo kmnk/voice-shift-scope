@@ -1,6 +1,6 @@
-//! 試験の道具: 信号を VB-CABLE の再生側に流し、録音側から録り返す。
-//! 声を変える処理を通さない。音声の経路（cpal と VB-CABLE）が通るかと遅れを確かめるためのもので、
-//! 音声のスレッドの決まり（確保・ロックをしない）には従わない。
+//! A test tool: plays a signal into the VB-CABLE playback side and records it back from the recording side.
+//! It does not go through the shifter. It checks that the audio path (cpal and VB-CABLE) works and measures its delay,
+//! and does not follow the audio thread rules (no allocation, no locks).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -8,10 +8,10 @@ use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-/// 録り返した結果。
+/// The recorded result.
 #[derive(Debug, Clone)]
 pub struct LoopbackRecording {
-    /// 録音側の 1 番目の channel を、`sample_rate` に直したもの。
+    /// The first channel of the recording side, converted to `sample_rate`.
     pub samples: Vec<f32>,
     pub sample_rate: u32,
     pub output_device_rate: u32,
@@ -40,8 +40,8 @@ fn find_device(id: &str) -> Result<cpal::Device, LoopbackError> {
     Err(LoopbackError::DeviceNotFound(id.to_string()))
 }
 
-/// `signal`（mono、`sample_rate`）を `playback_id` の機器に流しながら、`recording_id` の機器から録る。
-/// 流し終えてから `tail` だけ録り続ける。
+/// Plays `signal` (mono, `sample_rate`) into the `playback_id` device while recording from the `recording_id` device.
+/// Keeps recording for `tail` after playback ends.
 pub fn loopback(
     signal: &[f32],
     sample_rate: u32,
@@ -72,10 +72,10 @@ pub fn loopback(
         input.build_input_stream(
             in_config.config(),
             move |data: &[f32], _| {
-                let mut r = recorded.lock().expect("録音の buffer");
+                let mut r = recorded.lock().expect("recording buffer");
                 r.extend(data.chunks(in_channels as usize).map(|frame| frame[0]));
             },
-            |e| eprintln!("録音の誤り: {e}"),
+            |e| eprintln!("recording error: {e}"),
             None,
         )?
     };
@@ -91,7 +91,7 @@ pub fn loopback(
                     frame.fill(v);
                 }
             },
-            |e| eprintln!("再生の誤り: {e}"),
+            |e| eprintln!("playback error: {e}"),
             None,
         )?
     };
@@ -103,7 +103,7 @@ pub fn loopback(
     drop(output_stream);
     drop(input_stream);
 
-    let recorded = recorded.lock().expect("録音の buffer").clone();
+    let recorded = recorded.lock().expect("recording buffer").clone();
     Ok(LoopbackRecording {
         samples: resample_linear(&recorded, in_rate, sample_rate),
         sample_rate,
@@ -114,7 +114,7 @@ pub fn loopback(
     })
 }
 
-/// 試験の道具のための、線形補間のリサンプリング。
+/// Linear-interpolation resampling for the test tools.
 pub fn resample_linear(x: &[f32], from: u32, to: u32) -> Vec<f32> {
     if from == to || x.is_empty() {
         return x.to_vec();
@@ -132,7 +132,7 @@ pub fn resample_linear(x: &[f32], from: u32, to: u32) -> Vec<f32> {
         .collect()
 }
 
-/// 録音の機器から録り続ける。`stop` で止めて、録った標本（1 番目の channel）と機器の速さを返す。
+/// Keeps recording from a recording device. `stop` stops it and returns the recorded samples (first channel) and the device rate.
 pub struct Recorder {
     stream: cpal::Stream,
     recorded: Arc<Mutex<Vec<f32>>>,
@@ -156,35 +156,35 @@ impl Recorder {
         let stream = input.build_input_stream(
             config.config(),
             move |data: &[f32], _| {
-                let mut r = sink.lock().expect("録音の buffer");
+                let mut r = sink.lock().expect("recording buffer");
                 if r.is_empty() {
-                    // 最初のコールバックが届いた時刻から、届いた分の長さを引いたものを、最初の標本の時刻とみなす
+                    // Take the time the first callback arrived, minus the length it delivered, as the time of the first sample
                     let frames = data.len() / channels;
                     let span = Duration::from_secs_f64(frames as f64 / rate as f64);
-                    *first.lock().expect("時刻") = std::time::Instant::now().checked_sub(span);
+                    *first.lock().expect("time") = std::time::Instant::now().checked_sub(span);
                 }
                 r.extend(data.chunks(channels).map(|frame| frame[0]));
             },
-            |e| eprintln!("録音の誤り: {e}"),
+            |e| eprintln!("recording error: {e}"),
             None,
         )?;
         stream.play()?;
         Ok(Self { stream, recorded, rate, first_callback })
     }
 
-    /// 録った最初の標本のおよその時刻（最初のコールバックから求める）。
+    /// Approximate time of the first recorded sample (from the first callback).
     pub fn first_sample_at(&self) -> Option<std::time::Instant> {
-        *self.first_callback.lock().expect("時刻")
+        *self.first_callback.lock().expect("time")
     }
 
     pub fn stop(self) -> (Vec<f32>, u32) {
         drop(self.stream);
-        let samples = self.recorded.lock().expect("録音の buffer").clone();
+        let samples = self.recorded.lock().expect("recording buffer").clone();
         (samples, self.rate)
     }
 }
 
-/// 振幅が `threshold` を最初に超えた位置。
+/// The first position where the amplitude exceeds `threshold`.
 pub fn onset(x: &[f32], threshold: f32) -> Option<usize> {
     x.iter().position(|v| v.abs() > threshold)
 }

@@ -1,18 +1,18 @@
-//! wav を分析の中核に通す。
+//! Runs a wav through the analysis core.
 
 use voice_domain::ports::Analyzer;
 use voice_domain::{AnalysisFrame, AnalysisSettings, SampleRate};
 use voice_dsp::{ANALYSIS_WINDOW, DefaultAnalyzer};
 
-/// 分析の間隔（48 kHz で 10 ms）。
+/// Analysis interval (10 ms at 48 kHz).
 pub const HOP: usize = 480;
 
-/// 10 ms ごとに、その時刻を中心にした窓で分析する。返すのは（時刻 秒, 結果）。
+/// Every 10 ms, analyses a window centred on that time. Returns (time in seconds, result).
 pub fn analyze_signal(x: &[f32], rate: u32, settings: &AnalysisSettings) -> Vec<(f64, AnalysisFrame)> {
     analyze_signal_with(&mut DefaultAnalyzer::default(), x, rate, settings, None)
 }
 
-/// `analyze_signal` と同じだが、分析の部品を渡せる。`times` を渡すと、分析 1 回の処理時間（ms）を足していく。
+/// The same as `analyze_signal`, but takes the analysis parts. With `times`, adds the processing time (ms) of each analysis.
 pub fn analyze_signal_with(
     analyzer: &mut DefaultAnalyzer,
     x: &[f32],
@@ -20,7 +20,7 @@ pub fn analyze_signal_with(
     settings: &AnalysisSettings,
     mut times: Option<&mut Vec<f64>>,
 ) -> Vec<(f64, AnalysisFrame)> {
-    let rate_v = SampleRate::new(rate).expect("0 より大きい");
+    let rate_v = SampleRate::new(rate).expect("greater than 0");
     let half = ANALYSIS_WINDOW / 2;
     let mut out = Vec::new();
     let mut center = half;
@@ -44,7 +44,7 @@ pub fn median(mut v: Vec<f32>) -> Option<f32> {
     Some(v[v.len() / 2])
 }
 
-/// `skip` 秒より後のフレームの、F1〜F4 の中央値。
+/// Medians of F1–F4 over the frames after `skip` seconds.
 pub fn formant_medians(frames: &[(f64, AnalysisFrame)], skip: f64) -> [Option<f32>; 4] {
     let mut out = [None; 4];
     for (i, slot) in out.iter_mut().enumerate() {
@@ -59,7 +59,7 @@ pub fn formant_medians(frames: &[(f64, AnalysisFrame)], skip: f64) -> [Option<f3
     out
 }
 
-/// CSV の 1 行。
+/// One CSV row.
 pub fn csv_header() -> String {
     let mut cols = vec!["time".to_string(), "voiced".into(), "f0".into()];
     cols.extend((1..=4).map(|i| format!("f{i}")));

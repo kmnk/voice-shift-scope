@@ -1,7 +1,7 @@
-//! FFT のスペクトルから倍音を拾い、観測できた倍音の数を数える。
+//! Picks harmonics from the FFT spectrum and counts the harmonics seen.
 //!
-//! 雑音の床は、倍音ごとに、隣の倍音との間（窓の主葉を除く）の振幅の中央値とする。
-//! 声の無い区間で測る形は、声を出し続けている間は更新できないので採らなかった。
+//! The noise floor for each harmonic is the median amplitude between it and the neighbouring harmonics (excluding the window's main lobe).
+//! Measuring it in parts without voice was not used, because it cannot be updated while the voice continues.
 
 use std::sync::Arc;
 
@@ -10,18 +10,18 @@ use rustfft::{Fft, FftPlanner};
 use voice_domain::ports::HarmonicPicker;
 use voice_domain::{AnalysisSettings, Decibels, Frequency, Harmonic, SampleRate};
 
-/// 倍音を探すときの、k × F0 からの許す幅（F0 に対する比）。F0 の ±5% 以内。
+/// Allowed distance from k × F0 when searching for a harmonic (as a ratio of F0). Within ±5% of F0.
 pub const PEAK_TOLERANCE: f32 = 0.05;
-/// 拾う倍音の最大の数。
+/// Maximum number of harmonics to pick.
 pub const MAX_HARMONICS: usize = 40;
 
 pub struct Spectrum {
     fft: Arc<dyn Fft<f32>>,
     size: usize,
     buf: Vec<Complex32>,
-    /// 直近の振幅（dB、full scale の sine が 0 dB）。長さ size/2+1。
+    /// The latest amplitudes (dB, a full-scale sine is 0 dB). Length size/2+1.
     pub db: Vec<f32>,
-    /// 窓の長さ（標本）。主葉の幅を決める。
+    /// Window length (samples). Sets the width of the main lobe.
     pub window_len: usize,
 }
 
@@ -31,7 +31,7 @@ impl Spectrum {
         Self { fft, size, buf: vec![Complex32::default(); size], db: vec![0.0; size / 2 + 1], window_len: 0 }
     }
 
-    /// Hann の窓を掛けて、`size` まで 0 で埋めて変換する。
+    /// Applies a Hann window, pads with zeros up to `size`, and transforms.
     pub fn compute(&mut self, x: &[f32]) {
         let n = x.len().min(self.size);
         self.window_len = n;
@@ -75,13 +75,13 @@ fn median(v: &mut [f32]) -> f32 {
 }
 
 impl SpectralHarmonics {
-    /// `f0` の近くの倍音の山から F0 を詰め直す（最小二乗で f0 = Σ k p_k / Σ k²）。
+    /// Refines F0 from the harmonic peaks near `f0` (least squares: f0 = Σ k p_k / Σ k²).
     fn refine_f0(&self, fs: f32, f0: f32, upto: f32) -> f32 {
         let bin = self.spectrum.bin_hz(fs);
         let (mut num, mut den) = (0.0f32, 0.0f32);
         let mut k = 1;
         while (k as f32) * f0 < upto.min(fs / 2.0) && k <= 10 {
-            // 雑音の床より十分に高い山だけを使う（無い倍音の位置の山で F0 がずれないように）
+            // Use only peaks well above the noise floor (so peaks where there is no harmonic do not move F0)
             if let Some((p, level)) = self.peak(k as f32 * f0, f0 / 4.0, bin) {
                 if level - self.floor(k as f32 * f0, f0, fs) > 20.0 {
                     num += k as f32 * p;
@@ -93,7 +93,7 @@ impl SpectralHarmonics {
         if den > 0.0 { num / den } else { f0 }
     }
 
-    /// `center` ± `half` Hz の中の最大の山の周波数（放物線で補間）と強さ。
+    /// Frequency (interpolated with a parabola) and level of the largest peak within `center` ± `half` Hz.
     fn peak(&self, center: f32, half: f32, bin: f32) -> Option<(f32, f32)> {
         let db = &self.spectrum.db;
         let lo = ((center - half) / bin).floor().max(1.0) as usize;
@@ -108,7 +108,7 @@ impl SpectralHarmonics {
         Some(((i as f32 + shift) * bin, b - 0.25 * (a - c) * shift))
     }
 
-    /// 倍音 k の雑音の床: k×F0 の前後 F0/2 のうち、主葉を除いた所の振幅の中央値。
+    /// The noise floor of harmonic k: the median amplitude within F0/2 of k×F0, excluding the main lobe.
     fn floor(&self, center: f32, f0: f32, fs: f32) -> f32 {
         let bin = self.spectrum.bin_hz(fs);
         let lobe = 2.5 * fs / self.spectrum.window_len.max(1) as f32;
@@ -150,7 +150,7 @@ impl HarmonicPicker for SpectralHarmonics {
                 harmonics.push(Harmonic { number: k as u32, frequency, level, observed });
             }
         }
-        // 2 つ目の条件: 観測できた倍音のうち最も強いものから、差の上限より弱いものは数えない
+        // The second condition: do not count harmonics weaker than the limit below the strongest harmonic seen
         let strongest = harmonics.iter().filter(|h| h.observed).map(|h| h.level.db()).fold(f32::NEG_INFINITY, f32::max);
         for h in harmonics.iter_mut() {
             if h.level.db() < strongest - settings.relative_limit.db() {
@@ -172,8 +172,8 @@ mod tests {
             .collect()
     }
 
-    /// 高い倍音ほど弱い声（1 oct で −24 dB、裏声のような傾き）では、最も強い倍音から 40 dB より弱いものを数えない。
-    /// 傾きが緩い声（−12 dB/oct）では、ずっと多く数える。
+    /// For a voice whose higher harmonics are weaker (−24 dB per octave, a falsetto-like slope), harmonics more than 40 dB below the strongest are not counted.
+    /// For a voice with a gentler slope (−12 dB/oct), many more are counted.
     #[test]
     fn relative_limit_counts_fewer_harmonics_for_steep_spectra() {
         let rate = SampleRate::new(48_000).unwrap();
@@ -193,7 +193,7 @@ mod tests {
         let settings = AnalysisSettings::default();
         let (_, steep) = picker.pick(&tone(-24.0), rate, Frequency::new(150.0).unwrap(), &settings);
         let (_, gentle) = picker.pick(&tone(-12.0), rate, Frequency::new(150.0).unwrap(), &settings);
-        // 40 dB の差は、−24 dB/oct では 2^(40/24) ≈ 3.2 倍、−12 dB/oct では 2^(40/12) ≈ 10 倍の周波数
+        // A 40 dB difference is 2^(40/24) ≈ 3.2 times the frequency at −24 dB/oct, and 2^(40/12) ≈ 10 times at −12 dB/oct
         assert_eq!(steep, 3, "steep");
         assert_eq!(gentle, 10, "gentle");
     }

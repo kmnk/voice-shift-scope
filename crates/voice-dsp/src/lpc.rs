@@ -1,5 +1,5 @@
-//! Praat と同じ手順の F1〜F4 の推定: 上限の 2 倍へのリサンプリング、50 Hz からの高域の強調、
-//! Gauss の窓、Burg 法の LPC、多項式の根から周波数と帯域幅。
+//! F1–F4 estimation with the same steps as Praat: resampling to twice the ceiling, pre-emphasis from 50 Hz,
+//! a Gaussian window, Burg LPC, and frequencies and bandwidths from the polynomial roots.
 
 use rustfft::num_complex::Complex64;
 use std::f64::consts::PI;
@@ -8,7 +8,7 @@ use voice_domain::{AnalysisSettings, Formant, Frequency, SampleRate};
 
 use crate::resample::resample;
 
-/// Praat の既定と同じく、実際の窓の長さは 50 ms（Praat の「window length 0.025」の 2 倍）。
+/// As in Praat's default, the actual window length is 50 ms (twice Praat's "window length 0.025").
 pub const LPC_WINDOW_SECONDS: f64 = 0.05;
 
 #[derive(Default)]
@@ -21,7 +21,7 @@ impl FormantEstimator for BurgFormants {
 }
 
 impl BurgFormants {
-    /// 窓の中央 50 ms の LPC の根のうち、50 Hz〜上限−50 Hz にある上半平面のものを周波数の順に全部返す（追跡の候補）。
+    /// Returns all upper-half-plane LPC roots between 50 Hz and ceiling−50 Hz for the middle 50 ms of the window, in frequency order (the tracking candidates).
     pub fn candidates(&mut self, window: &[f32], rate: SampleRate, settings: &AnalysisSettings) -> Vec<Formant> {
         let fs = rate.hz() as f64;
         let len = ((LPC_WINDOW_SECONDS * fs) as usize).min(window.len());
@@ -35,7 +35,7 @@ impl BurgFormants {
     }
 }
 
-/// 高域の強調と Gauss の窓。
+/// Pre-emphasis and the Gaussian window.
 fn prepare(x: &[f64], fs: f64) -> Vec<f64> {
     let alpha = (-2.0 * PI * 50.0 / fs).exp();
     let n = x.len();
@@ -50,7 +50,7 @@ fn prepare(x: &[f64], fs: f64) -> Vec<f64> {
         .collect()
 }
 
-/// Burg 法。`a[0] = 1` で、予測の誤りのフィルタ A(z) = Σ a[k] z^-k の係数を返す。
+/// Burg's method. Returns the coefficients of the prediction error filter A(z) = Σ a[k] z^-k, with `a[0] = 1`.
 pub fn burg(x: &[f64], order: usize) -> Vec<f64> {
     let n = x.len();
     let mut a = vec![0.0; order + 1];
@@ -80,7 +80,7 @@ pub fn burg(x: &[f64], order: usize) -> Vec<f64> {
     a
 }
 
-/// 多項式 z^p + a1 z^(p-1) + … + ap の根（Aberth 法）。
+/// Roots of the polynomial z^p + a1 z^(p-1) + … + ap (Aberth method).
 pub fn roots(a: &[f64]) -> Vec<Complex64> {
     let p = a.len() - 1;
     if p == 0 {
@@ -119,18 +119,18 @@ pub fn roots(a: &[f64]) -> Vec<Complex64> {
     z
 }
 
-/// 根から、50 Hz〜上限−50 Hz にある上半平面の根を周波数の順に並べ、低い方から 4 つを返す。
+/// Sorts the upper-half-plane roots between 50 Hz and ceiling−50 Hz by frequency and returns the lowest 4.
 pub fn formants_from_lpc(a: &[f64], fs: f64, ceiling: f64) -> [Option<Formant>; 4] {
     lowest_four(candidates_from_lpc(a, fs, ceiling))
 }
 
-/// 根から、50 Hz〜上限−50 Hz にある上半平面の根を、周波数と帯域幅にして周波数の順に全部返す。
+/// Returns all upper-half-plane roots between 50 Hz and ceiling−50 Hz as frequencies and bandwidths, in frequency order.
 pub fn candidates_from_lpc(a: &[f64], fs: f64, ceiling: f64) -> Vec<Formant> {
     let mut found: Vec<(f64, f64)> = roots(a)
         .into_iter()
         .filter(|z| z.im > 0.0)
         .map(|z| {
-            // 単位円の外の根は内に映す（Praat と同じ）
+            // Reflect roots outside the unit circle inside (as Praat does)
             let r = z.norm();
             let r = if r > 1.0 { 1.0 / r } else { r };
             let f = z.arg() * fs / (2.0 * PI);
@@ -149,7 +149,7 @@ pub fn candidates_from_lpc(a: &[f64], fs: f64, ceiling: f64) -> Vec<Formant> {
         .collect()
 }
 
-/// 周波数の順の候補から、低い方から 4 つを F1〜F4 にする（追跡しない今までの手順）。
+/// Makes the lowest 4 of the frequency-ordered candidates F1–F4 (the earlier method, without tracking).
 pub fn lowest_four(candidates: Vec<Formant>) -> [Option<Formant>; 4] {
     let mut out = [None; 4];
     for (slot, c) in out.iter_mut().zip(candidates) {
@@ -158,7 +158,7 @@ pub fn lowest_four(candidates: Vec<Formant>) -> [Option<Formant>; 4] {
     out
 }
 
-/// LPC の包絡の強さ（dB、相対）を周波数 `f` で求める。
+/// The level of the LPC envelope (dB, relative) at frequency `f`.
 pub fn envelope_db(a: &[f64], fs: f64, f: f64) -> f64 {
     let w = 2.0 * PI * f / fs;
     let mut re = 0.0;
@@ -182,7 +182,7 @@ mod tests {
         assert!((r[0] + 0.25).abs() < 1e-9 && (r[1] - 0.5).abs() < 1e-9, "{r:?}");
     }
 
-    /// 既知の 2 次の共鳴に白色雑音を通した信号から、Burg 法で共鳴を取り戻せる。
+    /// Burg's method recovers the resonance from white noise passed through a known second-order resonance.
     #[test]
     fn burg_recovers_a_single_resonance() {
         let fs = 11_000.0;
@@ -207,7 +207,7 @@ mod tests {
             .collect();
         let a = burg(&x, 2);
         let fm = formants_from_lpc(&a, fs, 5000.0);
-        let got = fm[0].expect("1 つ見つかる");
+        let got = fm[0].expect("one found");
         assert!((got.frequency.hz() as f64 / f - 1.0).abs() < 0.02, "{got:?}");
         assert!((got.bandwidth.hz() as f64 - bw).abs() < 40.0, "{got:?}");
     }

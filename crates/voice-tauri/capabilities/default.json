@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "メインの画面が使える権限。画面からは既定の権限だけを使う（保存先を選ぶ画面は Rust の側から出す）",
+  "description": "Permissions for the main window. The screen uses only the default permissions (the save dialog is opened from Rust)",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

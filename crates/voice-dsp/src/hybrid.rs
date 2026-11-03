@@ -1,15 +1,15 @@
-//! ピッチの設定で 2 つの声を変える処理を切り替える `HybridShifter`。
+//! `HybridShifter`, which switches between two shifters depending on the pitch setting.
 //!
-//! ピッチを 0 半音より下げるときは TD-PSOLA（`PsolaShifter`）、0 半音以上では Signalsmith Stretch を使う。
-//! 下げる向きで Signalsmith Stretch の周期性が大きく落ち、PSOLA の方が良かったことに依る
-//! （判定は docs/criteria.md の Q1・Q10〜Q13）。
-//! 2 つとも毎ブロック同じ入力で動かし続け、設定が境目をまたいだら 30 ms で出力を混ぜて移る。
-//! PSOLA は Signalsmith Stretch と同じ遅れで作るので、切り替えても時刻は跳ばない。
-//! PSOLA が無声と判定した区間は、Signalsmith Stretch の出力で埋める（`PsolaShifter::process_with_fallback`）。
-//! 有声の音を無声と取りこぼしても、元の高さの声が混ざらないようにするため。
-//! 2 つの処理は、それぞれ `LevelMatch` で音量を入力にそろえてから混ぜる。後ろで 1 つにそろえると、
-//! 切り替えの直後に前の処理に合わせた利得が残り、音量が跳ぶ。2 つの出力は位相がそろわないので、
-//! 混ぜる重みは強さの和が一定になる cos と sin にする。
+//! Below 0 semitones it uses TD-PSOLA (`PsolaShifter`); at 0 semitones and above, Signalsmith Stretch.
+//! This is because Signalsmith Stretch loses much of its periodicity when lowering, and PSOLA did better
+//! (checks Q1 and Q10–Q13 in docs/criteria.md).
+//! Both keep running on the same input every block, and when the setting crosses the boundary the output is crossfaded over 30 ms.
+//! PSOLA is built with the same delay as Signalsmith Stretch, so switching does not jump in time.
+//! Parts that PSOLA judges unvoiced are filled with the Signalsmith Stretch output (`PsolaShifter::process_with_fallback`),
+//! so that a voiced sound missed as unvoiced does not let the original pitch through.
+//! Each shifter's output is matched to the input level with its own `LevelMatch` before mixing. Matching once after mixing would
+//! leave the gain set for the previous shifter right after a switch, and the level would jump. The two outputs are not in phase,
+//! so the mixing weights are cos and sin, whose powers sum to a constant.
 
 use voice_domain::ShiftSettings;
 use voice_domain::ports::VoiceShifter;
@@ -27,7 +27,7 @@ pub struct HybridShifter {
     match_psola: LevelMatch,
     identity: bool,
     use_psola: bool,
-    /// PSOLA の出力の重み（0 = Signalsmith Stretch だけ、1 = PSOLA だけ）。
+    /// Weight of the PSOLA output (0 = Signalsmith Stretch only, 1 = PSOLA only).
     mix: f32,
     step: f32,
     a: Vec<f32>,
@@ -35,7 +35,7 @@ pub struct HybridShifter {
 }
 
 impl HybridShifter {
-    /// 作るときにメモリを確保するので、音声のスレッドの外で作る。`max_block` は 1 回の `process` の最大の長さ。
+    /// Allocates memory when created, so create it outside the audio thread. `max_block` is the largest length of one `process`.
     pub fn new(signalsmith: SignalsmithShifter, sample_rate: u32, max_block: usize) -> Self {
         let latency = signalsmith.latency();
         Self {
@@ -52,7 +52,7 @@ impl HybridShifter {
         }
     }
 
-    /// 今 PSOLA に向かっているか（試験のため）。
+    /// Whether it is heading towards PSOLA now (for tests).
     pub fn uses_psola(&self) -> bool {
         self.use_psola
     }
@@ -84,7 +84,7 @@ impl VoiceShifter for HybridShifter {
                 if self.mix != target {
                     self.mix = if target > self.mix { (self.mix + self.step).min(1.0) } else { (self.mix - self.step).max(0.0) };
                 }
-                // 強さの和が一定になる重み
+                // Weights whose powers sum to a constant
                 let angle = std::f32::consts::FRAC_PI_2 * self.mix;
                 *out = a * angle.cos() + b * angle.sin();
             }

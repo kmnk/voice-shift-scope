@@ -1,6 +1,6 @@
-//! 画面の通しの試験のときだけ使う、窓の中の画像を PNG に書く処理。
-//! Windows では PrintWindow（WebView2 の中身も描かせる PW_RENDERFULLCONTENT）で窓の client 領域を撮る。
-//! 他の OS では撮らずに理由を返す。
+//! Writes the inside of the window to a PNG, used only in the end-to-end UI test.
+//! On Windows it captures the window's client area with PrintWindow (PW_RENDERFULLCONTENT, which also renders the WebView2 content).
+//! On other OSes it does not capture and returns the reason.
 
 use std::path::Path;
 
@@ -21,11 +21,11 @@ pub fn capture(window: &tauri::WebviewWindow, path: &Path) -> Result<(), String>
     let (width, height, mut pixels) = unsafe {
         let mut rect: RECT = std::mem::zeroed();
         if GetClientRect(hwnd, &mut rect) == 0 {
-            return Err("GetClientRect が失敗した".into());
+            return Err("GetClientRect failed".into());
         }
         let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
         if w <= 0 || h <= 0 {
-            return Err(format!("窓の大きさが 0（{w}×{h}）"));
+            return Err(format!("the window size is 0 ({w}×{h})"));
         }
         let screen_dc = GetDC(hwnd);
         let mem_dc = CreateCompatibleDC(screen_dc);
@@ -35,7 +35,7 @@ pub fn capture(window: &tauri::WebviewWindow, path: &Path) -> Result<(), String>
         let mut info: BITMAPINFO = std::mem::zeroed();
         info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
         info.bmiHeader.biWidth = w;
-        info.bmiHeader.biHeight = -h; // 上から下の並び
+        info.bmiHeader.biHeight = -h; // top-down rows
         info.bmiHeader.biPlanes = 1;
         info.bmiHeader.biBitCount = 32;
         info.bmiHeader.biCompression = BI_RGB as _;
@@ -46,14 +46,14 @@ pub fn capture(window: &tauri::WebviewWindow, path: &Path) -> Result<(), String>
         DeleteDC(mem_dc);
         ReleaseDC(hwnd, screen_dc);
         if printed == 0 {
-            return Err("PrintWindow が失敗した".into());
+            return Err("PrintWindow failed".into());
         }
         if lines == 0 {
-            return Err("GetDIBits が失敗した".into());
+            return Err("GetDIBits failed".into());
         }
         (w as u32, h as u32, buf)
     };
-    // BGRA を RGBA にし、透明度は捨てる
+    // Convert BGRA to RGBA and drop the alpha
     for px in pixels.chunks_exact_mut(4) {
         px.swap(0, 2);
         px[3] = 255;
@@ -69,5 +69,5 @@ pub fn capture(window: &tauri::WebviewWindow, path: &Path) -> Result<(), String>
 
 #[cfg(not(windows))]
 pub fn capture(_window: &tauri::WebviewWindow, _path: &Path) -> Result<(), String> {
-    Err("窓の画像は Windows でだけ撮る".into())
+    Err("window shots are taken only on Windows".into())
 }

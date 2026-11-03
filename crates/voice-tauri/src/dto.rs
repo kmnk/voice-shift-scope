@@ -1,4 +1,4 @@
-//! 画面に送る形。domain の型は画面の形を知らないので、ここで直す。
+//! Shapes sent to the screen. Domain types do not know the screen's shapes, so they are converted here.
 
 use serde::Serialize;
 use voice_domain::{AnalysisFrame, AnalysisPair, DeviceInfo, DeviceList, VoiceSession};
@@ -22,21 +22,21 @@ impl From<&DeviceInfo> for DeviceDto {
 pub struct DevicesDto {
     pub inputs: Vec<DeviceDto>,
     pub outputs: Vec<DeviceDto>,
-    /// 出力と同じ機器を外した、モニターの一覧
+    /// The monitor list, without the output device
     pub monitors: Vec<DeviceDto>,
-    /// 見つかった VB-CABLE の再生側と録音側の名前。見つからなければ null。
+    /// Names of the VB-CABLE playback and recording sides found. null if not found.
     pub cable: Option<CableDto>,
     pub selected_input: Option<String>,
     pub selected_output: Option<String>,
     pub selected_monitor: Option<String>,
     pub monitor_enabled: bool,
     pub monitor_volume: f32,
-    /// 出力とモニターに流す音（"shifted" か "original"）
+    /// The audio sent to the output and monitor ("shifted" or "original")
     pub output_source: &'static str,
     pub monitor_source: &'static str,
     pub running: bool,
     pub analysis: AnalysisDto,
-    /// 今のピッチ（半音）とフォルマント（倍率）。起動したときは覚えておいた値になっている
+    /// The current pitch (semitones) and formant (factor). At start these are the remembered values
     pub shift: ShiftDto,
 }
 
@@ -116,10 +116,10 @@ pub struct FrameDto {
     pub f0: Option<f32>,
     pub voiced: bool,
     pub formants: Vec<Option<FormantDto>>,
-    /// 上限までの倍音すべて（流れる図に点で描く。数値の表は H1〜H10 だけを出す）。
+    /// All harmonics up to the ceiling (drawn as dots in the scrolling plots; the values table shows only H1–H10).
     pub harmonics: Vec<HarmonicDto>,
     pub observed_harmonics: u32,
-    /// 0〜上限を 256 に分けた振幅（dB、小数 1 桁に丸める）。
+    /// Amplitudes of 0 to the ceiling split into 256 bins (dB, rounded to 1 decimal place).
     pub spectrum: Vec<f32>,
 }
 
@@ -149,9 +149,9 @@ impl From<&AnalysisFrame> for FrameDto {
 pub struct SettingsDto {
     pub semitones: f32,
     pub formant: f32,
-    /// 変える前の分析の上限（Hz）。変える前のスペクトルは 0〜この値。
+    /// Ceiling of the original analysis (Hz). The original spectrum covers 0 to this value.
     pub ceiling: f32,
-    /// 変えた後の分析の上限（Hz）。フォルマントの倍率だけ上げたもの。変えた後のスペクトルは 0〜この値。
+    /// Ceiling of the shifted analysis (Hz), raised by the formant factor. The shifted spectrum covers 0 to this value.
     pub after_ceiling: f32,
     pub threshold: f32,
     pub relative_limit: f32,
@@ -160,7 +160,7 @@ pub struct SettingsDto {
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PairDto {
-    /// 入力を始めてからの秒数。
+    /// Seconds since the input started.
     pub time: f64,
     pub before: FrameDto,
     pub after: FrameDto,

@@ -1,41 +1,41 @@
-//! F1〜F4 の追跡。フレームごとの LPC の根を候補にし、前のフレームとのつながりを見て F1〜F4 に割り当て、
-//! 直近 5 フレームの中央値を返す。
+//! F1–F4 tracking. Takes the LPC roots of each frame as candidates, assigns them to F1–F4 by their continuity with
+//! the previous frame, and returns the median of the last 5 frames.
 //!
-//! 低い方から 4 つを取るだけだと、共鳴でない根（帯域幅の広い根など）が 1 つ混ざったフレームで番号が 1 つずれ、
-//! 点が別の帯に飛ぶ。割り当ての費用は Praat の Formant: Track... と同じ形（参照の周波数からの離れ、帯域幅/周波数、
-//! 隣のフレームとの変化）で、先を見ずに今のフレームで決める。
+//! Just taking the 4 lowest roots shifts the numbering by one in frames where one root that is not a resonance (such as
+//! a root with a wide bandwidth) gets in, and the dot jumps to another band. The assignment cost has the same form as Praat's
+//! Formant: Track... (distance from reference frequencies, bandwidth/frequency, change from the neighbouring frame), decided at the current frame without lookahead.
 
 use std::collections::VecDeque;
 
 use voice_domain::{Formant, Frequency};
 
-/// 返す F1〜F4 が何フレーム前のものか（中央値の窓の後ろ半分）。分析が 10 ms ごとなら 20 ms。
+/// How many frames old the returned F1–F4 are (the back half of the median window). 20 ms when analysing every 10 ms.
 pub const FORMANT_DELAY_FRAMES: usize = 2;
 const MEDIAN_FRAMES: usize = 2 * FORMANT_DELAY_FRAMES + 1;
-/// 割り当ての参照の周波数（Praat の Formant: Track... の説明にある値）。上限が既定（5500 Hz）のときの値で、
-/// 上限に比例させて使う。上限は声の共鳴の高さに合わせて選ぶもので、フォルマントを変えた後の声は上限を倍率で上げて
-/// 分析するため。固定のままだと、フォルマントを 0.8 倍にした声で F3 を F2 の枠に入れた。
+/// Reference frequencies for the assignment (the values in the description of Praat's Formant: Track...). These are for the default
+/// ceiling (5500 Hz) and are scaled with the ceiling. The ceiling is chosen to match the resonances of the voice, and the shifted voice
+/// is analysed with the ceiling raised by the formant factor. With fixed values, a voice with formant ×0.8 put F3 into the F2 slot.
 const REFERENCES: [f64; 4] = [550.0, 1650.0, 2750.0, 3850.0];
 const REFERENCE_CEILING: f64 = 5500.0;
-/// 空の枠の費用（候補が 4 つより少ないときだけ使う）。
+/// Cost of an empty slot (used only when there are fewer than 4 candidates).
 const EMPTY_COST: f64 = 3.0;
 
-/// 候補の添字を F1〜F4 に割り当てたもの。`None` は空の枠。
+/// An assignment of candidate indices to F1–F4. `None` is an empty slot.
 type Assignment = [Option<usize>; 4];
-/// 1 フレームの候補と、割り当てごとの累積の費用。
+/// The candidates of one frame and the accumulated cost of each assignment.
 type Frame = (Vec<Formant>, Vec<(Assignment, f64)>);
 
 #[derive(Default)]
 pub struct FormantTracker {
-    /// 前のフレームの候補と、割り当てごとの累積の費用
+    /// The previous frame's candidates and the accumulated cost of each assignment
     previous: Option<Frame>,
-    /// 直近の割り当ての結果（新しいものが後ろ）
+    /// Recent assignment results (newest last)
     recent: VecDeque<[Option<Formant>; 4]>,
 }
 
 impl FormantTracker {
-    /// 有声のフレームの候補（周波数の順）と分析の上限（Hz）を渡し、`FORMANT_DELAY_FRAMES` 前のフレームの F1〜F4 を受け取る。
-    /// 有声の始まりでまだ足りないうちは、持っているフレームだけで出す。
+    /// Takes the candidates of a voiced frame (in frequency order) and the analysis ceiling (Hz), and returns F1–F4 of the frame `FORMANT_DELAY_FRAMES` earlier.
+    /// At the start of voicing, before there are enough frames, it uses the frames it has.
     pub fn push(&mut self, candidates: &[Formant], ceiling: f64) -> [Option<Formant>; 4] {
         let scale = ceiling / REFERENCE_CEILING;
         let assignments = assignments(candidates.len());
@@ -54,7 +54,7 @@ impl FormantTracker {
                 })
                 .collect(),
         };
-        // 累積の費用が大きくなり続けないように、最小を引く
+        // Subtract the minimum so the accumulated cost does not keep growing
         let min = costs.iter().map(|(_, c)| *c).fold(f64::INFINITY, f64::min);
         let costs: Vec<(Assignment, f64)> = costs.into_iter().map(|(a, c)| (a, c - min)).collect();
         let best = costs.iter().min_by(|x, y| x.1.total_cmp(&y.1)).map(|(a, _)| *a).unwrap_or([None; 4]);
@@ -66,13 +66,13 @@ impl FormantTracker {
         self.smoothed()
     }
 
-    /// 無声のフレームで呼ぶ。つながりを切る。
+    /// Called for an unvoiced frame. Breaks the continuity.
     pub fn reset(&mut self) {
         self.previous = None;
         self.recent.clear();
     }
 
-    /// 後ろから `FORMANT_DELAY_FRAMES + 1` 番目のフレームの、前後 `FORMANT_DELAY_FRAMES` フレーム（持っている範囲）の中央値。
+    /// The median over `FORMANT_DELAY_FRAMES` frames on each side (as far as available) of the frame `FORMANT_DELAY_FRAMES + 1` from the end.
     fn smoothed(&self) -> [Option<Formant>; 4] {
         let n = self.recent.len();
         let target = n.saturating_sub(FORMANT_DELAY_FRAMES + 1);
@@ -100,8 +100,8 @@ fn median(mut v: Vec<f32>) -> f32 {
     if n % 2 == 1 { v[n / 2] } else { (v[n / 2 - 1] + v[n / 2]) / 2.0 }
 }
 
-/// 候補 `n` 個から F1〜F4 への、周波数の順を保つ割り当てを全部並べる。
-/// 候補が 4 つ以上なら 4 枠すべてを埋めるものだけ、4 つより少なければ空の枠を許す。
+/// Lists every assignment from `n` candidates to F1–F4 that keeps the frequency order.
+/// With 4 or more candidates, only those that fill all 4 slots; with fewer than 4, empty slots are allowed.
 fn assignments(n: usize) -> Vec<Assignment> {
     let k = n.min(4);
     let mut out = Vec::new();
@@ -117,7 +117,7 @@ fn assignments(n: usize) -> Vec<Assignment> {
     out
 }
 
-/// 0..n から k 個を選ぶ組み合わせ（昇順）。
+/// Combinations of k items chosen from 0..n (in ascending order).
 fn combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
     fn go(start: usize, n: usize, k: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
         if cur.len() == k {
@@ -179,7 +179,7 @@ mod tests {
         vec![fm(700.0, 80.0), fm(1200.0, 90.0), fm(2600.0, 120.0), fm(3500.0, 150.0), fm(4500.0, 200.0)]
     }
 
-    /// F2 と F3 の間に帯域幅の広い根が 1 フレームだけ混ざっても、F3・F4 は本当の共鳴のまま
+    /// When a wide-bandwidth root gets in between F2 and F3 for a single frame, F3 and F4 stay on the real resonances
     #[test]
     fn a_spurious_root_does_not_shift_the_numbers() {
         let mut t = FormantTracker::default();
@@ -197,7 +197,7 @@ mod tests {
         }
     }
 
-    /// 割り当てだけ（中央値の前）でも、偽の根のフレームで番号がずれない
+    /// The assignment alone (before the median) does not shift the numbering in the frame with the false root
     #[test]
     fn the_assignment_skips_a_spurious_root() {
         let mut t = FormantTracker::default();
@@ -212,7 +212,7 @@ mod tests {
         assert_eq!(latest, [Some(700.0), Some(1200.0), Some(2600.0), Some(3500.0)]);
     }
 
-    /// 1 フレームだけの外れは中央値で消え、値は FORMANT_DELAY_FRAMES 遅れて出る
+    /// A single-frame outlier disappears in the median, and values come out FORMANT_DELAY_FRAMES late
     #[test]
     fn the_median_removes_a_single_outlier_and_delays_by_two_frames() {
         let mut t = FormantTracker::default();
@@ -225,12 +225,12 @@ mod tests {
             })
             .collect();
         assert!(outs.iter().all(|v| *v != 1500.0), "{outs:?}");
-        // 1800 に変わったのは添字 7 のフレーム。中心の中央値は段差の位置を保ち、2 フレーム遅れて添字 9 で出る
+        // The change to 1800 is at frame index 7. The centred median keeps the step in place and it comes out 2 frames late, at index 9
         assert_eq!(outs[8], 1200.0, "{outs:?}");
         assert_eq!(outs[9], 1800.0, "{outs:?}");
     }
 
-    /// 無声で戻すと、前の声の値を引きずらない
+    /// Resetting on an unvoiced frame does not carry over values from the previous voice
     #[test]
     fn reset_forgets_the_previous_voice() {
         let mut t = FormantTracker::default();
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(hz(t.push(&c, 5500.0)), [Some(400.0), Some(2000.0), Some(2900.0), Some(3800.0)]);
     }
 
-    /// 上限を下げて分析した声（フォルマントを 0.8 倍にした声）では、参照も下がり、下がった F2 を F2 の枠に入れる
+    /// For a voice analysed with a lower ceiling (formant ×0.8), the references go down too, and the lowered F2 goes into the F2 slot
     #[test]
     fn references_follow_the_ceiling() {
         let mut t = FormantTracker::default();
@@ -250,7 +250,7 @@ mod tests {
         assert_eq!(hz(t.push(&c, 4400.0)), [Some(560.0), Some(960.0), Some(2080.0), Some(2800.0)]);
     }
 
-    /// 候補が 4 つより少なければ、参照に近い枠に入れ、残りを空にする
+    /// With fewer than 4 candidates, they go into the slots with the nearest references and the rest are empty
     #[test]
     fn fewer_candidates_leave_empty_slots() {
         let mut t = FormantTracker::default();

@@ -1,5 +1,5 @@
-//! application: use case（`VoiceStudio`）。port を generics で受け取り、
-//! `VoiceSession` のメソッドを通してだけ状態を変える。
+//! application: use cases (`VoiceStudio`). Takes the ports as generics and
+//! changes the state only through the methods of `VoiceSession`.
 
 use thiserror::Error;
 use voice_domain::ports::{AudioDevices, AudioPipeline, PipelineConfig};
@@ -27,7 +27,7 @@ pub struct VoiceStudio<D: AudioDevices, P: AudioPipeline> {
 }
 
 impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
-    /// 起動したときの状態を作る。機器の一覧はここで 1 回取る。
+    /// Makes the state at start. The device list is fetched once here.
     pub fn new(devices: D, pipeline: P) -> Result<Self, AppError> {
         let list = devices.list().map_err(|e| AppError::Devices(Box::new(e)))?;
         let session = VoiceSession::new(&list);
@@ -38,17 +38,17 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         &self.session
     }
 
-    /// 最後に取った機器の一覧。
+    /// The device list fetched last.
     pub fn devices(&self) -> &DeviceList {
         &self.list
     }
 
-    /// 組み立てた adapter の中を見る（試験と画面の状態の表示に使う）。
+    /// Looks inside the assembled adapters (for tests and for showing the state on screen).
     pub fn pipeline(&self) -> &P {
         &self.pipeline
     }
 
-    /// 機器の一覧を取り直す。止まっている間だけ、選んでいる機器を新しい一覧に合わせ直す。
+    /// Fetches the device list again. Only while stopped, the chosen devices are matched to the new list.
     pub fn list_devices(&mut self) -> Result<&DeviceList, AppError> {
         let list = self.devices.list().map_err(|e| AppError::Devices(Box::new(e)))?;
         if self.session.state() == SessionState::Stopped {
@@ -78,7 +78,7 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         Ok(self.session.select_output(id)?)
     }
 
-    /// 前に選んだ機器を戻す。一覧に無い機器や規則に合わない機器は飛ばし、既定のままにする。
+    /// Restores the devices chosen before. Devices not in the list or not allowed by the rules are skipped, keeping the default.
     pub fn restore_devices(&mut self, input: Option<&str>, output: Option<&str>, monitor: Option<&str>) {
         if let Some(id) = output.and_then(|r| self.list.id(r, DeviceDirection::Output).ok()) {
             let _ = self.session.select_output(id);
@@ -118,7 +118,7 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         Ok(())
     }
 
-    /// 出力とモニターに、変える前と後のどちらの音を流すかを切り替える。
+    /// Switches whether the output and monitor get the original or the shifted audio.
     pub fn set_routing(&mut self, routing: Routing) -> Result<(), AppError> {
         self.session.set_routing(routing);
         if self.session.state() == SessionState::Running {
@@ -127,7 +127,7 @@ impl<D: AudioDevices, P: AudioPipeline> VoiceStudio<D, P> {
         Ok(())
     }
 
-    /// 表示のための分析を動かすか（簡易表示では止める）。止まっている間も覚えておき、開始のときに渡す。
+    /// Whether to run the analysis for display (off in the compact view). Remembered while stopped and passed on start.
     pub fn set_analysis_display(&mut self, active: bool) -> Result<(), AppError> {
         self.analysis_display = active;
         if self.session.state() == SessionState::Running {
@@ -285,7 +285,7 @@ mod tests {
         }
     }
 
-    /// C4: VB-CABLE が無く出力を選んでいなければ開始せず、pipeline も呼ばない。
+    /// C4: without VB-CABLE and with no output chosen, it does not start and does not call the pipeline.
     #[test]
     fn start_without_output_fails_before_pipeline() {
         let (mut s, calls, _) = studio(false);
@@ -293,20 +293,20 @@ mod tests {
         assert!(calls.borrow().is_empty());
     }
 
-    /// 覚えた機器を戻す。一覧に無い機器は飛ばして既定のままにする。
+    /// Restores remembered devices. Devices not in the list are skipped, keeping the default.
     #[test]
     fn restore_devices_applies_known_ids_and_ignores_missing() {
         let (mut s, _, _) = studio(true);
         s.restore_devices(Some("usb-mic"), Some("phones"), Some("gone"));
         assert_eq!(s.session().input().map(|d| d.raw()), Some("usb-mic"));
         assert_eq!(s.session().output().map(|d| d.raw()), Some("phones"));
-        // モニターの既定は phones だったが、出力と同じなので外れ、覚えた gone は一覧に無いので空のまま
+        // The monitor defaulted to phones but was cleared because it is the output; the remembered gone is not in the list, so it stays empty
         assert!(s.session().monitor().device.is_none());
         s.restore_devices(Some("missing"), None, None);
         assert_eq!(s.session().input().map(|d| d.raw()), Some("usb-mic"));
     }
 
-    /// 画面から来た一覧に無い文字列は、use case まで届いても機器にならない。
+    /// A string from the screen that is not in the list does not become a device, even if it reaches the use case.
     #[test]
     fn unknown_device_string_is_rejected() {
         let (mut s, _, _) = studio(true);
@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(s.session().state(), SessionState::Stopped);
     }
 
-    /// 起動し直さずに一覧を取り直したとき、残っている機器の選択は保ち、消えた機器は外す。
+    /// When the list is fetched again without restarting, the remaining chosen devices are kept and removed devices are cleared.
     #[test]
     fn relisting_keeps_selection_and_drops_missing_devices() {
         let (mut s, _, shared) = studio(true);
@@ -369,7 +369,7 @@ mod tests {
         );
         s.list_devices().unwrap();
         assert_eq!(s.session().input().map(|d| d.raw()), Some("mic"));
-        // 出力の VB-CABLE が消えたので、出力は空になる
+        // The output VB-CABLE was removed, so the output becomes empty
         assert!(s.session().output().is_none());
     }
 }

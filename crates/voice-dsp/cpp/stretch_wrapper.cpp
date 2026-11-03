@@ -1,4 +1,4 @@
-// Signalsmith Stretch（third_party/signalsmith-stretch、MIT）を Rust から呼ぶための C の口。mono だけを扱う。
+// A C interface for calling Signalsmith Stretch (third_party/signalsmith-stretch, MIT) from Rust. Handles mono only.
 #include "signalsmith-stretch/signalsmith-stretch.h"
 
 using Stretch = signalsmith::stretch::SignalsmithStretch<float>;
@@ -33,7 +33,7 @@ void vss_stretch_set_formant_factor(Stretch *s, float multiplier, int compensate
     s->setFormantFactor(multiplier, compensate_pitch != 0);
 }
 
-// F0 の目安。Nyquist ではなく標本化の速さに対する比（Hz / sample_rate）。
+// F0 hint, as a ratio of the sample rate, not of Nyquist (Hz / sample_rate).
 void vss_stretch_set_formant_base(Stretch *s, float relative_frequency) {
     s->setFormantBase(relative_frequency);
 }

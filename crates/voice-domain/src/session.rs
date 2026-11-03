@@ -1,4 +1,4 @@
-//! 1 回の「マイクから入れて仮想マイクに出す」動作。
+//! One run of "take the microphone in and send it to the virtual microphone".
 
 use crate::{AnalysisSettings, DeviceDirection, DeviceId, DeviceList, DomainError, ShiftSettings, VirtualCable};
 
@@ -8,7 +8,7 @@ pub enum SessionState {
     Running,
 }
 
-/// モニターの音量（0〜1）。
+/// Monitor volume (0 to 1).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MonitorVolume(f32);
 
@@ -28,7 +28,7 @@ impl MonitorVolume {
     }
 }
 
-/// モニターの設定。起動したときは切ってある。
+/// Monitor settings. Off at start.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonitorSettings {
     pub enabled: bool,
@@ -36,7 +36,7 @@ pub struct MonitorSettings {
     pub volume: MonitorVolume,
 }
 
-/// 出力やモニターに流す音。変える前の音は、変えた後と同じだけ遅らせて流す（切り替えても時刻が跳ばない）。
+/// The audio sent to the output or monitor. The original is delayed as much as the shifted audio (so switching does not jump in time).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AudioSource {
     #[default]
@@ -44,21 +44,21 @@ pub enum AudioSource {
     Original,
 }
 
-/// 出力（仮想マイク）とモニターに、それぞれどちらの音を流すか。起動したときはどちらも変えた後。
+/// Which audio goes to the output (virtual microphone) and the monitor. Both are shifted at start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Routing {
     pub output: AudioSource,
     pub monitor: AudioSource,
 }
 
-/// aggregate。use case はこのメソッドを通してだけ状態を変える。
+/// The aggregate. Use cases change the state only through these methods.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VoiceSession {
     state: SessionState,
     input: Option<DeviceId>,
-    /// 声を出す先（再生デバイス）。既定は見つかった VB-CABLE の再生側（2026-10-18 に利用者が選べる形にした）
+    /// Where the voice goes (a playback device). Defaults to the playback side of the VB-CABLE found (the user made it selectable on 2026-10-18)
     output: Option<DeviceId>,
-    /// 見つかった VB-CABLE。入力の規則（録音側を選ばない）と既定の出力に使う
+    /// The VB-CABLE found. Used for the input rule (its recording side cannot be chosen) and the default output
     cable: Option<VirtualCable>,
     monitor: MonitorSettings,
     routing: Routing,
@@ -67,8 +67,8 @@ pub struct VoiceSession {
 }
 
 impl VoiceSession {
-    /// 起動したときの状態。入力とモニターは Windows の既定の機器（VB-CABLE の端なら空）、
-    /// 出力は見つかった VB-CABLE の再生側（無ければ空）。モニターは出力と同じ機器にしない。
+    /// The state at start. The input and monitor are the Windows default devices (empty if a VB-CABLE end),
+    /// and the output is the playback side of the VB-CABLE found (empty if none). The monitor is never the same device as the output.
     pub fn new(devices: &DeviceList) -> Self {
         let cable = devices.cable().cloned();
         let output = cable.as_ref().map(|c| c.playback.clone());
@@ -89,7 +89,7 @@ impl VoiceSession {
         self.routing
     }
 
-    /// 流す音の切り替えは、動いている間でもできる。
+    /// The audio source can be switched while running.
     pub fn set_routing(&mut self, routing: Routing) {
         self.routing = routing;
     }
@@ -120,7 +120,7 @@ impl VoiceSession {
         if self.state == SessionState::Running {
             return Err(DomainError::InputChangeWhileRunning);
         }
-        // 自分の変えた声が入力に戻って回り続けないよう、VB-CABLE の録音側は入力に選べない
+        // The VB-CABLE recording side cannot be the input, so the shifted voice does not loop back into the input
         if self.cable.as_ref().is_some_and(|c| c.recording == device) {
             return Err(DomainError::CableRecordingAsInput);
         }
@@ -128,7 +128,7 @@ impl VoiceSession {
         Ok(())
     }
 
-    /// 声を出す先を選ぶ。止まっている間だけ。モニターが同じ機器なら、モニターを外す。
+    /// Chooses where the voice goes. Only while stopped. If the monitor is the same device, the monitor is cleared.
     pub fn select_output(&mut self, device: DeviceId) -> Result<(), DomainError> {
         if self.state == SessionState::Running {
             return Err(DomainError::OutputChangeWhileRunning);
@@ -141,7 +141,7 @@ impl VoiceSession {
         Ok(())
     }
 
-    /// モニターは動いている間でも替えられる。出力と同じ機器は選べない。
+    /// The monitor can be changed while running. It cannot be the same device as the output.
     pub fn set_monitor(&mut self, enabled: bool, device: Option<DeviceId>) -> Result<(), DomainError> {
         if device.is_some() && device == self.output {
             return Err(DomainError::MonitorSameAsOutput);
@@ -219,7 +219,7 @@ mod tests {
         assert!(!s.monitor().enabled);
     }
 
-    /// C6: 既定の再生デバイスが VB-CABLE の再生側（＝出力）なら、モニターの欄は空。
+    /// C6: if the default playback device is the VB-CABLE playback side (= the output), the monitor is empty.
     #[test]
     fn default_monitor_is_empty_when_default_output_is_the_output() {
         let devices = list(true, true);
@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(devices.outputs().count(), 3);
     }
 
-    /// C4: VB-CABLE が無ければ出力は空で、開始できない。別の再生デバイスを選べば開始できる。
+    /// C4: without VB-CABLE, the output is empty and the session cannot start. Choosing another playback device lets it start.
     #[test]
     fn without_cable_output_must_be_chosen() {
         let devices = list(false, false);
@@ -253,7 +253,7 @@ mod tests {
         assert_eq!(s.set_monitor(true, Some(play)), Err(DomainError::MonitorSameAsOutput));
     }
 
-    /// 出力をモニターと同じ機器に替えると、モニターを外す。
+    /// Changing the output to the monitor's device clears the monitor.
     #[test]
     fn choosing_monitor_device_as_output_clears_monitor() {
         let devices = list(true, false);

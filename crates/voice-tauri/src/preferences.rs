@@ -1,6 +1,6 @@
-//! アプリを閉じた後まで覚える値。前に画像を保存したフォルダー、画面の言葉、表示（全体か簡易か）、
-//! 入力・出力・モニターの機器、分析の設定、ピッチとフォルマントの値を持つ（機器と分析の値は 2026-10-18 に、
-//! ピッチとフォルマントの値は 2026-11-02 に利用者が覚えるとした）。
+//! Values remembered after the app closes: the folder an image was last saved to, the screen language, the view (full or compact),
+//! the input, output, and monitor devices, the analysis settings, and the pitch and formant (the user chose to remember devices and analysis values
+//! on 2026-10-18, and the pitch and formant on 2026-11-02).
 
 use std::path::{Path, PathBuf};
 
@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Default, Serialize, Deserialize)]
 pub struct Preferences {
     pub last_image_dir: Option<PathBuf>,
-    /// "en" か "ja"。無ければ英語で開く。
+    /// "en" or "ja". Opens in English if absent.
     #[serde(default)]
     pub language: Option<String>,
-    /// "full"（グラフを出す）か "compact"（声を変えるだけの簡易表示）。無ければ全体。
+    /// "full" (with plots) or "compact" (a voice changer only). Full if absent.
     #[serde(default)]
     pub view: Option<String>,
     #[serde(default)]
@@ -23,7 +23,7 @@ pub struct Preferences {
     pub shift: Option<RememberedShift>,
 }
 
-/// 機器は cpal の id で覚える。起動したときに一覧に無ければ、既定の機器にする。
+/// Devices are remembered by their cpal id. If one is not in the list at start, the default device is used.
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct RememberedDevices {
     pub input: Option<String>,
@@ -39,7 +39,7 @@ pub struct RememberedAnalysis {
     pub lpc_order: u32,
 }
 
-/// ピッチ（半音）とフォルマント（倍率）。起動したときに範囲の外なら、既定（0 半音・1.0 倍）のまま。
+/// Pitch (semitones) and formant (factor). If out of range at start, the default (0 semitones, ×1.0) is kept.
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct RememberedShift {
     pub semitones: f32,
@@ -51,7 +51,7 @@ pub struct PreferencesStore {
 }
 
 impl PreferencesStore {
-    /// `VOICE_SHIFT_SCOPE_CONFIG_DIR` があればそこを、無ければ Tauri がアプリごとに用意する設定のディレクトリを使う。
+    /// Uses `VOICE_SHIFT_SCOPE_CONFIG_DIR` if set, otherwise the per-app config directory Tauri provides.
     pub fn new(default_dir: PathBuf) -> Self {
         let dir = std::env::var_os("VOICE_SHIFT_SCOPE_CONFIG_DIR").map(PathBuf::from).unwrap_or(default_dir);
         Self { path: dir.join("preferences.json") }
@@ -74,7 +74,7 @@ impl PreferencesStore {
         self.save(&prefs)
     }
 
-    /// 画面の言葉。"en" か "ja" だけを受ける。
+    /// The screen language. Accepts only "en" or "ja".
     pub fn language(&self) -> &'static str {
         match self.load().language.as_deref() {
             Some("ja") => "ja",
@@ -119,7 +119,7 @@ impl PreferencesStore {
         self.save(&prefs)
     }
 
-    /// 保存先を選ぶ画面で最初に開くフォルダー。前のフォルダーが無くなっていれば `None`（呼ぶ側がピクチャを開く）。
+    /// The folder the save dialog opens first. `None` if the previous folder is gone (the caller opens Pictures).
     pub fn image_dir(&self) -> Option<PathBuf> {
         self.load().last_image_dir.filter(|d| d.is_dir())
     }
@@ -140,7 +140,7 @@ mod tests {
         assert_eq!(store.image_dir().as_deref(), Some(images.as_path()));
         std::fs::remove_dir_all(&images).unwrap();
         assert!(store.image_dir().is_none());
-        // 言葉は英語で始まり、覚えた後は前の画像のフォルダーと一緒に残る
+        // The language starts as English and, once remembered, is kept along with the previous image folder
         assert_eq!(store.language(), "en");
         store.remember_language("ja").unwrap();
         assert_eq!(store.language(), "ja");
@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(loaded.devices.output.as_deref(), Some("cable"));
         assert_eq!(loaded.analysis.map(|a| a.ceiling), Some(5000.0));
         assert_eq!(loaded.view.as_deref(), Some("compact"));
-        // ピッチとフォルマントは初めは無く、覚えた後は他の値と一緒に残る
+        // The pitch and formant are absent at first and, once remembered, are kept along with the other values
         assert_eq!(loaded.shift, None);
         store.remember_shift(RememberedShift { semitones: -12.0, formant: 0.8 }).unwrap();
         let loaded = store.load();
