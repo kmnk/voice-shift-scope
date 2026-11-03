@@ -22,11 +22,11 @@ pub struct LoopbackRecording {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoopbackError {
-    #[error("id が {0} の機器が見つかりません")]
+    #[error("no device with id {0}")]
     DeviceNotFound(String),
-    #[error("cpal の誤り: {0}")]
+    #[error("cpal error: {0}")]
     Cpal(#[from] cpal::Error),
-    #[error("機器の既定の形式が f32 ではありません（{0:?}）")]
+    #[error("the default format of the device is not f32 ({0:?})")]
     UnsupportedFormat(cpal::SampleFormat),
 }
 

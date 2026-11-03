@@ -6,6 +6,7 @@ mod preferences;
 mod publisher;
 mod shot;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -48,7 +49,7 @@ impl voice_domain::ports::AudioDevices for TestSourceDevices {
         }
         Ok(list.with_extra_input(voice_domain::DeviceInfo {
             raw_id: TEST_SOURCE_ID.into(),
-            name: "試験の音源（--input-wav）".into(),
+            name: "Test source (--input-wav)".into(),
             direction: voice_domain::DeviceDirection::Input,
             is_default: true,
         }))
@@ -65,40 +66,76 @@ struct AppState {
     shift_saved_at: Mutex<Option<Instant>>,
 }
 
-/// 画面に返す誤り。
+/// An error returned to the screen.
 #[derive(Debug, Serialize)]
 pub struct CommandError {
     kind: &'static str,
-    /// 画面が言葉を替えて出すための印（domain の誤りの名前）。無ければ message をそのまま出す
+    /// The name the screen uses to show the error in its own language (`err.<code>`). Without it, the screen shows `message` as is
     code: Option<String>,
+    /// Values the screen fills into its text (`{min}`, `{max}`, `{value}`, `{device}`, `{msg}`)
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    params: BTreeMap<&'static str, String>,
     message: String,
 }
 
-/// domain の誤りの名前（`InvalidPitchShift { .. }` なら `InvalidPitchShift`）。
+/// The name of a domain error (`InvalidPitchShift` for `InvalidPitchShift { .. }`).
 fn error_code(e: &DomainError) -> String {
     let s = format!("{e:?}");
     s.split(|c: char| !c.is_alphanumeric()).next().unwrap_or_default().to_string()
 }
 
+/// The values in a domain error, for the screen to fill into its text.
+fn error_params(e: &DomainError) -> BTreeMap<&'static str, String> {
+    let mut p = BTreeMap::new();
+    match e {
+        DomainError::InvalidPitchShift { value, min, max }
+        | DomainError::InvalidFormantShift { value, min, max }
+        | DomainError::InvalidFormantCeiling { value, min, max }
+        | DomainError::InvalidHarmonicThreshold { value, min, max }
+        | DomainError::InvalidHarmonicRelativeLimit { value, min, max } => {
+            p.insert("value", value.to_string());
+            p.insert("min", min.to_string());
+            p.insert("max", max.to_string());
+        }
+        DomainError::InvalidLpcOrder { value, min, max } => {
+            p.insert("value", value.to_string());
+            p.insert("min", min.to_string());
+            p.insert("max", max.to_string());
+        }
+        DomainError::InvalidMonitorVolume { value } | DomainError::InvalidFrequency { value } => {
+            p.insert("value", value.to_string());
+        }
+        DomainError::UnknownDevice(device) => {
+            p.insert("device", device.clone());
+        }
+        _ => {}
+    }
+    p
+}
+
 impl From<AppError> for CommandError {
     fn from(e: AppError) -> Self {
-        let (kind, code) = match &e {
-            AppError::Domain(d) => ("rule", Some(error_code(d))),
-            AppError::Devices(_) => ("devices", None),
-            AppError::Pipeline(_) => ("audio", None),
-        };
-        Self { kind, code, message: e.to_string() }
+        let message = e.to_string();
+        match e {
+            AppError::Domain(d) => Self { kind: "rule", code: Some(error_code(&d)), params: error_params(&d), message },
+            AppError::Devices(inner) => {
+                Self { kind: "devices", code: Some("Devices".into()), params: BTreeMap::from([("msg", inner.to_string())]), message }
+            }
+            AppError::Pipeline(inner) => {
+                Self { kind: "audio", code: Some("Pipeline".into()), params: BTreeMap::from([("msg", inner.to_string())]), message }
+            }
+        }
     }
 }
 
 impl From<DomainError> for CommandError {
     fn from(e: DomainError) -> Self {
-        Self { kind: "invalid", code: Some(error_code(&e)), message: e.to_string() }
+        Self { kind: "invalid", code: Some(error_code(&e)), params: error_params(&e), message: e.to_string() }
     }
 }
 
 fn io_error(e: impl std::fmt::Display) -> CommandError {
-    CommandError { kind: "io", code: None, message: e.to_string() }
+    CommandError { kind: "io", code: None, params: BTreeMap::new(), message: e.to_string() }
 }
 
 type Res<T> = Result<T, CommandError>;
@@ -160,7 +197,12 @@ fn parse_source(s: &str) -> Res<voice_domain::AudioSource> {
     match s {
         "shifted" => Ok(voice_domain::AudioSource::Shifted),
         "original" => Ok(voice_domain::AudioSource::Original),
-        other => Err(CommandError { kind: "invalid", code: None, message: format!("流す音は shifted か original です（{other}）") }),
+        other => Err(CommandError {
+            kind: "invalid",
+            code: None,
+            params: BTreeMap::new(),
+            message: format!("the source must be shifted or original ({other})"),
+        }),
     }
 }
 
@@ -323,7 +365,7 @@ fn status(state: State<AppState>) -> StatusDto {
 #[tauri::command]
 async fn save_png(app: tauri::AppHandle, bytes: Vec<u8>, file_name: String) -> Res<Option<String>> {
     if !file_name.ends_with(".png") || file_name.contains(['/', '\\']) {
-        return Err(io_error("ファイル名が正しくありません"));
+        return Err(io_error("the file name is not valid"));
     }
     // 試験のときだけ、保存先を選ぶ画面を出さずに書く
     if let Some(dir) = std::env::var_os("VOICE_SHIFT_SCOPE_TEST_SAVE_DIR") {
@@ -562,7 +604,28 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::checked_test_size;
-    use super::{RememberedShift, restored_shift};
+    use super::{AppError, CommandError, DomainError, RememberedShift, restored_shift};
+
+    #[test]
+    fn command_error_carries_the_name_and_values_of_a_domain_error() {
+        let e = CommandError::from(DomainError::InvalidPitchShift { value: 30.0, min: -24.0, max: 24.0 });
+        let json = serde_json::to_value(&e).expect("serialize");
+        assert_eq!(json["code"], "InvalidPitchShift");
+        assert_eq!(json["params"]["min"], "-24");
+        assert_eq!(json["params"]["max"], "24");
+        assert_eq!(json["params"]["value"], "30");
+    }
+
+    #[test]
+    fn command_error_names_device_and_audio_errors_and_omits_empty_values() {
+        let e = CommandError::from(AppError::Pipeline("boom".into()));
+        let json = serde_json::to_value(&e).expect("serialize");
+        assert_eq!(json["code"], "Pipeline");
+        assert_eq!(json["params"]["msg"], "boom");
+        let json = serde_json::to_value(CommandError::from(DomainError::NotRunning)).expect("serialize");
+        assert_eq!(json["code"], "NotRunning");
+        assert!(json.get("params").is_none());
+    }
 
     #[test]
     fn restores_remembered_shift_only_within_range() {

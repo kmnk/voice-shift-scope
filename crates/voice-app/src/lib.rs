@@ -12,9 +12,9 @@ use voice_domain::{
 pub enum AppError {
     #[error(transparent)]
     Domain(#[from] DomainError),
-    #[error("機器の一覧を取れませんでした: {0}")]
+    #[error("could not list the devices: {0}")]
     Devices(Box<dyn std::error::Error + Send + Sync>),
-    #[error("音声の処理でエラーが起きました: {0}")]
+    #[error("audio error: {0}")]
     Pipeline(Box<dyn std::error::Error + Send + Sync>),
 }
 

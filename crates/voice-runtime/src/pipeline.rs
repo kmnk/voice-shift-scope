@@ -19,13 +19,13 @@ use crate::{DeviceDirection, find_virtual_cable, probe_devices};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
-    #[error("機器を列挙できませんでした: {0}")]
+    #[error("could not enumerate the devices: {0}")]
     Probe(#[from] cpal::Error),
-    #[error("id が {0} の機器が見つかりません")]
+    #[error("no device with id {0}")]
     DeviceNotFound(String),
-    #[error("{device} の既定の形式が f32 ではありません（{format:?}）")]
+    #[error("the default format of {device} is not f32 ({format:?})")]
     UnsupportedFormat { device: String, format: cpal::SampleFormat },
-    #[error("既に動いています")]
+    #[error("already running")]
     AlreadyRunning,
 }
 
@@ -370,7 +370,7 @@ impl AudioPipeline for RuntimePipeline {
                             xrun_shared.input_xruns.fetch_add(1, Ordering::Relaxed);
                             xrun_shared.last_input_xrun_at.store(at, Ordering::Relaxed);
                         } else if let Ok(mut errs) = errors.lock() {
-                            errs.push(format!("入力: {e}"));
+                            errs.push(format!("Input: {e}"));
                         }
                     },
                     None,
