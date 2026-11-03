@@ -1,46 +1,46 @@
 use thiserror::Error;
 
-/// 値の検査と `VoiceSession` の規則の誤り。
+/// Errors from value checks and the rules of `VoiceSession`.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum DomainError {
-    #[error("ピッチは {min}〜{max} 半音の範囲で指定してください（{value}）")]
+    #[error("pitch must be {min} to {max} semitones ({value})")]
     InvalidPitchShift { value: f32, min: f32, max: f32 },
-    #[error("フォルマントの倍率は {min}〜{max} の範囲で指定してください（{value}）")]
+    #[error("formant factor must be {min} to {max} ({value})")]
     InvalidFormantShift { value: f32, min: f32, max: f32 },
-    #[error("フォルマントの上限は {min}〜{max} Hz の範囲で指定してください（{value}）")]
+    #[error("formant ceiling must be {min} to {max} Hz ({value})")]
     InvalidFormantCeiling { value: f32, min: f32, max: f32 },
-    #[error("倍音のしきい値は {min}〜{max} dB の範囲で指定してください（{value}）")]
+    #[error("harmonics floor must be {min} to {max} dB ({value})")]
     InvalidHarmonicThreshold { value: f32, min: f32, max: f32 },
-    #[error("最も強い倍音からの差は {min}〜{max} dB の範囲で指定してください（{value}）")]
+    #[error("harmonics range below the strongest must be {min} to {max} dB ({value})")]
     InvalidHarmonicRelativeLimit { value: f32, min: f32, max: f32 },
-    #[error("LPC の次数は {min}〜{max} の偶数で指定してください（{value}）")]
+    #[error("LPC order must be an even number from {min} to {max} ({value})")]
     InvalidLpcOrder { value: u32, min: u32, max: u32 },
-    #[error("モニターの音量は 0〜1 の範囲で指定してください（{value}）")]
+    #[error("monitor volume must be 0 to 1 ({value})")]
     InvalidMonitorVolume { value: f32 },
-    #[error("値が数ではありません")]
+    #[error("the value is not a number")]
     NotFinite,
-    #[error("標本化の速さは 0 より大きくしてください")]
+    #[error("the sample rate must be greater than 0")]
     InvalidSampleRate,
-    #[error("周波数は 0 より大きくしてください（{value}）")]
+    #[error("the frequency must be greater than 0 ({value})")]
     InvalidFrequency { value: f32 },
-    #[error("一覧に無い機器です（{0}）")]
+    #[error("the device is not in the list ({0})")]
     UnknownDevice(String),
-    #[error("出力の先（VB-CABLE）の録音側は入力に選べません")]
+    #[error("the recording side of the output (VB-CABLE) cannot be the input")]
     CableRecordingAsInput,
-    #[error("モニターに、出力と同じ機器は選べません")]
+    #[error("the monitor cannot be the same device as the output")]
     MonitorSameAsOutput,
-    #[error("出力の機器を選んでください")]
+    #[error("choose an output device")]
     NoOutputDevice,
-    #[error("動いている間は出力の機器を替えられません")]
+    #[error("the output device cannot be changed while running")]
     OutputChangeWhileRunning,
-    #[error("入力の機器が選ばれていないので開始できません")]
+    #[error("cannot start without an input device")]
     NoInputDevice,
-    #[error("モニターを入れるには、モニターの機器を選んでください")]
+    #[error("choose a monitor device to turn the monitor on")]
     NoMonitorDevice,
-    #[error("動いている間は入力の機器を替えられません")]
+    #[error("the input device cannot be changed while running")]
     InputChangeWhileRunning,
-    #[error("既に動いています")]
+    #[error("already running")]
     AlreadyRunning,
-    #[error("止まっています")]
+    #[error("not running")]
     NotRunning,
 }

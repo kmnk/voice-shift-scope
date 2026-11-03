@@ -116,11 +116,11 @@ function compactContentHeight(): number {
   return Math.ceil(bar.offsetHeight + parseFloat(style.rowGap) + controls.scrollHeight + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + 2);
 }
 
-/// command の誤りを、今の言葉で出す（domain の誤りは名前で引き、無ければ届いた文のまま）。
+/// Show a command error in the current language: look it up by its name (filling in its values), or show the text as received.
 function errorText(e: unknown): string {
-  const err = e as { code?: string; message?: string };
+  const err = e as { code?: string; message?: string; params?: Record<string, string> };
   const key = `err.${err.code ?? ""}`;
-  if (err.code && hasKey(key)) return t(key);
+  if (err.code && hasKey(key)) return t(key, err.params ?? {});
   return err.message ?? String(e);
 }
 
