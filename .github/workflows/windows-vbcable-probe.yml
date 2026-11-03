@@ -1,7 +1,7 @@
 name: windows-vbcable-probe
 
-# GitHub Actions の Windows のランナーに VB-CABLE を入れられるかと、
-# 入れたときに cpal が返す機器の名前を確かめる。
+# Checks whether VB-CABLE can be installed on a GitHub Actions Windows runner,
+# and the device names cpal returns once it is installed.
 on:
   workflow_dispatch:
 

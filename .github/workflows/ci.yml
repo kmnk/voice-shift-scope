@@ -6,13 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
 
-# 続けて push したときは、同じブランチの古い実行を止める
+# When pushed again in a row, cancel the older run on the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# 開発の機器（macOS）で回せる cargo test と frontend の npm test・typecheck は CI に置かない。
-# CI は macOS で回せない Windows での build と test だけを持つ。
+# cargo test and the frontend npm test and typecheck, which run on the development machine (macOS), are not in CI.
+# CI only has the Windows build and tests, which cannot run on macOS.
 jobs:
   rust:
     runs-on: windows-latest
@@ -27,7 +27,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # Tauri のアプリ（voice-tauri）は build のときに frontend/dist を取り込む
+      # The Tauri app (voice-tauri) takes in frontend/dist at build time
       - name: Build the frontend
         working-directory: frontend
         run: |

@@ -1,10 +1,10 @@
 name: release
 
-# Windows の配布物（アプリの zip、voice-cli の zip、SHA256SUMS.txt）を作る。
-# v で始まる tag の push では GitHub の release にする。workflow_dispatch では artifact に残すだけで、release は作らない。
-# job は build → sign → package → verify → publish。sign はリポジトリの変数 SIGNPATH_ENABLED が true のときだけ動き、
-# それ以外では署名の無い exe を詰める。どのフェーズでもこのファイルは同じで、変えるのは変数と push する tag だけ。
-# SignPath の OSS 向けの署名は、署名の要求に至る job がすべて GitHub がホストするランナーで動くことを求める。
+# Makes the Windows release packages (the app zip, the voice-cli zip, and SHA256SUMS.txt).
+# A push of a tag starting with v makes a GitHub release. workflow_dispatch only keeps artifacts and makes no release.
+# The jobs are build → sign → package → verify → publish. sign runs only when the repository variable SIGNPATH_ENABLED is true;
+# otherwise unsigned exes are packaged. This file is the same in every phase; only the variables and the pushed tag change.
+# SignPath's signing for OSS requires every job leading to the signing request to run on GitHub-hosted runners.
 on:
   workflow_dispatch:
   push:
@@ -22,7 +22,7 @@ jobs:
       unsigned-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
-      # tag のときは tag と、Cargo.toml・tauri.conf.json の版が揃っていなければ止める
+      # For a tag, stop unless the tag matches the version in Cargo.toml and tauri.conf.json
       - id: version
         shell: pwsh
         run: |
@@ -31,7 +31,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           "version=$version" >> $env:GITHUB_OUTPUT
       - uses: dtolnay/rust-toolchain@stable
-      # windows-ui.yml と同じものを build するので、cache を共有する
+      # Builds the same thing as windows-ui.yml, so the cache is shared
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: windows-release-app
@@ -46,7 +46,7 @@ jobs:
           npm ci
           npm run build
       - run: cargo build --release --locked -p voice-tauri -p voice-cli
-      # crate のソースはこのランナーの cargo の置き場にしか無いので、依存のライセンスはここで集める
+      # The crate sources exist only in this runner's cargo directory, so the dependency licenses are collected here
       - name: Collect third-party licenses
         run: python scripts/third_party_licenses.py --out THIRD-PARTY-LICENSES.txt
       - name: Stage the executables
@@ -54,7 +54,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force unsigned | Out-Null
           Copy-Item target\release\voice-shift-scope.exe, target\release\voice-cli.exe unsigned\
-      # SignPath に渡す artifact。中身は 2 つの exe だけ（.signpath/artifact-configuration.xml）
+      # The artifact handed to SignPath. It holds only the 2 exes (.signpath/artifact-configuration.xml)
       - id: upload-unsigned
         uses: actions/upload-artifact@v4
         with:
@@ -113,7 +113,7 @@ jobs:
             Copy-Item $contents[$name] "dist\$name\"
             Compress-Archive -Path "dist\$name" -DestinationPath "release\$name.zip"
           }
-          # shasum -c でも読めるように、改行は LF で書く
+          # Write LF line endings so shasum -c can read it too
           $sums = Get-ChildItem release\*.zip | Sort-Object Name | ForEach-Object {
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
           }
@@ -124,7 +124,7 @@ jobs:
           name: release-files
           path: release/
 
-  # 新しいランナーで、配布物を利用者と同じように展開して起動する（build の残りの無い環境）
+  # On a fresh runner, unpack and start the release package as a user would (an environment without build leftovers)
   verify:
     needs: [build, sign, package]
     if: ${{ !cancelled() && needs.package.result == 'success' }}
@@ -142,7 +142,7 @@ jobs:
           foreach ($line in Get-Content release\SHA256SUMS.txt) {
             $hash, $name = $line -split '  ', 2
             $actual = (Get-FileHash "release\$name" -Algorithm SHA256).Hash.ToLower()
-            if ($actual -ne $hash) { Write-Error "SHA-256 が違う: $name"; exit 1 }
+            if ($actual -ne $hash) { Write-Error "SHA-256 mismatch: $name"; exit 1 }
             "SHA-256 OK: $name"
           }
           $expected = @{
@@ -153,7 +153,7 @@ jobs:
             Expand-Archive "release\$name.zip" -DestinationPath unpacked
             $actual = (Get-ChildItem "unpacked\$name" -File | Sort-Object Name).Name -join ','
             $want = ($expected[$name] | Sort-Object) -join ','
-            if ($actual -ne $want) { Write-Error "$name.zip の中身が違う: $actual"; exit 1 }
+            if ($actual -ne $want) { Write-Error "unexpected contents in $name.zip: $actual"; exit 1 }
             "contents OK: $name.zip ($actual)"
           }
       - name: Check the signatures
@@ -198,7 +198,7 @@ jobs:
         with:
           name: release-files
           path: release
-      # 下書きで作ってファイルを上げ終えてから公開する。版の先頭が 0 なら開発版として pre-release の印を付ける
+      # Create it as a draft and publish after uploading the files. If the version starts with 0, mark it as a pre-release (development version)
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -206,7 +206,7 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           notes="packaging/release-notes/$TAG.md"
-          test -f "$notes" || { echo "::error::$notes が無い"; exit 1; }
+          test -f "$notes" || { echo "::error::$notes is missing"; exit 1; }
           pre=""
           case "$VERSION" in 0.*) pre="--prerelease" ;; esac
           gh release create "$TAG" --draft --title "$TAG" --notes-file "$notes" $pre --verify-tag

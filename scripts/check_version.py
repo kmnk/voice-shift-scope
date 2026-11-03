@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Cargo.toml と tauri.conf.json の版が揃っているかを確かめ、揃っていれば版を出す。
+"""Checks that the versions in Cargo.toml and tauri.conf.json match, and prints the version if they do.
 
-使い方: python3 scripts/check_version.py [<tag>]
-tag（例 v0.1.0）を渡すと、tag から v を除いたものとも比べる。空の文字列か省略なら tag とは比べない。
-揃っていれば版を標準出力に出して終了コード 0、揃っていなければ理由を出して終了コード 1。
-release.yml の最初の step で動かす。
+Usage: python3 scripts/check_version.py [<tag>]
+Given a tag (such as v0.1.0), also compares with the tag minus its v. An empty string or no tag skips the tag comparison.
+If they match, prints the version to standard output and exits with 0; otherwise prints the reason and exits with 1.
+Run in the first step of release.yml.
 """
 
 from __future__ import annotations
@@ -26,21 +26,21 @@ def read_versions(root: Path) -> tuple[str, str]:
     section = re.search(r"^\[workspace\.package\]\s*$(.*?)(?=^\[|\Z)", cargo, re.MULTILINE | re.DOTALL)
     match = section and re.search(r'^version\s*=\s*"([^"]+)"', section.group(1), re.MULTILINE)
     if not match:
-        raise VersionError("Cargo.toml の [workspace.package] に version が無い")
+        raise VersionError("no version in [workspace.package] of Cargo.toml")
     tauri = json.loads((root / "crates" / "voice-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
     if "version" not in tauri:
-        raise VersionError("tauri.conf.json に version が無い")
+        raise VersionError("no version in tauri.conf.json")
     return match.group(1), tauri["version"]
 
 
 def check(tag: str, cargo: str, tauri: str) -> str:
     if cargo != tauri:
-        raise VersionError(f"Cargo.toml は {cargo}、tauri.conf.json は {tauri} で違う")
+        raise VersionError(f"Cargo.toml has {cargo} but tauri.conf.json has {tauri}")
     if tag:
         if not tag.startswith("v"):
-            raise VersionError(f"tag {tag} が v で始まらない")
+            raise VersionError(f"tag {tag} does not start with v")
         if tag[1:] != cargo:
-            raise VersionError(f"tag {tag} と、Cargo.toml・tauri.conf.json の {cargo} が違う")
+            raise VersionError(f"tag {tag} differs from {cargo} in Cargo.toml and tauri.conf.json")
     return cargo
 
 

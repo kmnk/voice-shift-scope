@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""配布物に入れる THIRD-PARTY-LICENSES.txt を作る。
+"""Makes THIRD-PARTY-LICENSES.txt for the release packages.
 
-exe に入る第三者の部品（Rust の crate、画面の npm の package、third_party/、WebView2 の loader）が
-同梱するライセンスのファイルを、中身を変えずに 1 つのテキストに写す。
+Copies the license files shipped by the third-party components in the exe (Rust crates, the screen's npm packages, third_party/, and the WebView2 loader)
+into one text file without changing their content.
 
-使い方: python3 scripts/third_party_licenses.py --out <出力のパス>
+Usage: python3 scripts/third_party_licenses.py --out <output path>
 
-cargo と npm を呼ぶ。sandbox の中では CARGO_HOME を付けて動かす（AGENTS.md）。frontend/node_modules が要る。
-次のどちらかに当たると、終了コード 1 で止まる。
-- ライセンスのファイルが 1 つも見つからない部品がある（packaging/licenses/crates/ に置き足す）
-- 受け入れると決めていないライセンスの名前が、部品のライセンスの式に出る（ACCEPTED を見直す）
+Calls cargo and npm. In a sandbox, run it with CARGO_HOME set (AGENTS.md). Needs frontend/node_modules.
+Stops with exit code 1 if either of these holds:
+- a component has no license file at all (add one under packaging/licenses/crates/)
+- a license name not decided as accepted appears in a component's license expression (review ACCEPTED)
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ BINARIES = ["voice-tauri", "voice-cli"]
 FALLBACK_DIR = ROOT / "packaging" / "licenses" / "crates"
 LICENSE_FILE = re.compile(r"^(licen[cs]e|copying|notice)", re.IGNORECASE)
 
-# 受け入れるライセンスの SPDX の名前。今の依存にあるものだけを並べる。
-# 足すときは、そのライセンスの条件（表示・ソースの提供など）を配布物で満たせるかを先に確かめる。
+# SPDX names of accepted licenses. Lists only those in the current dependencies.
+# Before adding one, check that the release packages can meet its conditions (notices, providing source, and so on).
 ACCEPTED = {
     "0BSD",
     "Apache-2.0",
@@ -53,7 +53,7 @@ ACCEPTED = {
 
 @dataclass
 class Component:
-    kind: str  # "crate"・"npm"・"bundled"
+    kind: str  # "crate", "npm", or "bundled"
     name: str
     version: str
     license: str
@@ -66,7 +66,7 @@ class LicenseError(Exception):
 
 
 def license_names(expr: str) -> set[str]:
-    """SPDX の式から、ライセンスと例外の名前を取り出す。古い書き方の "/" も OR とみなす。"""
+    """Takes the license and exception names out of an SPDX expression. The old "/" form also counts as OR."""
     tokens = re.findall(r"[A-Za-z0-9.+\-]+", expr.replace("/", " OR "))
     return {t for t in tokens if t not in ("AND", "OR", "WITH")}
 
@@ -78,16 +78,16 @@ def license_files(directory: Path) -> list[Path]:
 
 
 def check(components: list[Component]) -> None:
-    """2 つの検査。どちらかに当たれば LicenseError。"""
+    """The two checks. Raises LicenseError if either holds."""
     problems = []
     for c in components:
         if not c.files:
-            problems.append(f"ライセンスのファイルが無い: {c.kind} {c.name} {c.version}"
-                            f"（crate なら {FALLBACK_DIR.relative_to(ROOT)}/{c.name}-{c.version}/ に置く）")
+            problems.append(f"no license file: {c.kind} {c.name} {c.version}"
+                            f" (for a crate, put it in {FALLBACK_DIR.relative_to(ROOT)}/{c.name}-{c.version}/)")
         unknown = license_names(c.license) - ACCEPTED
         if unknown:
-            problems.append(f"受け入れると決めていないライセンス: {c.kind} {c.name} {c.version}: "
-                            f"{', '.join(sorted(unknown))}（式は {c.license!r}）")
+            problems.append(f"license not decided as accepted: {c.kind} {c.name} {c.version}: "
+                            f"{', '.join(sorted(unknown))} (expression {c.license!r})")
     if problems:
         raise LicenseError("\n".join(problems))
 
@@ -95,7 +95,7 @@ def check(components: list[Component]) -> None:
 def run(args: list[str], cwd: Path) -> str:
     exe = shutil.which(args[0])
     if exe is None:
-        raise LicenseError(f"{args[0]} が見つからない")
+        raise LicenseError(f"{args[0]} not found")
     return subprocess.run([exe, *args[1:]], cwd=cwd, check=True, capture_output=True,
                           text=True, encoding="utf-8").stdout
 
@@ -112,7 +112,7 @@ def crates() -> list[Component]:
     components = []
     for p in metadata["packages"]:
         if (p["name"], p["version"]) not in used or p["source"] is None:
-            continue  # 使われないもの、自作の crate
+            continue  # unused ones, and our own crates
         files = license_files(Path(p["manifest_path"]).parent)
         if not files:
             files = license_files(FALLBACK_DIR / f"{p['name']}-{p['version']}")
@@ -146,32 +146,32 @@ def bundled() -> list[Component]:
         Component("bundled", "signalsmith-linear", "0.6.4", "MIT",
                   "https://github.com/Signalsmith-Audio/linear/tree/0.6.4",
                   license_files(ROOT / "third_party" / "signalsmith-linear")),
-        Component("bundled", "Microsoft WebView2 loader（webview2-com-sys が組み込む）", "1.0.3650.58",
+        Component("bundled", "Microsoft WebView2 loader (built in by webview2-com-sys)", "1.0.3650.58",
                   "BSD-3-Clause", "https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3650.58",
                   license_files(ROOT / "packaging" / "licenses" / "webview2-loader")),
     ]
 
 
 def render(components: list[Component], app_version: str) -> str:
-    """同じ中身のファイルは 1 回だけ書き、それを使う部品を並べる。"""
+    """Writes each identical file once, listing the components that use it."""
     groups: dict[str, tuple[str, list[str]]] = {}
     for c in sorted(components, key=lambda c: (c.kind, c.name.lower(), c.version)):
         for f in c.files:
             text = f.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n").strip("\n")
             digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-            label = f"{c.name} {c.version}（{c.license}、{f.name}）{c.source}"
+            label = f"{c.name} {c.version} ({c.license}, {f.name}) {c.source}"
             groups.setdefault(digest, (text, []))[1].append(label)
     out = [
         "THIRD-PARTY LICENSES",
         "",
-        f"voice-shift-scope {app_version} に含まれる第三者のソフトウェアと、そのライセンスの文。",
-        "部品ごとの名前・版・ライセンスの式・ソースの場所を並べ、その下に部品が同梱するライセンスのファイルの中身を置く。",
-        f"部品の数: {len(components)}。ソースは各部品の URL から得られる（MPL-2.0 の部品を含む）。",
+        f"Third-party software included in voice-shift-scope {app_version}, and its license texts.",
+        "Lists each component's name, version, license expression, and source location, followed by the content of the license files the components ship.",
+        f"Number of components: {len(components)}. Source is available from each component's URL (including the MPL-2.0 components).",
         "",
     ]
     for i, (text, users) in enumerate(sorted(groups.values(), key=lambda g: g[1][0].lower()), 1):
         out.append("=" * 78)
-        out.append(f"[{i}] 次の部品が使う")
+        out.append(f"[{i}] Used by the following components")
         out.extend(f"  - {u}" for u in users)
         out.append("-" * 78)
         out.append(text)
@@ -196,7 +196,7 @@ def main() -> int:
         return 1
     with open(args.out, "w", encoding="utf-8", newline="\n") as f:
         f.write(render(components, app_version()))
-    print(f"{args.out}: {len(components)} の部品", file=sys.stderr)
+    print(f"{args.out}: {len(components)} components", file=sys.stderr)
     return 0
 
 
