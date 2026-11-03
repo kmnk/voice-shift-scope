@@ -524,7 +524,36 @@ function closeShortcuts(): void {
   if (dialog.open) dialog.close();
 }
 
-/// Keys. They work only in the full view, and not while typing in a number field, select, or slider, or with Ctrl, Alt, or Meta.
+/// What each key does. Monitor and SRC also work in the compact view; the others only in the full view
+type KeyAction = "monitor" | "route" | "hold-all" | "hold-before" | "hold-after" | "pitch-up" | "pitch-down" | "formant-up" | "formant-down" | "help";
+const KEY_ACTIONS: Record<string, KeyAction> = {
+  " ": "monitor",
+  Tab: "route",
+  a: "hold-all",
+  A: "hold-all",
+  s: "hold-before",
+  S: "hold-before",
+  d: "hold-after",
+  D: "hold-after",
+  ArrowUp: "pitch-up",
+  ArrowDown: "pitch-down",
+  ArrowRight: "formant-up",
+  ArrowLeft: "formant-down",
+  "?": "help",
+};
+const COMPACT_ACTIONS: ReadonlySet<KeyAction> = new Set(["monitor", "route"]);
+const ARROW_ACTIONS: ReadonlySet<KeyAction> = new Set(["pitch-up", "pitch-down", "formant-up", "formant-down"]);
+
+/// Whether the focused control lets a key through. Text fields let nothing through (Tab still moves focus there).
+/// Sliders and selects keep the arrows for themselves and let the other keys through (this stops a select's type-ahead and Space opening it)
+function keyAllowedOn(target: HTMLElement, action: KeyAction): boolean {
+  if (target.tagName === "TEXTAREA") return false;
+  if (target.tagName === "INPUT") return (target as HTMLInputElement).type === "range" && !ARROW_ACTIONS.has(action);
+  if (target.tagName === "SELECT") return !ARROW_ACTIONS.has(action);
+  return true;
+}
+
+/// Keys (KEY_ACTIONS). They do nothing with Ctrl, Alt, or Meta, or while typing in a number field.
 /// While the shortcut list is open, only the keys that close it (? and Esc) work.
 function wireShortcuts(): void {
   const dialog = $<HTMLDialogElement>("shortcuts");
@@ -552,42 +581,42 @@ function wireShortcuts(): void {
       }
       return;
     }
-    const target = e.target as HTMLElement;
-    if (view !== "full" || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
-    const shiftValue = (name: ShiftTarget, _fine: number, _coarse: number, sign: number) => {
-      e.preventDefault();
-      stepShift(name, sign, e.shiftKey);
-    };
-    switch (e.key) {
-      case " ":
-      case "0":
-        e.preventDefault();
+    const action = KEY_ACTIONS[e.key];
+    if (!action) return;
+    if (view !== "full" && !COMPACT_ACTIONS.has(action)) return;
+    if (!keyAllowedOn(e.target as HTMLElement, action)) return;
+    e.preventDefault();
+    // Holding a key down toggles only once. Holding an arrow keeps moving the value (as before)
+    if (e.repeat && !ARROW_ACTIONS.has(action)) return;
+    switch (action) {
+      case "monitor":
+        $("monitor-on").click();
+        break;
+      case "route":
+        $("route").click();
+        break;
+      case "hold-all":
         toggle("all");
         break;
-      case "1":
+      case "hold-before":
         toggle("before");
         break;
-      case "2":
+      case "hold-after":
         toggle("after");
         break;
-      case "s":
-      case "S":
-        if (!$<HTMLButtonElement>("save").disabled) void save();
+      case "pitch-up":
+        stepShift("pitch", 1, e.shiftKey);
         break;
-      case "ArrowUp":
-        shiftValue("pitch", 0.1, 1, 1);
+      case "pitch-down":
+        stepShift("pitch", -1, e.shiftKey);
         break;
-      case "ArrowDown":
-        shiftValue("pitch", 0.1, 1, -1);
+      case "formant-up":
+        stepShift("formant", 1, e.shiftKey);
         break;
-      case "ArrowRight":
-        shiftValue("formant", 0.01, 0.05, 1);
+      case "formant-down":
+        stepShift("formant", -1, e.shiftKey);
         break;
-      case "ArrowLeft":
-        shiftValue("formant", 0.01, 0.05, -1);
-        break;
-      case "?":
-        e.preventDefault();
+      case "help":
         openShortcuts();
         break;
     }

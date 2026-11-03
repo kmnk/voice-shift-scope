@@ -370,6 +370,168 @@ async function checkMonitor(record: (c: string, pass: boolean, detail: unknown) 
 }
 
 
+/// Key mapping (S15, S16, S18–S20; S17 is checkHoldKeys). Runs while stopped, so no device is opened. Turning the monitor on is checked only when there is a device to choose for it.
+/// Synthetic events do not trigger the browser's default actions (pressing a button, opening a select, moving focus), so stopping those is checked by whether the event was preventDefaulted
+async function checkKeys(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
+  const key = (k: string, opts: KeyboardEventInit = {}, target: Element = document.activeElement ?? document.body): boolean => {
+    const ev = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...opts });
+    target.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  };
+  const source = () => q("#route").dataset.source;
+  const monitorOn = () => pressed("monitor-on");
+  const select = q<HTMLSelectElement>("#monitor");
+  const keep = select.value;
+  const output = q<HTMLSelectElement>("#output").value;
+  const candidate = [...select.options].find((o) => o.value !== "" && o.value !== output);
+  const chooseMonitor = async (value: string) => {
+    select.value = value;
+    select.dispatchEvent(new Event("change"));
+    await sleep(300);
+  };
+  const toggleTwice = async (k: string, read: () => unknown, opts: KeyboardEventInit = {}, target?: () => Element) => {
+    const first = read();
+    const prevented1 = key(k, opts, target?.() ?? document.activeElement ?? document.body);
+    await sleep(400);
+    const second = read();
+    const prevented2 = key(k, opts, target?.() ?? document.activeElement ?? document.body);
+    await sleep(400);
+    const third = read();
+    return { ok: first !== second && third === first && prevented1 && prevented2, first, second, third, prevented1, prevented2 };
+  };
+
+  // S15: Space turns monitoring on and off. With no device chosen, it is refused, stays off, and a message appears
+  blur();
+  q("#message").textContent = "";
+  await chooseMonitor("");
+  key(" ");
+  await sleep(400);
+  const rejected = { staysOff: !monitorOn(), message: q("#message").textContent ?? "" };
+  await record("S15-monitor-key-rejected", rejected.staysOff && rejected.message !== "", rejected);
+  q("#message").textContent = "";
+  if (candidate) {
+    await chooseMonitor(candidate.value);
+    blur();
+    const holdBefore = [frozen("before"), frozen("after")];
+    const r = await toggleTwice(" ", monitorOn);
+    const holdUnchanged = frozen("before") === holdBefore[0] && frozen("after") === holdBefore[1];
+    await record("S15-monitor-key", r.ok && r.first === false && holdUnchanged, { device: candidate.textContent, ...r, holdUnchanged });
+  }
+
+  // S16: Tab switches SRC and back. Shift+Tab switches it too
+  {
+    blur();
+    const r = await toggleTwice("Tab", source);
+    const textOk = q("#route").textContent === t(source() === "shifted" ? "route.shifted" : "route.original");
+    const s = await toggleTwice("Tab", source, { shiftKey: true });
+    await record("S16-route-key", r.ok && s.ok && textOk, { tab: r, shiftTab: s, textOk });
+  }
+
+  // S18: In the compact view, Space and Tab work, and A, S, D, and the arrows do nothing
+  {
+    click("view-toggle");
+    await sleep(2500);
+    blur();
+    const compact = document.body.classList.contains("compact");
+    const route = await toggleTwice("Tab", source);
+    const monitor = candidate ? await toggleTwice(" ", monitorOn) : { ok: true, skipped: "no monitor device" };
+    const pitch0 = shiftValue("pitch");
+    const ignored = ["a", "s", "d", "ArrowUp"].map((k) => key(k));
+    await sleep(200);
+    const others = ignored.every((p) => !p) && shiftValue("pitch") === pitch0 && !frozen("before") && !frozen("after");
+    click("view-toggle");
+    await sleep(1500);
+    await record("S18-compact-keys", compact && route.ok && monitor.ok && others, { compact, route, monitor, ignored, others });
+  }
+
+  // S19: With focus on a slider, a select, or a button, Space and Tab still work and stop the default action. Arrows on a slider are left to the slider
+  {
+    const volume = q<HTMLInputElement>("#volume");
+    volume.focus();
+    const onSlider = await toggleTwice("Tab", source);
+    const pitch0 = shiftValue("pitch");
+    const arrowPrevented = key("ArrowUp");
+    const arrowLeftToSlider = !arrowPrevented && shiftValue("pitch") === pitch0;
+    select.focus();
+    const routeOnSelect = await toggleTwice("Tab", source);
+    const monitorOnSelect = candidate ? await toggleTwice(" ", monitorOn) : { ok: true, skipped: "no monitor device" };
+    const selectKept = select.value === (candidate?.value ?? "");
+    const button = q<HTMLButtonElement>("#monitor-on");
+    button.focus();
+    const onButton = candidate ? await toggleTwice(" ", monitorOn) : { ok: true, skipped: "no monitor device" };
+    blur();
+    await record("S19-focus-keys", onSlider.ok && arrowLeftToSlider && routeOnSelect.ok && monitorOnSelect.ok && selectKept && onButton.ok, {
+      onSlider,
+      arrowLeftToSlider,
+      routeOnSelect,
+      monitorOnSelect,
+      selectKept,
+      onButton,
+    });
+  }
+
+  // S20: Nothing changes while typing in a number field, with Ctrl, or on key repeat
+  {
+    const snapshot = () => [source(), String(monitorOn()), frozen("before"), frozen("after"), shiftValue("pitch")].join("|");
+    const before = snapshot();
+    const field = q<HTMLInputElement>("#pitch-num");
+    field.focus();
+    const inField = [" ", "Tab", "a"].map((k) => key(k, {}, field));
+    blur();
+    const withCtrl = [" ", "Tab", "a"].map((k) => key(k, { ctrlKey: true }));
+    const repeated = [" ", "Tab", "a"].map((k) => key(k, { repeat: true }));
+    await sleep(500);
+    const unchanged = snapshot() === before;
+    await record("S20-ignored-keys", unchanged && inField.every((p) => !p) && withCtrl.every((p) => !p), { unchanged, inField, withCtrl, repeated });
+  }
+
+  await chooseMonitor(keep);
+  q("#message").textContent = "";
+}
+
+
+/// S17: hold keys. Holding needs analysis results, so call this while audio is running
+async function checkHoldKeys(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
+  const key = (k: string): boolean => {
+    const ev = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true });
+    (document.activeElement ?? document.body).dispatchEvent(ev);
+    return ev.defaultPrevented;
+  };
+  const source = () => q("#route").dataset.source;
+  const monitorOn = () => pressed("monitor-on");
+  // S17: A, S, and D hold and resume both, original, and shifted. S while held does not save. 0, 1, and 2 do nothing
+  {
+    blur();
+    const state = () => [frozen("before"), frozen("after")].join(",");
+    const steps: Record<string, string> = {};
+    for (const [k, expect] of [
+      ["a", "true,true"],
+      ["a", "false,false"],
+      ["s", "true,false"],
+      ["s", "false,false"],
+      ["D", "false,true"],
+      ["D", "false,false"],
+    ] as const) {
+      key(k);
+      await sleep(150);
+      steps[`${k}:${expect}`] = state();
+    }
+    const holds = Object.entries(steps).every(([name, got]) => name.split(":")[1] === got);
+    q("#message").dataset.kind = "";
+    key("s");
+    await sleep(1500);
+    const notSaved = q("#message").dataset.kind !== "saved";
+    key("s");
+    await sleep(150);
+    const before012 = [state(), source(), String(monitorOn())].join("|");
+    const prevented012 = ["0", "1", "2"].map((k) => key(k));
+    await sleep(300);
+    const unchanged012 = [state(), source(), String(monitorOn())].join("|") === before012 && prevented012.every((p) => !p);
+    await record("S17-hold-keys", holds && notSaved && unchanged012 && state() === "false,false", { steps, notSaved, unchanged012, prevented012 });
+  }
+
+}
+
 /// The colour a CSS variable actually renders as (rgb(...) form)
 function resolved(name: string): string {
   const probe = document.createElement("span");
@@ -599,9 +761,20 @@ export async function runSelftest(dir: string): Promise<void> {
     const opened = dialog.open;
     const focusOnClose = document.activeElement?.id === "shortcuts-close";
     await shot("S12-shortcuts");
-    for (const key of ["0", " ", "1", "2", "s", "ArrowUp", "ArrowRight"]) press(key);
+    const routeBeforeDialog = q("#route").dataset.source;
+    const monitorBeforeDialog = pressed("monitor-on");
+    for (const key of [" ", "Tab", "a", "s", "d", "ArrowUp", "ArrowRight"]) press(key);
     await sleep(200);
-    const unchanged = q<HTMLInputElement>("#pitch-num").value === pitchBeforeDialog && frozen("before") === frozenBeforeDialog[0] && frozen("after") === frozenBeforeDialog[1];
+    const unchanged =
+      q<HTMLInputElement>("#pitch-num").value === pitchBeforeDialog &&
+      frozen("before") === frozenBeforeDialog[0] &&
+      frozen("after") === frozenBeforeDialog[1] &&
+      q("#route").dataset.source === routeBeforeDialog &&
+      pressed("monitor-on") === monitorBeforeDialog;
+    // The rows are Space, Tab, A, S, D, the arrows, and ?, with no row for saving
+    const listedKeys = [...dialog.querySelectorAll("tr")].map((tr) => [...tr.querySelectorAll("kbd")].map((k) => k.textContent).join("+"));
+    const listOk =
+      listedKeys.slice(0, 5).join(",") === "Space,Tab,A,S,D" && dialog.querySelector('[data-i18n="shortcuts.save"]') === null && dialog.textContent!.includes(t("shortcuts.note"));
     press("Escape");
     await sleep(200);
     const closed = !dialog.open;
@@ -610,8 +783,10 @@ export async function runSelftest(dir: string): Promise<void> {
     const openedByButton = dialog.open;
     press("?");
     await sleep(200);
-    await record("S12", opened && focusOnClose && unchanged && closed && openedByButton && !dialog.open, {
+    await record("S12", opened && focusOnClose && unchanged && listOk && closed && openedByButton && !dialog.open, {
       opened,
+      listedKeys,
+      listOk,
       focusOnClose,
       unchanged,
       closed,
@@ -664,6 +839,8 @@ export async function runSelftest(dir: string): Promise<void> {
       const c = compactU12.column as { headings: string[] };
       await record("U12-compact", compactU12.hidden && c.headings.join(",") === "sec.pitch,sec.formant,sec.devices" && compactU12.width === 250, compactU12);
     }
+    // Key mapping (S15–S20)
+    await checkKeys(record);
 
     if (q("#cable").dataset.found === "false") {
       // Without VB-CABLE, the output is empty and it cannot start (C4)
@@ -935,31 +1112,8 @@ export async function runSelftest(dir: string): Promise<void> {
         );
       }
 
-      // 0 holds all, S saves, Space resumes. S does nothing while not held (S9, S11)
-      {
-        blur();
-        q("#message").textContent = "";
-        q("#message").dataset.kind = "";
-        press("0");
-        await sleep(200);
-        const heldByZero = frozen("before") && frozen("after");
-        press("s");
-        const savedByKey = await waitFor(() => q("#message").dataset.kind === "saved", 10_000);
-        press(" ");
-        await sleep(200);
-        const resumedBySpace = !frozen("before") && !frozen("after");
-        q("#message").textContent = "";
-        q("#message").dataset.kind = "";
-        press("S");
-        await sleep(1500);
-        const ignoredWhenLive = q("#message").dataset.kind !== "saved";
-        await record("S11-save-key", heldByZero && savedByKey && resumedBySpace && ignoredWhenLive, {
-          heldByZero,
-          savedByKey,
-          resumedBySpace,
-          ignoredWhenLive,
-        });
-      }
+      // Hold keys (S17)
+      await checkHoldKeys(record);
 
       // Fits on screen without vertical scrolling
       const root = document.documentElement;
