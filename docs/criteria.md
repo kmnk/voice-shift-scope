@@ -89,10 +89,15 @@ Q6–Q9 were checked once when TD-PSOLA was added (results for raising the pitch
 | S7 | Hovering over a spectrogram or the spectrum shows a label with the frequency (and dB on the spectrum) that matches the value computed from the pointer position. It disappears when the pointer leaves, and saved PNGs do not include it | `selftest` (`S7-cursor`) |
 | S8 | Holding one side gives that plot a 2 px `--hold` border, puts a `HOLD <time> s` label in its title, fills that side's switch, and sets its `aria-pressed` to true. Resuming undoes all of these. Holding does not change the plot size | `selftest` (`S8-hold`, `S8-resume`, `S8-one-side`) |
 | S10 | ↑, ↓, →, and ← (with and without Shift) change the pitch and formant fields by fixed steps and send them to the shifter. Nothing changes while typing in a number field | `selftest` (`S10-arrows`) |
-| S11 | While held, `S` saves a PNG; while not held, nothing happens | `selftest` (`S11-save-key`) |
-| S12 | `?` opens the list of keyboard shortcuts and Esc closes it | `selftest` (`S12`) |
+| S12 | `?` opens the list of keyboard shortcuts and Esc closes it. The first five rows of the list are `Space`, `Tab`, `A`, `S`, and `D`, there is no row for saving, and the note is shown. While the list is open, `Space`, `Tab`, `A`, `S`, `D`, and the arrows change nothing | `selftest` (`S12`) |
+| S15 | `Space` turns monitoring on and off and leaves the hold switches alone. With no monitor device chosen, monitoring stays off and a message appears | `selftest` (`S15-monitor-key-rejected`, `S15-monitor-key`; the latter only when there is a device to choose for the monitor) |
+| S16 | `Tab` and `Shift+Tab` switch SRC and back, and the `keydown` is `preventDefault`ed (focus does not move) | `selftest` (`S16-route-key`) |
+| S17 | `A`, `S`, and `D` hold and resume both sides, the original side, and the shifted side. `S` while held does not save a PNG. `0`, `1`, and `2` change nothing | `selftest` (`S17-hold-keys`) |
+| S18 | In the compact view, `Space` and `Tab` work, and `A`, `S`, `D`, and the arrows do nothing | `selftest` (`S18-compact-keys`) |
+| S19 | With focus on the volume slider, the monitor select, or the monitor button, `Space` and `Tab` still work and are `preventDefault`ed, and the selected monitor device does not change. The arrows on the slider are not `preventDefault`ed and the pitch does not change | `selftest` (`S19-focus-keys`) |
+| S20 | While typing in a number field, with Ctrl, or on key repeat, `Space`, `Tab`, and `A` change nothing | `selftest` (`S20-ignored-keys`) |
 
-S9 (key hints on the hold switches) and S14 (length of the left column) were replaced by U1 and U2. S13 checked that the self-test results did not change during that change.
+S9 (key hints on the hold switches) and S14 (length of the left column) were replaced by U1 and U2. S13 checked that the self-test results did not change during that change. S11 (`S` saves) was removed with the save key; `S` now holds the original side. A synthetic `keydown` does not trigger the browser's default actions (pressing a button, opening a select, moving focus), so S16 and S19 check that those are stopped by whether the event was `preventDefault`ed. Whether they really stop is checked by hand on Windows (see [windows-checklist.md](windows-checklist.md)).
 
 ## U. Top bar, left column, settings panel, and compact view
 

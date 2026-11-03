@@ -43,6 +43,10 @@ Please send `devices.json`, `e2e-latency.json`, and `e2e-30min.json`.
 | C5 | Close and restart the app, hold, and save | The save dialog opens in the previous folder | |
 | C5 | Delete that folder, then save | The dialog opens in the Pictures folder | |
 | C5 | Set both sides to LIVE | SNAPSHOT cannot be pressed | |
+| S19 | Choose a monitor device, click the MON button, then press `Space` | Monitoring switches only once (the button is not pressed a second time and switched back) | |
+| S19 | Right after choosing a device in the monitor list, press `Space`, `Tab`, `A`, `S`, and `D` | The list does not open, the chosen device does not change, and each key switches the monitor, SRC, or a hold switch | |
+| S16 | With nothing focused, press `Tab` a few times | Only SRC switches; the focus ring does not move to a button or field | |
+| S15–S17 | Turn on the Japanese IME (hiragana mode) and press `Space`, `Tab`, and `A` | Monitor, SRC, and hold-both switch just as with the IME off | |
 
 ## 3. Your own voice and Praat (B2)
 
