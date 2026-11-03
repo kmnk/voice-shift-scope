@@ -152,14 +152,19 @@ fn f0_median(frames: &[(f64, voice_domain::AnalysisFrame)], skip: f64) -> Option
     median(frames.iter().filter(|(t, _)| *t >= skip).filter_map(|(_, f)| f.f0.map(|v| v.hz())).collect())
 }
 
+/// The synthetic vowel at `f0` (2 s), with its median F0 and F1–F4 after the first `SKIP` seconds.
+fn analysed_vowel(f0: f64, settings: &AnalysisSettings) -> (Vec<f32>, Option<f32>, [Option<f32>; 4]) {
+    let x = synth::vowel(f0, &SYNTH_VOWEL, RATE as f64, 2.0, 0.5);
+    let before = analyze_signal(&x, RATE, settings);
+    let (f0, formants) = (f0_median(&before, SKIP), formant_medians(&before, SKIP));
+    (x, f0, formants)
+}
+
 /// A1 and A2: F0 and F1–F3 at −12, −5, +5, and +12 semitones, with formant ×1.0.
 pub fn a1_a2(settings: &AnalysisSettings) -> Vec<Outcome> {
     let mut out = Vec::new();
     for f0 in [100.0, 150.0] {
-        let x = synth::vowel(f0, &SYNTH_VOWEL, RATE as f64, 2.0, 0.5);
-        let before = analyze_signal(&x, RATE, settings);
-        let before_f0 = f0_median(&before, SKIP);
-        let before_fm = formant_medians(&before, SKIP);
+        let (x, before_f0, before_fm) = analysed_vowel(f0, settings);
         for st in [-12.0f32, -5.0, 5.0, 12.0] {
             let (y, _) = shift_signal(&x, shift(st, 1.0), before_f0);
             let after = analyze_signal(&y, RATE, settings);
@@ -193,10 +198,7 @@ pub fn a1_a2(settings: &AnalysisSettings) -> Vec<Outcome> {
 pub fn a3(settings: &AnalysisSettings) -> Vec<Outcome> {
     let mut out = Vec::new();
     for f0 in [100.0, 150.0] {
-        let x = synth::vowel(f0, &SYNTH_VOWEL, RATE as f64, 2.0, 0.5);
-        let before = analyze_signal(&x, RATE, settings);
-        let before_f0 = f0_median(&before, SKIP);
-        let before_fm = formant_medians(&before, SKIP);
+        let (x, before_f0, before_fm) = analysed_vowel(f0, settings);
         for ratio in [0.8f32, 0.9, 1.1, 1.2] {
             let (y, _) = shift_signal(&x, shift(0.0, ratio), before_f0);
             // As in the app, the shifted audio is analysed with the ceiling changed by the formant factor
@@ -254,10 +256,7 @@ fn rms_db(x: &[f32]) -> f64 {
 pub fn q2(settings: &AnalysisSettings) -> Vec<Outcome> {
     let mut out = Vec::new();
     for f0 in [100.0, 150.0] {
-        let x = synth::vowel(f0, &SYNTH_VOWEL, RATE as f64, 2.0, 0.5);
-        let before = analyze_signal(&x, RATE, settings);
-        let before_f0 = f0_median(&before, SKIP);
-        let before_fm = formant_medians(&before, SKIP);
+        let (x, before_f0, before_fm) = analysed_vowel(f0, settings);
         for (st, ratio, tolerance) in [(-5.0f32, 1.0f32, 5.0f32), (-12.0, 1.0, 5.0), (-12.0, 0.8, 7.0), (-12.0, 1.2, 7.0)] {
             let (y, _) = shift_signal(&x, shift(st, ratio), before_f0);
             let after = analyze_signal(&y, RATE, &settings.for_shifted(FormantShift::new(ratio).expect("within range")));

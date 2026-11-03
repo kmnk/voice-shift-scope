@@ -82,11 +82,11 @@ impl SpectralHarmonics {
         let mut k = 1;
         while (k as f32) * f0 < upto.min(fs / 2.0) && k <= 10 {
             // Use only peaks well above the noise floor (so peaks where there is no harmonic do not move F0)
-            if let Some((p, level)) = self.peak(k as f32 * f0, f0 / 4.0, bin) {
-                if level - self.floor(k as f32 * f0, f0, fs) > 20.0 {
-                    num += k as f32 * p;
-                    den += (k * k) as f32;
-                }
+            if let Some((p, level)) = self.peak(k as f32 * f0, f0 / 4.0, bin)
+                && level - self.floor(k as f32 * f0, f0, fs) > 20.0
+            {
+                num += k as f32 * p;
+                den += (k * k) as f32;
             }
             k += 1;
         }

@@ -40,7 +40,7 @@ mod tests {
         let rms = |y: &[f64]| (y[200..y.len() - 200].iter().map(|v| v * v).sum::<f64>() / (y.len() - 400) as f64).sqrt();
         let kept = resample(&tone(1000.0), from, to);
         let removed = resample(&tone(9000.0), from, to);
-        assert!((rms(&kept) - 0.7071).abs() < 0.01, "{}", rms(&kept));
+        assert!((rms(&kept) - std::f64::consts::FRAC_1_SQRT_2).abs() < 0.01, "{}", rms(&kept));
         assert!(rms(&removed) < 0.01, "{}", rms(&removed));
     }
 }

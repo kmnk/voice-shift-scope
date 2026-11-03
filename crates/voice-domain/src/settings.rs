@@ -154,7 +154,7 @@ impl LpcOrder {
     pub const DEFAULT: Self = Self(10);
 
     pub fn new(order: u32) -> Result<Self, DomainError> {
-        if (Self::MIN..=Self::MAX).contains(&order) && order % 2 == 0 {
+        if (Self::MIN..=Self::MAX).contains(&order) && order.is_multiple_of(2) {
             Ok(Self(order))
         } else {
             Err(DomainError::InvalidLpcOrder { value: order, min: Self::MIN, max: Self::MAX })

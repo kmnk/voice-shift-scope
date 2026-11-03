@@ -150,7 +150,7 @@ enum Signal {
 const SAMPLE_RATE: u32 = 48_000;
 
 fn main() -> ExitCode {
-    match Cli::parse().command {
+    let result = match Cli::parse().command {
         Command::Devices => devices(),
         Command::E2e { input_wav, seconds, semitones } => run_e2e(input_wav.as_deref(), seconds, semitones),
         Command::Analyze { wav, ceiling, lpc_order, raw_formants, timing } => {
@@ -168,39 +168,49 @@ fn main() -> ExitCode {
             run_shift(&input, &output, pitch, formant, timing, !no_hint)
         }
         Command::Loopback { input_wav, lead, out_wav } => run_loopback(&input_wav, lead, out_wav.as_deref()),
-        Command::Synth { signal } => {
-            let (samples, out) = match signal {
-                Signal::Vowel { f0, seconds, out } => (
-                    synth::vowel(f0, &synth::SYNTH_VOWEL, SAMPLE_RATE as f64, seconds, 0.5),
-                    out,
-                ),
-                Signal::Harmonics { f0, count, noise_below_db, seconds, out } => (
-                    synth::harmonics(f0, count, noise_below_db, SAMPLE_RATE as f64, seconds, 0.5),
-                    out,
-                ),
-            };
-            match write_wav(&out, &samples) {
-                Ok(()) => {
-                    println!("{}", out.display());
-                    ExitCode::SUCCESS
-                }
-                Err(e) => {
-                    eprintln!("could not write {}: {e}", out.display());
-                    ExitCode::FAILURE
-                }
-            }
-        }
-    }
+        Command::Synth { signal } => run_synth(signal),
+    };
+    result.unwrap_or_else(|message| {
+        eprintln!("{message}");
+        ExitCode::FAILURE
+    })
 }
 
-fn devices() -> ExitCode {
-    let listing = match probe_devices() {
-        Ok(listing) => listing,
-        Err(e) => {
-            eprintln!("could not enumerate the devices: {e}");
-            return ExitCode::FAILURE;
+/// What a command returns: the exit code, or a message for standard error (exit code 1).
+type CommandResult = Result<ExitCode, String>;
+
+fn pass_or_fail(pass: bool) -> ExitCode {
+    if pass { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+}
+
+fn print_json(value: &serde_json::Value) {
+    println!("{}", serde_json::to_string_pretty(value).expect("serializable as JSON"));
+}
+
+/// The median and the maximum of processing times (0 when there are none).
+fn median_max(times: &mut [f64]) -> (f64, f64) {
+    times.sort_by(f64::total_cmp);
+    (times.get(times.len() / 2).copied().unwrap_or(0.0), times.last().copied().unwrap_or(0.0))
+}
+
+fn run_synth(signal: Signal) -> CommandResult {
+    let (samples, out) = match signal {
+        Signal::Vowel { f0, seconds, out } => (synth::vowel(f0, &synth::SYNTH_VOWEL, SAMPLE_RATE as f64, seconds, 0.5), out),
+        Signal::Harmonics { f0, count, noise_below_db, seconds, out } => {
+            (synth::harmonics(f0, count, noise_below_db, SAMPLE_RATE as f64, seconds, 0.5), out)
         }
     };
+    write_wav(&out, &samples)?;
+    println!("{}", out.display());
+    Ok(ExitCode::SUCCESS)
+}
+
+fn list_devices() -> Result<voice_runtime::DeviceListing, String> {
+    probe_devices().map_err(|e| format!("could not enumerate the devices: {e}"))
+}
+
+fn devices() -> CommandResult {
+    let listing = list_devices()?;
     let devices: Vec<_> = listing
         .devices
         .iter()
@@ -219,78 +229,71 @@ fn devices() -> ExitCode {
             })
         })
         .collect();
-    let out = json!({ "host": listing.host, "devices": devices });
-    println!("{}", serde_json::to_string_pretty(&out).expect("serializable as JSON"));
-    ExitCode::SUCCESS
+    print_json(&json!({ "host": listing.host, "devices": devices }));
+    Ok(ExitCode::SUCCESS)
 }
 
-fn write_wav(path: &std::path::Path, samples: &[f32]) -> Result<(), hound::Error> {
+fn write_wav(path: &std::path::Path, samples: &[f32]) -> Result<(), String> {
     let spec = hound::WavSpec {
         channels: 1,
         sample_rate: SAMPLE_RATE,
         bits_per_sample: 32,
         sample_format: hound::SampleFormat::Float,
     };
-    let mut writer = hound::WavWriter::create(path, spec)?;
-    for s in samples {
-        writer.write_sample(*s)?;
+    let write = || -> Result<(), hound::Error> {
+        let mut writer = hound::WavWriter::create(path, spec)?;
+        for s in samples {
+            writer.write_sample(*s)?;
+        }
+        writer.finalize()
+    };
+    write().map_err(|e| format!("could not write {}: {e}", path.display()))
+}
+
+fn read_wav(path: &std::path::Path) -> Result<(Vec<f32>, u32), String> {
+    let read = || -> Result<(Vec<f32>, u32), hound::Error> {
+        let mut reader = hound::WavReader::open(path)?;
+        let spec = reader.spec();
+        let channels = spec.channels as usize;
+        let samples: Vec<f32> = match spec.sample_format {
+            hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<_, _>>()?,
+            hound::SampleFormat::Int => {
+                let scale = (1i64 << (spec.bits_per_sample - 1)) as f32;
+                reader
+                    .samples::<i32>()
+                    .map(|s| s.map(|v| v as f32 / scale))
+                    .collect::<Result<_, _>>()?
+            }
+        };
+        let mono = samples.chunks(channels).map(|f| f[0]).collect();
+        Ok((mono, spec.sample_rate))
+    };
+    read().map_err(|e| format!("could not read {}: {e}", path.display()))
+}
+
+/// Reads a wav that must be at the rate the shifter and the checks use.
+fn read_wav_at_check_rate(path: &std::path::Path) -> Result<Vec<f32>, String> {
+    let (x, rate) = read_wav(path)?;
+    if rate != check::RATE {
+        return Err(format!("{} is {rate} Hz. Give a {} Hz wav", path.display(), check::RATE));
     }
-    writer.finalize()
+    Ok(x)
 }
 
-fn read_wav(path: &std::path::Path) -> Result<(Vec<f32>, u32), hound::Error> {
-    let mut reader = hound::WavReader::open(path)?;
-    let spec = reader.spec();
-    let channels = spec.channels as usize;
-    let samples: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<_, _>>()?,
-        hound::SampleFormat::Int => {
-            let scale = (1i64 << (spec.bits_per_sample - 1)) as f32;
-            reader
-                .samples::<i32>()
-                .map(|s| s.map(|v| v as f32 / scale))
-                .collect::<Result<_, _>>()?
-        }
-    };
-    let mono = samples.chunks(channels).map(|f| f[0]).collect();
-    Ok((mono, spec.sample_rate))
-}
-
-fn run_loopback(input_wav: &std::path::Path, lead: f64, out_wav: Option<&std::path::Path>) -> ExitCode {
-    let (signal, rate) = match read_wav(input_wav) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("could not read {}: {e}", input_wav.display());
-            return ExitCode::FAILURE;
-        }
-    };
-    let listing = match probe_devices() {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("could not enumerate the devices: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
+fn run_loopback(input_wav: &std::path::Path, lead: f64, out_wav: Option<&std::path::Path>) -> CommandResult {
+    let (signal, rate) = read_wav(input_wav)?;
+    let listing = list_devices()?;
     let Some(cable) = find_virtual_cable(&listing.devices) else {
-        let out = json!({ "virtual_cable": null, "error": "VB-CABLE not found. Install VB-CABLE before running this" });
-        println!("{}", serde_json::to_string_pretty(&out).expect("serializable as JSON"));
-        return ExitCode::from(2);
+        print_json(&json!({ "virtual_cable": null, "error": "VB-CABLE not found. Install VB-CABLE before running this" }));
+        return Ok(ExitCode::from(2));
     };
 
     let mut played = vec![0.0f32; (lead * rate as f64) as usize];
     played.extend_from_slice(&signal);
-    let recording = match loopback(&played, rate, &cable.playback.id, &cable.recording.id, std::time::Duration::from_secs(1)) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("loopback failed: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let recording = loopback(&played, rate, &cable.playback.id, &cable.recording.id, std::time::Duration::from_secs(1))
+        .map_err(|e| format!("loopback failed: {e}"))?;
     if let Some(path) = out_wav {
-        if let Err(e) = write_wav(path, &recording.samples) {
-            eprintln!("could not write {}: {e}", path.display());
-            return ExitCode::FAILURE;
-        }
+        write_wav(path, &recording.samples)?;
     }
 
     let peak = signal.iter().fold(0.0f32, |m, v| m.max(v.abs()));
@@ -309,7 +312,7 @@ fn run_loopback(input_wav: &std::path::Path, lead: f64, out_wav: Option<&std::pa
         }
         _ => None,
     };
-    let out = json!({
+    print_json(&json!({
         "virtual_cable": {
             "playback": { "name": cable.playback.name, "driver": cable.playback.driver },
             "recording": { "name": cable.recording.name, "driver": cable.recording.driver },
@@ -323,34 +326,24 @@ fn run_loopback(input_wav: &std::path::Path, lead: f64, out_wav: Option<&std::pa
         "signal_detected": recorded_onset.is_some(),
         "latency_ms": latency_ms,
         "level_db": level_db,
-    });
-    println!("{}", serde_json::to_string_pretty(&out).expect("serializable as JSON"));
-    if recorded_onset.is_some() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    }));
+    Ok(pass_or_fail(recorded_onset.is_some()))
 }
 
-fn analysis_settings(ceiling: f32, lpc_order: u32) -> Result<voice_domain::AnalysisSettings, voice_domain::DomainError> {
-    Ok(voice_domain::AnalysisSettings {
-        ceiling: voice_domain::FormantCeiling::new(ceiling)?,
-        lpc_order: voice_domain::LpcOrder::new(lpc_order)?,
-        ..Default::default()
-    })
+fn analysis_settings(ceiling: f32, lpc_order: u32) -> Result<voice_domain::AnalysisSettings, String> {
+    let settings = || -> Result<voice_domain::AnalysisSettings, voice_domain::DomainError> {
+        Ok(voice_domain::AnalysisSettings {
+            ceiling: voice_domain::FormantCeiling::new(ceiling)?,
+            lpc_order: voice_domain::LpcOrder::new(lpc_order)?,
+            ..Default::default()
+        })
+    };
+    settings().map_err(|e| e.to_string())
 }
 
-fn run_analyze(wav: &std::path::Path, ceiling: f32, lpc_order: u32, raw_formants: bool, timing: bool) -> ExitCode {
-    let settings = match analysis_settings(ceiling, lpc_order) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let (x, rate) = match read_wav(wav) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("could not read {}: {e}", wav.display());
-            return ExitCode::FAILURE;
-        }
-    };
+fn run_analyze(wav: &std::path::Path, ceiling: f32, lpc_order: u32, raw_formants: bool, timing: bool) -> CommandResult {
+    let settings = analysis_settings(ceiling, lpc_order)?;
+    let (x, rate) = read_wav(wav)?;
     let mut analyzer = voice_dsp::DefaultAnalyzer { raw_formants, ..Default::default() };
     let mut times = Vec::new();
     println!("{}", analysis::csv_header());
@@ -358,94 +351,45 @@ fn run_analyze(wav: &std::path::Path, ceiling: f32, lpc_order: u32, raw_formants
         println!("{}", analysis::csv_row(t, &f));
     }
     if timing {
-        times.sort_by(f64::total_cmp);
-        let median = times.get(times.len() / 2).copied().unwrap_or(0.0);
-        let max = times.last().copied().unwrap_or(0.0);
-        eprintln!("{}", serde_json::json!({ "frames": times.len(), "median_ms": median, "max_ms": max }));
+        let (median, max) = median_max(&mut times);
+        eprintln!("{}", json!({ "frames": times.len(), "median_ms": median, "max_ms": max }));
     }
-    ExitCode::SUCCESS
+    Ok(ExitCode::SUCCESS)
 }
 
-fn run_check(criteria: &[String], ceiling: f32, lpc_order: u32, as_json: bool) -> ExitCode {
-    let settings = match analysis_settings(ceiling, lpc_order) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let outcomes = match check::run(criteria, &settings) {
-        Ok(o) => o,
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::FAILURE;
-        }
-    };
+fn run_check(criteria: &[String], ceiling: f32, lpc_order: u32, as_json: bool) -> CommandResult {
+    let settings = analysis_settings(ceiling, lpc_order)?;
+    let outcomes = check::run(criteria, &settings).map_err(|e| e.to_string())?;
+    let result = |pass: bool| if pass { "PASS" } else { "FAIL" };
     if as_json {
         let v: Vec<_> = outcomes
             .iter()
-            .map(|o| json!({ "criterion": o.criterion, "case": o.case, "result": if o.pass { "PASS" } else { "FAIL" }, "detail": o.detail }))
+            .map(|o| json!({ "criterion": o.criterion, "case": o.case, "result": result(o.pass), "detail": o.detail }))
             .collect();
-        println!("{}", serde_json::to_string_pretty(&v).expect("serializable as JSON"));
+        print_json(&json!(v));
     } else {
         for o in &outcomes {
-            println!("{}\t{}\t{}\t{}", o.criterion, o.case, if o.pass { "PASS" } else { "FAIL" }, o.detail);
+            println!("{}\t{}\t{}\t{}", o.criterion, o.case, result(o.pass), o.detail);
         }
     }
-    if outcomes.iter().all(|o| o.pass) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    Ok(pass_or_fail(outcomes.iter().all(|o| o.pass)))
 }
 
-fn run_e2e(input_wav: Option<&std::path::Path>, seconds: f64, semitones: f32) -> ExitCode {
+fn run_e2e(input_wav: Option<&std::path::Path>, seconds: f64, semitones: f32) -> CommandResult {
     let (signal, input_f0) = match input_wav {
-        Some(path) => match read_wav(path) {
-            Ok((x, rate)) if rate == check::RATE => (x, None),
-            Ok((_, rate)) => {
-                eprintln!("{} is {rate} Hz. Give a {} Hz wav", path.display(), check::RATE);
-                return ExitCode::FAILURE;
-            }
-            Err(e) => {
-                eprintln!("could not read {}: {e}", path.display());
-                return ExitCode::FAILURE;
-            }
-        },
+        Some(path) => (read_wav_at_check_rate(path)?, None),
         None => (synth::vowel(150.0, &synth::SYNTH_VOWEL, check::RATE as f64, 2.0, 0.5), Some(150.0)),
     };
-    match e2e::run(&signal, input_f0, semitones, seconds) {
-        Ok(o) => {
-            println!("{}", serde_json::to_string_pretty(&o.report).expect("serializable as JSON"));
-            if o.no_cable {
-                ExitCode::from(2)
-            } else if o.pass {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::FAILURE
-            }
-        }
-        Err(e) => {
-            eprintln!("e2e failed: {e}");
-            ExitCode::FAILURE
-        }
-    }
+    let o = e2e::run(&signal, input_f0, semitones, seconds).map_err(|e| format!("e2e failed: {e}"))?;
+    print_json(&o.report);
+    Ok(if o.no_cable { ExitCode::from(2) } else { pass_or_fail(o.pass) })
 }
 
-fn run_shift(input: &std::path::Path, output: &std::path::Path, pitch: f32, formant: f32, timing: bool, hint: bool) -> ExitCode {
-    let (x, rate) = match read_wav(input) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("could not read {}: {e}", input.display());
-            return ExitCode::FAILURE;
-        }
-    };
-    if rate != check::RATE {
-        eprintln!("{} is {rate} Hz. Give a {} Hz wav", input.display(), check::RATE);
-        return ExitCode::FAILURE;
-    }
-    let settings = match (voice_domain::PitchShift::new(pitch), voice_domain::FormantShift::new(formant)) {
-        (Ok(pitch), Ok(formant)) => voice_domain::ShiftSettings { pitch, formant },
-        (Err(e), _) | (_, Err(e)) => {
-            eprintln!("{e}");
-            return ExitCode::FAILURE;
-        }
+fn run_shift(input: &std::path::Path, output: &std::path::Path, pitch: f32, formant: f32, timing: bool, hint: bool) -> CommandResult {
+    let x = read_wav_at_check_rate(input)?;
+    let settings = voice_domain::ShiftSettings {
+        pitch: voice_domain::PitchShift::new(pitch).map_err(|e| e.to_string())?,
+        formant: voice_domain::FormantShift::new(formant).map_err(|e| e.to_string())?,
     };
     let mut shifter = check::make_shifter();
     shifter.set(settings);
@@ -477,18 +421,10 @@ fn run_shift(input: &std::path::Path, output: &std::path::Path, pitch: f32, form
     }
     out.drain(..latency);
     out.truncate(x.len());
-    if let Err(e) = write_wav(output, &out) {
-        eprintln!("could not write {}: {e}", output.display());
-        return ExitCode::FAILURE;
-    }
+    write_wav(output, &out)?;
     if timing {
-        times.sort_by(f64::total_cmp);
-        let median = times[times.len() / 2];
-        let max = times[times.len() - 1];
-        println!(
-            "{}",
-            serde_json::json!({ "blocks": times.len(), "block_samples": block, "median_ms": median, "max_ms": max, "latency_samples": latency })
-        );
+        let (median, max) = median_max(&mut times);
+        println!("{}", json!({ "blocks": times.len(), "block_samples": block, "median_ms": median, "max_ms": max, "latency_samples": latency }));
     }
-    ExitCode::SUCCESS
+    Ok(ExitCode::SUCCESS)
 }
