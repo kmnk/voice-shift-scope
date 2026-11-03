@@ -1,4 +1,4 @@
-// Vite の ?raw の読み込み（ファイルの中身を文字列で得る）。単体の試験でソースと CSS を検査するのに使う。
+// Vite ?raw imports (get a file's content as a string). Used by unit tests to inspect source and CSS.
 declare module "*?raw" {
   const content: string;
   export default content;

@@ -1,4 +1,4 @@
-// 数値の表に出す値。フレームごとの値はぶれるので、直近の中央値を出す。
+// Values shown in the values table. Per-frame values jitter, so the median of the latest frames is shown.
 
 import type { Frame } from "./types";
 
@@ -7,7 +7,7 @@ export interface Summary {
   formants: ({ frequency: number; bandwidth: number } | null)[];
   harmonics: ({ frequency: number; level: number; observed: boolean } | null)[];
   observedHarmonics: number | null;
-  /// 有声のフレームが無く、直前の値を残しているとき true
+  /// true when there is no voiced frame and the previous value is kept
   stale: boolean;
 }
 
@@ -17,8 +17,8 @@ function median(values: number[]): number | null {
   return v[Math.floor(v.length / 2)];
 }
 
-/// 直近のフレーム（目安 250 ms 分）から、有声のフレームの中央値を出す。
-/// 有声のフレームが無ければ `previous` を薄く残す（stale）。
+/// The median of the voiced frames among the latest frames (about 250 ms).
+/// Without voiced frames, `previous` is kept faintly (stale).
 export function summarize(frames: Frame[], previous: Summary | null): Summary | null {
   const voiced = frames.filter((f) => f.voiced && f.f0 !== null);
   if (voiced.length === 0) return previous ? { ...previous, stale: true } : null;

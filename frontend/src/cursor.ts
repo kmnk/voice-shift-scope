@@ -1,6 +1,6 @@
-// 図の上のカーソル。図の canvas に重ねた透明な canvas に、破線と値の札を描く。
-// 図の canvas には描かない（保存する PNG に入れないため。スペクトログラムでは流れてしまうため）。
-// 札の値は data-cursor-freq・data-cursor-db にも書き、自己試験が読む。
+// The cursor over the plots. Draws a dashed line and a value label on a transparent canvas laid over the plot canvas.
+// It does not draw on the plot canvas (so it stays out of saved PNGs, and so it does not scroll with the spectrogram).
+// The label values are also written to data-cursor-freq and data-cursor-db for the self-test to read.
 
 import { fitCanvas, formatDb, formatKHz, gramFreqAt, spectrumDbAt, spectrumFreqAt, spectrumLayout } from "./render";
 import { color } from "./tokens";
@@ -9,7 +9,7 @@ type Kind = "gram" | "spectrum";
 
 const AXIS = 34;
 
-/// 値の札。文字の幅に合わせた角の丸い四角に白い文字。
+/// The value label: white text on a rounded rectangle sized to the text.
 function pill(c: CanvasRenderingContext2D, text: string, x: number, y: number, align: "left" | "center", dpr: number, maxRight: number): void {
   c.font = `${10 * dpr}px system-ui`;
   const w = c.measureText(text).width + 8 * dpr;
@@ -63,7 +63,7 @@ export class Cursor {
     this.draw();
   }
 
-  /// 大きさや縦の範囲が変わったときにも描き直す
+  /// Also redraws when the size or vertical range changes
   draw(): void {
     const o = this.overlay;
     fitCanvas(o);
@@ -77,7 +77,7 @@ export class Cursor {
     const y = this.pos.y * dpr;
     const axisMax = this.axisMax();
     if (this.kind === "gram") {
-      // 流れる図の左の目盛りの右から、値の欄の手前まで
+      // From the right of the scrolling plot's left scale to just before the value column
       const hz = gramFreqAt(y, o.height, axisMax);
       dashed(c, AXIS * dpr, y, o.width, y, dpr);
       const text = formatKHz(hz);

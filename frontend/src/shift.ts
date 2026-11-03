@@ -1,5 +1,5 @@
-// ピッチとフォルマントの値の書式・読み取り・スライダーの位置。DOM に依らない。
-// 値の欄はいつもここの書式で出す（操作によって桁が変わらないように）。
+// Formatting, parsing, and slider positions of the pitch and formant values. Does not depend on the DOM.
+// The value fields always use these formats (so the number of digits does not change with the operation).
 
 export type ShiftTarget = "pitch" | "formant";
 
@@ -8,7 +8,7 @@ export const RANGE: Record<ShiftTarget, { min: number; max: number }> = {
   formant: { min: 0.5, max: 2 },
 };
 
-/// 押す・ホイール・キーで動かす幅。小さい刻みと、Shift と一緒のときの大きい刻み
+/// Steps for buttons, the wheel, and keys: a small step, and a large step with Shift
 export const STEP: Record<ShiftTarget, { fine: number; coarse: number }> = {
   pitch: { fine: 0.1, coarse: 1 },
   formant: { fine: 0.01, coarse: 0.05 },
@@ -16,7 +16,7 @@ export const STEP: Record<ShiftTarget, { fine: number; coarse: number }> = {
 
 const DECIMALS: Record<ShiftTarget, number> = { pitch: 1, formant: 2 };
 
-/// 範囲で止め、桁に丸める（0.1 や 0.01 を足し続けても誤差が残らないように）
+/// Clamps to the range and rounds to the digits (so adding 0.1 or 0.01 repeatedly leaves no error)
 export function normalize(target: ShiftTarget, value: number): number {
   const { min, max } = RANGE[target];
   const clamped = Math.min(max, Math.max(min, value));
@@ -24,7 +24,7 @@ export function normalize(target: ShiftTarget, value: number): number {
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
-/// ピッチ: 符号つきで小数 1 桁（+5.0、0.0、−3.2）。負はマイナス記号（U+2212）
+/// Pitch: signed with 1 decimal place (+5.0, 0.0, −3.2). Negatives use the minus sign (U+2212)
 export function formatPitch(st: number): string {
   const v = normalize("pitch", st);
   const text = Math.abs(v).toFixed(1);
@@ -33,7 +33,7 @@ export function formatPitch(st: number): string {
   return text;
 }
 
-/// フォルマント: 小数 2 桁（1.00）
+/// Formant: 2 decimal places (1.00)
 export function formatFormant(ratio: number): string {
   return normalize("formant", ratio).toFixed(2);
 }
@@ -42,7 +42,7 @@ export function formatShift(target: ShiftTarget, value: number): string {
   return target === "pitch" ? formatPitch(value) : formatFormant(value);
 }
 
-/// 欄に入れた文字を数にする。+・-・−（U+2212）を符号として受け、読めなければ null
+/// Turns the text in a field into a number. Accepts +, -, and − (U+2212) as signs; null if it cannot be read
 export function parseShift(text: string): number | null {
   const s = text.trim().replace(/−/g, "-").replace(/,/g, ".");
   if (!/^[+-]?(\d+(\.\d*)?|\.\d+)$/.test(s)) return null;
@@ -50,17 +50,17 @@ export function parseShift(text: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/// フォルマントのスライダーは log2（倍率）を持つ。×0.5 が −1、×1 が 0（中央）、×2 が 1
+/// The formant slider holds log2(factor). ×0.5 is −1, ×1 is 0 (the centre), and ×2 is 1
 export function formantToSlider(ratio: number): number {
   return Math.log2(normalize("formant", ratio));
 }
 
-/// スライダーの位置から倍率へ。0.01 に丸める
+/// From the slider position to the factor, rounded to 0.01
 export function sliderToFormant(position: number): number {
   return normalize("formant", 2 ** position);
 }
 
-/// スライダーの埋まった部分は、中央（既定の値）からつまみまで。[始まり, 終わり] を 0〜100 の % で返す
+/// The filled part of a slider runs from the centre (the default value) to the thumb. Returns [start, end] as % from 0 to 100
 export function fillRange(min: number, max: number, value: number): [number, number] {
   if (!(max > min)) return [50, 50];
   const pct = ((Math.min(max, Math.max(min, value)) - min) / (max - min)) * 100;

@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <!-- 上の帯: 図を見ながら使う操作（開始・停止、止める、保存）と状態の知らせ、右端に設定・キー操作・言葉・表示の切り替え -->
+    <!-- Top bar: controls used while watching the plots (start/stop, hold, save) and the status message; settings, keyboard shortcuts, language, and view on the right -->
     <header class="bar">
       <button id="run" class="run" data-testid="run"></button>
       <div class="hold-group full-only">
@@ -65,11 +65,11 @@
           <span class="field-label" data-i18n="route.source"></span>
           <button id="route" class="route-toggle" data-testid="route" data-source="shifted"></button>
         </div>
-        <!-- VB-CABLE の有無は画面に出さない（いつも使う前提にしない）。試験が有無を知るための data-found だけを持つ -->
+        <!-- Whether VB-CABLE is installed is not shown (it is not assumed). Only data-found is kept, so tests can tell -->
         <p id="cable" class="cable" data-testid="cable-status" hidden></p>
       </section>
     </aside>
-    <!-- 設定の板（分析の設定）。帯の設定のボタンで開き、Esc・板の外・ボタンで閉じる（main.ts） -->
+    <!-- Settings panel (analysis settings). Opened with the settings button on the bar; closed with Esc, outside clicks, or the button (main.ts) -->
     <div id="settings" class="settings" popover="manual" data-testid="settings">
         <section class="group">
           <h2 data-i18n="sec.analysis"></h2>

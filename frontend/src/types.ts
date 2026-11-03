@@ -1,4 +1,4 @@
-// Rust の voice-tauri の dto.rs と同じ形。
+// The same shapes as dto.rs in Rust's voice-tauri.
 
 export interface Formant {
   frequency: number;
@@ -24,9 +24,9 @@ export interface Frame {
 export interface Settings {
   semitones: number;
   formant: number;
-  /// 変える前の分析の上限（Hz）
+  /// Ceiling of the original analysis (Hz)
   ceiling: number;
-  /// 変えた後の分析の上限（Hz）。フォルマントの倍率だけ上げたもの
+  /// Ceiling of the shifted analysis (Hz), raised by the formant factor
   afterCeiling: number;
   threshold: number;
   relativeLimit: number;
@@ -59,7 +59,7 @@ export interface Devices {
   monitorSource: "shifted" | "original";
   running: boolean;
   analysis: { ceiling: number; threshold: number; relativeLimit: number };
-  /** 今のピッチ（半音）とフォルマント（倍率）。起動したときは覚えておいた値 */
+  /** The current pitch (semitones) and formant (factor). At start, the remembered values */
   shift: { semitones: number; formant: number };
 }
 

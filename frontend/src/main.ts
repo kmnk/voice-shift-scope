@@ -1,4 +1,4 @@
-// 画面の入口。Tauri の command を呼び、分析の結果を channel で受けて描く。
+// Entry point of the screen. Calls Tauri commands, and receives analysis results over a channel and draws them.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { applyStatic, hasKey, lang, setLang, t, type Lang } from "./i18n";
@@ -18,16 +18,16 @@ type View = "full" | "compact";
 
 const store = new FreezeStore();
 const grams = { before: new Spectrogram($("before-gram")), after: new Spectrogram($("after-gram")) };
-/// 止めた側の重ね描き。片側だけを止めているとき、動いている側の図に止めた側の F1〜F4 を破線で重ねる
+/// Overlay of the held side. When only one side is held, the held side's F1–F4 are drawn as dashed lines on the live side's plot
 const targets = { before: new TargetOverlay($("before-target")), after: new TargetOverlay($("after-target")) };
 let pending: Pair[] = [];
-/// 2 つの図とスペクトルの縦（周波数）の範囲。前と後の上限の大きい方にそろえる
+/// Vertical (frequency) range of the two plots and the spectrum. Uses the larger of the original and shifted ceilings
 let axisMax = 5500;
 let afterCeiling = 5500;
 let devices: Devices | null = null;
 let view: View = "full";
 let lastStatus: Status | null = null;
-/// 一度でも開始したか（始める前の案内を消すため。停止した後は最後の図を残し、案内を出さない）
+/// Whether it has ever started (to remove the guide shown before starting; after stopping, the last plots stay and the guide is not shown)
 let everStarted = false;
 const cursors = [
   new Cursor($("before-cursor"), "gram", () => axisMax),
@@ -35,8 +35,8 @@ const cursors = [
   new Cursor($("spectrum-cursor"), "spectrum", () => axisMax),
 ];
 
-/// スライダーの埋まった範囲を CSS の --from・--to に書く（style.css が溝を塗り分ける）。
-/// ピッチとフォルマントは中央（既定の値）からつまみまで、音量は左端からつまみまで
+/// Writes the filled range of a slider to the CSS --from and --to (style.css colours the track).
+/// From the centre (the default value) to the thumb for pitch and formant, and from the left end to the thumb for volume
 function paintRange(r: HTMLInputElement): void {
   const min = Number(r.min);
   const max = Number(r.max);
@@ -47,29 +47,29 @@ function paintRange(r: HTMLInputElement): void {
   r.style.setProperty("--to", `${to}%`);
 }
 
-/// ピッチ（半音）とフォルマント（倍率）の今の値。欄の文字ではなくここが正本（欄は符号やマイナス記号を含むため）
+/// The current pitch (semitones) and formant (factor). These, not the field text, are the source (the fields contain signs and minus signs)
 const shift: Record<ShiftTarget, number> = { pitch: 0, formant: 1 };
 
-/// 今の値を、値の欄（いつも同じ桁）とスライダー（フォルマントは log2 の位置）に出す
+/// Shows the current values in the value fields (always the same digits) and the sliders (log2 position for formant)
 function showShift(target: ShiftTarget): void {
   const v = shift[target];
   const field = $<HTMLInputElement>(`${target}-num`);
   field.value = formatShift(target, v);
-  // 試験が言葉や書式に依らずに読む値
+  // Values the tests read without depending on language or format
   field.dataset.value = String(v);
   const slider = $<HTMLInputElement>(target);
   slider.value = String(target === "pitch" ? v : formantToSlider(v));
   paintRange(slider);
 }
 
-/// ピッチ・フォルマントの値を範囲で止めて丸め、欄とスライダーにそろえて出し、変換に送る
+/// Clamps and rounds the pitch or formant value to its range, shows it in the field and slider, and sends it to the shifter
 function setShift(target: ShiftTarget, value: number): void {
   shift[target] = normalize(target, value);
   showShift(target);
   void sendShift();
 }
 
-/// 小さい刻み（Shift と一緒なら大きい刻み）で上げ下げする
+/// Steps up or down by the small step (the large step with Shift)
 function stepShift(target: ShiftTarget, dir: number, coarse: boolean): void {
   setShift(target, shift[target] + dir * (coarse ? STEP[target].coarse : STEP[target].fine));
 }
@@ -83,8 +83,8 @@ interface Status {
   lastInputXrunSeconds: number;
 }
 
-/// 帯の状態の知らせ（1 か所）。種類（data-kind）は見た目を変え、試験が言葉に依らず読むためのもの。
-/// 誤り・取りこぼし（error・status）は警告のアイコンを付ける。帯に収まらない文は省略記号で切れるので、全文を説明（title）に入れる。
+/// The status message on the bar (one place). Its kind (data-kind) changes the look and lets tests read it without depending on language.
+/// Errors and dropouts (error, status) get a warning icon. Text that does not fit on the bar is cut with an ellipsis, so the full text goes in the tooltip (title).
 let messageTimer: number | undefined;
 function message(text: string, kind = "error"): void {
   const m = $("message");
@@ -92,13 +92,13 @@ function message(text: string, kind = "error"): void {
   else m.replaceChildren();
   m.title = text;
   m.dataset.kind = text ? kind : "";
-  // 「保存しました」は数秒で消す（誤りと取りこぼしは、続いている間は出し続ける）
+  // "Saved" disappears after a few seconds (errors and dropouts stay while they continue)
   window.clearTimeout(messageTimer);
   if (kind === "saved") messageTimer = window.setTimeout(() => message(""), 5000);
 }
 
-/// 簡易表示で、左の列の中身の高さが変わったら（窓が狭くなって文が折り返すなど）、窓の高さを合わせ直す。
-/// 窓の縁の分は Rust の側が直す。何度も直し続けないよう、1 回の切り替えにつき 4 回まで。
+/// In the compact view, when the content height of the left column changes (for example when a narrower window wraps text), fits the window height again.
+/// Rust corrects for the window frame. To avoid correcting forever, at most 4 times per switch.
 let compactFixes = 0;
 function fitCompactWindow(): void {
   if (view !== "compact" || compactFixes >= 4) return;
@@ -108,7 +108,7 @@ function fitCompactWindow(): void {
   void call("set_view", { view: "compact", contentHeight: wanted });
 }
 
-/// 簡易表示の窓の高さ: 帯と左の列の中身の高さに、その間と body の上下の余白を足したもの
+/// Window height in the compact view: the content heights of the bar and the left column, plus the gap between them and the body's top and bottom padding
 function compactContentHeight(): number {
   const controls = document.querySelector(".controls") as HTMLElement;
   const bar = document.querySelector(".bar") as HTMLElement;
@@ -147,17 +147,17 @@ function showDevices(d: Devices): void {
   ($("volume") as HTMLInputElement).value = String(d.monitorVolume);
   paintRange($("volume"));
   fillSelect($("output"), d.outputs, d.selectedOutput);
-  // VB-CABLE は出力の機器の 1 つで、いつも使う前提にしないので、有無を画面に出さない（試験が読む印だけを残す）
+  // VB-CABLE is one of the output devices and is not assumed, so whether it is installed is not shown (only a mark for tests is kept)
   $("cable").dataset.found = String(!!d.cable);
-  // 始める前の案内: 一度も開始していない間だけ、何をすれば始まるかを図の中に出す
+  // The guide before starting: shown in the plot, only until the first start, telling what to do to start
   if (d.running) everStarted = true;
   $("plot-guide").textContent = everStarted ? "" : t(d.selectedOutput ? "guide.start" : "guide.output");
-  // 出力とモニターには同じ音を流す（モニターは出しているものを確かめるため。2026-10-18 に利用者が 1 つにした）。
-  // ボタンは 1 つで、今の値を出す
+  // The output and the monitor get the same audio (the monitor is for checking what is being sent; the user made it one setting on 2026-10-18).
+  // One button that shows the current value
   const route = $("route");
   route.dataset.source = d.outputSource;
   setContent(route, "route", t(d.outputSource === "shifted" ? "route.shifted" : "route.original"));
-  // 開始と停止は 1 つのボタン。出力を選んでいない間は開始できない
+  // Start and stop share one button. It cannot start while no output is chosen
   const run = $<HTMLButtonElement>("run");
   run.dataset.running = String(d.running);
   setContent(run, d.running ? "stop" : "start", t(d.running ? "stop" : "start"));
@@ -170,7 +170,7 @@ function updateFreezeButtons(): void {
   for (const side of ["before", "after"] as const) {
     const frozen = store.isFrozen(side);
     $(`freeze-${side}`).setAttribute("aria-pressed", String(frozen));
-    // 止めた図は枠と札で分かるようにする（style.css の .panel[data-held]）
+    // A held plot is marked with its border and label (.panel[data-held] in style.css)
     $(`${side}-panel`).dataset.held = String(frozen);
     const v = store.view(side);
     const state = $(`${side}-state`);
@@ -196,8 +196,8 @@ function draw(): void {
   const after = store.view("after");
   drawSpectrum($("spectrum"), before, after, axisMax);
   renderTable($("numbers"), before, after);
-  // 右端の値は、表と同じ 250 ms の中央値（止めている側は止めた時点の値）。
-  // 片側だけを止めているときは、動いている側の図に止めた側の値を目標として重ねる（両側を止めた・両側が動いているときは重ねない）
+  // The values at the right edge are the same 250 ms medians as the table (a held side keeps the values from when it was held).
+  // When only one side is held, the held side's values are overlaid on the live side's plot as targets (not when both are held or both are live)
   const formants = (v: typeof before) => [0, 1, 2, 3].map((i) => v?.summary?.formants[i]?.frequency ?? null);
   for (const [side, v, other] of [["before", before, after], ["after", after, before]] as const) {
     const otherSide = side === "before" ? "after" : "before";
@@ -216,10 +216,10 @@ function draw(): void {
   $("ceiling-note").textContent = t("ceiling.note", { hz: afterCeiling.toFixed(0) });
 }
 
-/// 言葉を替えたときに、動的に書いた文も書き直す。
+/// When the language changes, also rewrites dynamically written text.
 function refreshTexts(): void {
   applyStatic();
-  // 表示の切り替えはアイコンだけのボタン。名前は説明と読み上げに持たせる
+  // The view switch is an icon-only button. Its name is in the tooltip and for screen readers
   const viewToggle = $("view-toggle");
   setContent(viewToggle, view === "full" ? "compact" : "full", "");
   viewToggle.title = t(view === "full" ? "view.compact.title" : "view.full.title");
@@ -232,7 +232,7 @@ function refreshTexts(): void {
 
 function applyView(v: View): void {
   view = v;
-  // 設定の板は全体の表示だけ（簡易表示では分析が止まるため）
+  // The settings panel exists only in the full view (the analysis stops in the compact view)
   closeSettings();
   document.body.classList.toggle("compact", v === "compact");
   refreshTexts();
@@ -242,7 +242,7 @@ function applyView(v: View): void {
   }
 }
 
-// 試験のための数（表示の更新の回数と、受けてから描くまでの遅れ）
+// Counts for tests (number of display updates, and the delay from receiving to drawing)
 const stats = { frames: 0, since: performance.now(), lastLagMs: 0, received: 0 };
 
 function loop(now: number): void {
@@ -308,7 +308,7 @@ async function sendAnalysis(): Promise<void> {
   });
 }
 
-/// ピッチ・フォルマントの欄の操作: スライダー、値の欄への入力、欄の中の ↑↓、ホイール、− と + のボタン
+/// Pitch and formant controls: the slider, typing in the value field, ↑↓ in the field, the wheel, and the − and + buttons
 function wireShift(target: ShiftTarget): void {
   const slider = $<HTMLInputElement>(target);
   const field = $<HTMLInputElement>(`${target}-num`);
@@ -316,7 +316,7 @@ function wireShift(target: ShiftTarget): void {
     const position = Number(slider.value);
     setShift(target, target === "pitch" ? position : sliderToFormant(position));
   });
-  // 欄を押すと文字を選ぶ。Enter かフォーカスが外れると値にし、読めない文字なら前の値に戻す
+  // Clicking a field selects its text. Enter or losing focus turns it into a value; unreadable text goes back to the previous value
   field.addEventListener("focus", () => field.select());
   const commit = () => {
     const v = parseShift(field.value);
@@ -339,8 +339,8 @@ function wireShift(target: ShiftTarget): void {
       field.select();
     }
   });
-  // ホイール: 上で増え下で減る。Shift と一緒のとき Chromium は横のスクロール（deltaX）にすることがあるので両方を見る。
-  // タッチパッドで細かい事象が続くと速く動きすぎるので、100 ms に 1 刻みに間引く
+  // Wheel: up increases, down decreases. With Shift, Chromium may turn it into horizontal scrolling (deltaX), so both are read.
+  // A touchpad sends many fine events and would move too fast, so they are thinned to one step per 100 ms
   let lastWheel = 0;
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
@@ -403,7 +403,7 @@ function wire(): void {
     if (d) showDevices(d);
     else if (devices) showDevices(devices);
   });
-  // モニターの ON/OFF はトグルボタン。押したら反対の値を送り、拒まれたら今の値の表示に戻す
+  // The monitor ON/OFF is a toggle button. Pressing it sends the opposite value; if refused, the display goes back to the current value
   const monitorChange = async (enabled: boolean) => {
     const id = ($("monitor") as HTMLSelectElement).value || null;
     const d = await call<Devices>("set_monitor", { enabled, id });
@@ -419,7 +419,7 @@ function wire(): void {
   });
   wireShift("pitch");
   wireShift("formant");
-  // 流す音のボタンは、押すと反対側に切り替える
+  // The source button switches to the other side when pressed
   $("route").addEventListener("click", async () => {
     if (!devices) return;
     const source: Devices["outputSource"] = devices.outputSource === "shifted" ? "original" : "shifted";
@@ -429,7 +429,7 @@ function wire(): void {
     const d = await call<Devices>("set_routing", { output: source, monitor: source });
     if (d) showDevices(d);
   });
-  // 値の欄の左右の − と +（Shift と一緒に押すと大きい刻み）と、元に戻すボタン
+  // The − and + on each side of the value field (the large step with Shift), and the reset button
   const defaults: Record<ShiftTarget, number> = { pitch: 0, formant: 1 };
   document.querySelectorAll<HTMLButtonElement>("button.step").forEach((b) =>
     b.addEventListener("click", (e) => stepShift(b.dataset.target as ShiftTarget, Number(b.dataset.dir), e.shiftKey)),
@@ -452,7 +452,7 @@ function wire(): void {
   });
   $("view-toggle").addEventListener("click", () => {
     const next: View = view === "full" ? "compact" : "full";
-    // 前の表示の知らせ（保存しましたなど）は持ち越さない
+    // Do not carry over the previous status message (such as "Saved")
     message("");
     compactFixes = 0;
     applyView(next);
@@ -475,15 +475,15 @@ function wire(): void {
     for (const c of cursors) c.draw();
   });
   wireShortcuts();
-  // 動いている間に機器が無くなったときなど、音声の側の誤りを出す
+  // Show audio errors, such as a device disappearing while running
   setInterval(async () => {
     const s = await invoke<Status>("status").catch(() => null);
     if (s) showStatus(s);
   }, 1000);
 }
 
-/// 設定の板（分析の設定）。帯の設定のボタンで開く。Esc・板の外を押す・ボタンでもう一度押すと閉じる。
-/// 閉じる振る舞いはブラウザーの light dismiss に任せず、ここで持つ（試験が送るキーとクリックでも同じに動くように）
+/// The settings panel (analysis settings). Opened with the settings button on the bar. Closed with Esc, clicking outside, or pressing the button again.
+/// Closing is handled here rather than left to the browser's light dismiss (so the keys and clicks the tests send behave the same)
 function settingsOpen(): boolean {
   return $("settings").matches(":popover-open");
 }
@@ -510,7 +510,7 @@ function wireSettings(): void {
   });
 }
 
-/// キー操作の一覧を開く・閉じる。閉じたら、開く前にフォーカスのあった所へ戻す
+/// Opens and closes the keyboard shortcuts. On close, focus returns to where it was before opening
 let focusBeforeShortcuts: HTMLElement | null = null;
 function openShortcuts(): void {
   const dialog = $<HTMLDialogElement>("shortcuts");
@@ -524,13 +524,13 @@ function closeShortcuts(): void {
   if (dialog.open) dialog.close();
 }
 
-/// キー。全体の表示のときだけ効き、数の欄・選ぶ欄・スライダーに入力しているときと、Ctrl・Alt・Meta と一緒のときは効かない。
-/// 一覧を開いている間は、一覧を閉じるキー（? と Esc）だけが効く。
+/// Keys. They work only in the full view, and not while typing in a number field, select, or slider, or with Ctrl, Alt, or Meta.
+/// While the shortcut list is open, only the keys that close it (? and Esc) work.
 function wireShortcuts(): void {
   const dialog = $<HTMLDialogElement>("shortcuts");
   $("shortcuts-open").addEventListener("click", openShortcuts);
   $("shortcuts-close").addEventListener("click", closeShortcuts);
-  // 後ろの暗い所（dialog の要素そのもの）を押すと閉じる
+  // Clicking the dark area behind (the dialog element itself) closes it
   dialog.addEventListener("click", (e) => {
     if (e.target === dialog) closeShortcuts();
   });
@@ -595,7 +595,7 @@ function wireShortcuts(): void {
 }
 
 async function boot(): Promise<void> {
-  // 決まったアイコンを置く（言葉を替えても変わらない）
+  // Place the fixed icons (they do not change with the language)
   document.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
     if (!el.querySelector(":scope > svg.icon")) el.prepend(icon(el.dataset.icon as IconName));
   });
@@ -606,17 +606,17 @@ async function boot(): Promise<void> {
   const prefs = await invoke<{ language: Lang; view: View }>("get_ui_prefs").catch(() => ({ language: "en" as Lang, view: "full" as View }));
   setLang(prefs.language);
   applyView(prefs.view);
-  // 簡易表示で起動したときも、中身の高さに窓を合わせる
+  // When started in the compact view, also fit the window to the content height
   if (prefs.view === "compact") void call("set_view", { view: "compact", contentHeight: compactContentHeight() });
   const d = await call<Devices>("list_devices");
   if (d) {
     showDevices(d);
-    // 覚えておいたピッチとフォルマントを欄とスライダーに出す（声を変える処理には起動したときに渡してある）
+    // Show the remembered pitch and formant in the fields and sliders (they were given to the shifter at start)
     shift.pitch = normalize("pitch", d.shift.semitones);
     shift.formant = normalize("formant", d.shift.formant);
     showShift("pitch");
     showShift("formant");
-    // 覚えておいた分析の設定を欄に入れる
+    // Put the remembered analysis settings into the fields
     ($("ceiling") as HTMLInputElement).value = String(d.analysis.ceiling);
     ($("threshold") as HTMLInputElement).value = String(d.analysis.threshold);
     ($("relative-limit") as HTMLInputElement).value = String(d.analysis.relativeLimit);

@@ -1,5 +1,5 @@
-// ボタンなどのアイコン。Lucide（ISC ライセンス、https://lucide.dev ）の線のアイコンを SVG で作る。
-// 読み上げには出さない（文字で意味を持たせる）。
+// Icons for buttons and so on. Made as SVG from Lucide line icons (ISC license, https://lucide.dev ).
+// Hidden from screen readers (the text carries the meaning).
 
 import {
   ArrowLeftRight,
@@ -41,7 +41,7 @@ export function icon(name: IconName): SVGElement {
   return svg;
 }
 
-/// ボタンの中身をアイコンと文字にする。文字は .label の span に入れる（data-i18n はそこに付ける）。
+/// Makes a button's content an icon and text. The text goes in a .label span (which gets data-i18n).
 export function setContent(el: HTMLElement, name: IconName | null, text: string): void {
   let label = el.querySelector<HTMLElement>(":scope > .label");
   const current = el.querySelector<SVGElement>(":scope > svg.icon");

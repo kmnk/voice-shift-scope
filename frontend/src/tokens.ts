@@ -1,4 +1,4 @@
-// 色の値は style.css の :root の変数が正本。canvas に描く色は、ここから描くたびに読む（直書きしない）。
+// Colour values live in the :root variables of style.css. Colours drawn on canvases are read from there each time (never hard-coded).
 
 export type ColorToken =
   | "surface"
@@ -15,13 +15,13 @@ export type ColorToken =
   | "formant-3"
   | "formant-4";
 
-/// CSS の変数の値。document の無いところ（単体の試験）では var(--name) を返す。
+/// The value of a CSS variable. Returns var(--name) where there is no document (unit tests).
 export function color(name: ColorToken): string {
   if (typeof document === "undefined") return `var(--${name})`;
   return getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();
 }
 
-/// F1〜F4 の色の変数の名前
+/// Names of the F1–F4 colour variables
 export const FORMANT_TOKENS: ColorToken[] = ["formant-1", "formant-2", "formant-3", "formant-4"];
 
 export function formantColor(i: number): string {

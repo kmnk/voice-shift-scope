@@ -1,14 +1,14 @@
-// 止めた側の重ね描き。片側だけを止めているとき、止めた側の F1〜F4 の高さに、動いている側の図の上で横の破線を引く。
-// 図の canvas は前の画像を左にずらして描くので、流れない線は図に重ねた別の canvas に描く（保存する PNG には png.ts が重ねる）。
-// 描いた値は data-targets に書き、自己試験が読む。目標の値の文字は、図の右端の値の欄（render.ts）が今の値と一緒に描く。
+// Overlay of the held side. When only one side is held, draws horizontal dashed lines at the held side's F1–F4 heights on the live side's plot.
+// The plot canvas is drawn by shifting the previous image left, so lines that do not scroll go on a separate canvas over the plot (png.ts adds it to saved PNGs).
+// The drawn values are written to data-targets for the self-test to read. The target value text is drawn by the value column at the plot's right edge (render.ts) along with the current values.
 
 import { AXIS, VALUE_GUTTER, fitCanvas } from "./render";
 import { formantColor } from "./tokens";
 
-/// 破線の形（CSS の px）: 6px の線と 4px の間
+/// Dash pattern (CSS px): 6px line, 4px gap
 export const TARGET_DASH = [6, 4];
 
-/// 目標の高さ（上が 0）。値の無いフォルマントは null
+/// Target heights (0 at the top). null for formants without a value
 export function targetLineYs(values: (number | null)[], axisMax: number, height: number): (number | null)[] {
   return values.map((v) => (v === null || !Number.isFinite(v) || axisMax <= 0 ? null : height - (v / axisMax) * height));
 }
@@ -19,7 +19,7 @@ export class TargetOverlay {
 
   constructor(private canvas: HTMLCanvasElement) {}
 
-  /// 重ねる値を替える。空なら消す
+  /// Changes the overlaid values. Clears when empty
   set(values: (number | null)[], axisMax: number): void {
     const same = axisMax === this.axisMax && values.length === this.values.length && values.every((v, i) => v === this.values[i]);
     this.values = values;
@@ -27,7 +27,7 @@ export class TargetOverlay {
     if (!same) this.draw();
   }
 
-  /// 大きさが変わったときにも描き直す
+  /// Also redraws when the size changes
   draw(): void {
     const o = this.canvas;
     fitCanvas(o);
