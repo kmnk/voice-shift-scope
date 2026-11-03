@@ -1,60 +1,59 @@
 # voice-shift-scope
 
-マイクの声のピッチとフォルマントを別々に変えて出力の機器に流し、変える前と後の F0・F1〜F4・倍音を 1 つの画面に並べて表示する Windows のアプリ。声の研究のために作っている。表示を止めて目標にし、自分の声の出し方を変えながら、目標に近づくかを見比べる使い方を想定している。
+A Windows app that changes the pitch and the formants of your microphone voice separately, sends it to an output device, and shows F0, F1–F4, and the harmonics of the original and shifted voice side by side on one screen. It is made for voice research: you can hold the display as a target and compare how close you get while changing the way you use your voice.
 
-![変える前（左）と後（右）のスペクトログラム、スペクトル、数値の表](docs/images/screen.png)
+![Spectrograms of the original (left) and shifted (right) voice, the spectrum, and the values table](docs/images/screen.png)
 
-## 動く環境
+## Requirements
 
-- Windows 10・11 の x64
-- Microsoft Edge WebView2 Runtime。Windows 11 には含まれ、Windows 10 の多くの機器にも入っている。起動しないときは https://developer.microsoft.com/microsoft-edge/webview2/ から入れる
-- 録音の機器（マイク）と、声を流す再生の機器
-- 変えた声を他のアプリにマイクとして渡すときだけ、VB-CABLE（https://vb-audio.com/Cable/ ）などの仮想の音声機器
+- Windows 10 or 11, x64
+- Microsoft Edge WebView2 Runtime. It is included in Windows 11 and installed on most Windows 10 machines. If the app does not start, install it from https://developer.microsoft.com/microsoft-edge/webview2/
+- A recording device (microphone) and a playback device for the voice
+- Only to pass the shifted voice to another app as a microphone: a virtual audio device such as VB-CABLE (https://vb-audio.com/Cable/ )
 
-## 入手と起動
+## Download and start
 
-1. https://github.com/kmnk/voice-shift-scope/releases から `voice-shift-scope-<版>-windows-x64.zip` を落とす
-2. 好きな場所に展開し、中の `voice-shift-scope.exe` を起動する。インストールはしない
+1. Download `voice-shift-scope-<version>-windows-x64.zip` from https://github.com/kmnk/voice-shift-scope/releases
+2. Unpack it anywhere and start `voice-shift-scope.exe` inside. There is no installer
 
-版が `0.` で始まるものは開発版で、試しに使ってもらうためのもの。
+Versions starting with `0.` are development versions for trying out.
 
-落としたファイルが壊れていないかは、release の `SHA256SUMS.txt` の値と、PowerShell の `Get-FileHash <zip のパス>` の値が同じかで確かめられる。
+To check that the download is not damaged, compare the value in `SHA256SUMS.txt` of the release with the output of `Get-FileHash <path to the zip>` in PowerShell.
 
-設定（選んだ機器、言葉、表示、ピッチとフォルマントの値など）は `%APPDATA%\dev.kmnk.voice-shift-scope\preferences.json` に残る。使うのをやめるときは、展開したフォルダーとこのフォルダーを消す。
+Settings (the chosen devices, language, view, pitch and formant values, and so on) are kept in `%APPDATA%\dev.kmnk.voice-shift-scope\preferences.json`. To stop using the app, delete the unpacked folder and this folder.
 
-## 落とすときと起動するときに出る警告
+## Warnings when downloading and starting
 
-今の配布物には、コードの署名が無い。そのため次が出る。
+The current release packages are not code-signed, so you may see the following.
 
-- ブラウザーで落とすとき、よく落とされているファイルではないという警告が出ることがある。ブラウザーの表示に従って保存を続ける
-- 起動するとき、「Windows によって PC が保護されました」という画面が出ることがある。「詳細情報」を押してから「実行」を押すと起動する
-- Windows 11 の Smart App Control が有効な PC では、署名の無いアプリは止められて起動できない。Smart App Control を切ると起動できるが、切った後に元に戻せないことがあるので、切るかどうかは各自で判断してほしい
+- When downloading in a browser, a warning that the file is not commonly downloaded may appear. Follow the browser's prompts to keep the file
+- When starting, a "Windows protected your PC" screen may appear. Press "More info" and then "Run anyway" to start
+- On PCs with Windows 11 Smart App Control turned on, unsigned apps are blocked and cannot start. Turning Smart App Control off lets the app start, but it may not be possible to turn it back on, so decide for yourself whether to turn it off
 
+## Usage
 
-## 使い方
+1. In the left column, choose the input (microphone) in `IN` and the output (where the voice goes) in `OUT`
+2. Press `START` on the top bar
+3. Change the voice with `PITCH` and `FORMANT`, and compare the original and shifted voice in the plots and values. Hold the display with the `ORIGINAL` and `SHIFTED` switches, and save the held screen as a PNG with `SNAPSHOT`
 
-1. 左の列の `IN` に入力（マイク）、`OUT` に出力（声を流す先）を選ぶ
-2. 上の帯の `START` を押す
-3. `PITCH` と `FORMANT` で声を変え、図と数値で変える前と後を見比べる。`ORIGINAL`・`SHIFTED` の切り替えで表示を止め、`SNAPSHOT` で止めた画面を PNG に保存する
+The `?` button on the top bar lists the keyboard shortcuts.
 
-キー操作は、上の帯の `?` のボタンで一覧を開ける。
+## Passing the voice to another app
 
-## 声を他のアプリの入力に渡すとき
+`OUT` can be any playback device, such as speakers or headphones. To pass the shifted voice to a call or recording app as a microphone, install a virtual audio device such as VB-CABLE (https://vb-audio.com/Cable/ ), choose its playback side in `OUT` (`CABLE Input` for VB-CABLE), and choose its recording side (`CABLE Output`) as the microphone in the other app. If VB-CABLE is installed and `OUT` has never been chosen, the app chooses it (the chosen `OUT` is kept for the next start).
 
-`OUT` には、スピーカーやヘッドホンなど、どの再生の機器も選べる。変えた声を通話や録音のアプリにマイクとして渡したいときは、VB-CABLE（https://vb-audio.com/Cable/ ）などの仮想の音声の機器を入れて、`OUT` にその再生側（VB-CABLE なら `CABLE Input`）を選び、渡す先のアプリのマイクに録音側（`CABLE Output`）を選ぶ。VB-CABLE が入っていれば、`OUT` をまだ選んだことが無いとき、アプリはそれを選んでおく（選んだ `OUT` は次の起動でも残る）。
+The audio sent to `OUT` and the monitor (`MON`) can be switched with `SRC` between the shifted voice (`SHIFTED`) and the original voice (`ORIGINAL`).
 
-`OUT` とモニター（`MON`）に流す音は、`SRC` で変えた声（`SHIFTED`）と元の声（`ORIGINAL`）を切り替えられる。
+## Network
 
-## ネットへの通信
+The app sends nothing to and receives nothing from the network. It only changes the microphone sound on your PC and sends it to the chosen devices, without recording it. Settings are kept in the `preferences.json` above and saved images in the folder you choose, only on your PC.
 
-アプリは、ネットに何も送らず、何も受け取らない。マイクの音は手元の PC の中で変えて、選んだ機器に流すだけで、記録もしない。設定は上の `preferences.json` に、保存した画像は選んだフォルダーに、手元にだけ置く。
+## Development
 
-## 開発
+How to build and test is in [AGENTS.md](AGENTS.md), and the names and pass conditions of the checks are in [docs/criteria.md](docs/criteria.md). The development tool `voice-cli.exe` is also in the releases as a separate zip.
 
-build と試験の方法は [AGENTS.md](AGENTS.md) に、試験の判定の名前と合格の条件は [docs/criteria.md](docs/criteria.md) にある。開発で確かめるための道具 `voice-cli.exe` も、release に別の zip で置いている。
+## License
 
-## ライセンス
+You may use it under either the MIT License ([LICENSE-MIT](LICENSE-MIT)) or the Apache License 2.0 ([LICENSE-APACHE](LICENSE-APACHE)), at your option.
 
-MIT License（[LICENSE-MIT](LICENSE-MIT)）と Apache License 2.0（[LICENSE-APACHE](LICENSE-APACHE)）の、どちらかを選んで使える。
-
-配布物には、使っている第三者のソフトウェアのライセンスの文を `THIRD-PARTY-LICENSES.txt` として入れている。`third_party/` の Signalsmith Stretch と Signalsmith Linear は MIT License。
+The release packages include the license texts of the third-party software used, as `THIRD-PARTY-LICENSES.txt`. Signalsmith Stretch and Signalsmith Linear in `third_party/` are under the MIT License.
