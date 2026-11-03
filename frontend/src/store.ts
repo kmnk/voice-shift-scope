@@ -1,19 +1,19 @@
-// 表示を止める状態。止めるのは画面の側だけで、分析の側は止めたことを知らない。
-// 変える前の側と変えた後の側を、それぞれ「リアルタイム」か「止めている」かで持つ。
+// The hold state of the display. Only the screen holds; the analysis side does not know.
+// Keeps the original side and the shifted side each as "live" or "held".
 
 import { summarize, type Summary } from "./summary";
 import type { Frame, Pair, Settings, Side } from "./types";
 
-/// 数値の表の中央値に使うフレームの数（10 ms ごとなので 250 ms）。
+/// Number of frames used for the median in the values table (250 ms at 10 ms each).
 export const SUMMARY_FRAMES = 25;
 
 export interface SideView {
   frozen: boolean;
-  /// 表示している時刻（入力を始めてからの秒数）
+  /// Time of the display (seconds since the input started)
   time: number;
   frame: Frame;
   summary: Summary | null;
-  /// その表示を出した時の設定
+  /// The settings when that display was produced
   settings: Settings;
 }
 
@@ -27,7 +27,7 @@ export class FreezeStore {
   private live: { before: Summary | null; after: Summary | null } = { before: null, after: null };
   private frozen: { before: SideView | null; after: SideView | null } = { before: null, after: null };
 
-  /// 分析の結果を受ける。止めている側には反映しない。
+  /// Takes an analysis result. Not applied to a held side.
   receive(pair: Pair): void {
     this.recent.push(pair);
     if (this.recent.length > SUMMARY_FRAMES) this.recent.shift();
@@ -59,7 +59,7 @@ export class FreezeStore {
     return this.frozen[side] ?? this.liveView(side);
   }
 
-  /// 片方を止める・戻す。戻すと、その時点の最新の表示から再開する。
+  /// Holds or resumes one side. Resuming continues from the latest display at that moment.
   toggle(side: Side): void {
     if (this.frozen[side]) {
       this.frozen[side] = null;
@@ -73,7 +73,7 @@ export class FreezeStore {
     }
   }
 
-  /// 全体の操作: どちらかがリアルタイムなら両方を止め、両方が止まっていれば両方を戻す。
+  /// ALL: if either side is live, hold both; if both are held, resume both.
   toggleAll(): void {
     const both = this.isFrozen("before") && this.isFrozen("after");
     for (const side of ["before", "after"] as const) {
@@ -81,7 +81,7 @@ export class FreezeStore {
     }
   }
 
-  /// 前と後で表示している時刻が違うか（比に印を付けるため）。
+  /// Whether the original and shifted displays show different times (to mark the ratio).
   timesDiffer(): boolean {
     const b = this.view("before");
     const a = this.view("after");

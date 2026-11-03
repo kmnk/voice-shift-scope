@@ -1,4 +1,4 @@
-/* 色・余白・角・文字の値の正本。canvas も tokens.ts からここを読み、色を直書きしない */
+/* The source of colour, spacing, corner, and type values. Canvases read them through tokens.ts too; colours are never hard-coded */
 :root {
   --bg: #f4f4f1;
   --surface: #ffffff;
@@ -9,12 +9,12 @@
   --line: #dcdcd6;
   --grid: #ececea;
   --accent: #1f6fd1;
-  /* 止めた状態だけに使う。誤りの色（--danger）と分ける */
+  /* Used only for the held state. Kept apart from the error colour (--danger) */
   --hold: #6f42c1;
 
   --danger: #c0392b;
   --harmonic: #c4c4bd;
-  /* 変える前のスペクトルの線と、元の声を流すときのボタン */
+  /* The original spectrum line, and the button when the original voice is sent */
   --before: #8a8a85;
   --formant-1: #1f77b4;
   --formant-2: #e4572e;
@@ -34,24 +34,24 @@
   background: var(--bg);
 }
 html, body { height: 100%; margin: 0; overflow: hidden; }
-/* 上に操作の帯、その下の左に声を変える操作と機器の列、右に表示。画面の高さに収めて、縦に流れないようにする */
+/* The control bar at the top; below it, the voice controls and devices column on the left and the display on the right. Fits the window height without vertical scrolling */
 body { display: grid; grid-template-columns: 250px minmax(0, 1fr); grid-template-rows: 32px minmax(0, 1fr); grid-template-areas: "bar bar" "controls screen"; gap: var(--space-2); padding: var(--space-2); box-sizing: border-box; }
 .bar { grid-area: bar; }
 .controls { grid-area: controls; }
 .screen { grid-area: screen; }
-/* 簡易表示: 右の表示と、止める・保存・設定・キー操作を消し、帯（折り返す）と左の列だけにする */
-/* 1fr だけだと列が中身（長い機器の名前の選ぶ欄）の幅より狭くなれず、窓からはみ出すので、0 まで縮めてよいとする */
+/* Compact view: hides the display on the right and the hold, save, settings, and keyboard controls, leaving the bar (wrapping) and the left column */
+/* With 1fr alone the column cannot get narrower than its content (a select with a long device name) and overflows the window, so allow it to shrink to 0 */
 body.compact { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; grid-template-areas: "bar" "controls"; align-content: start; }
 body.compact .bar { flex-wrap: wrap; row-gap: var(--space-1); }
 body.compact .bar .message { order: 10; flex-basis: 100%; white-space: normal; }
 body.compact .bar .message .label { white-space: normal; }
 body.compact .bar .message:empty { display: none; }
-/* 簡易表示では左の列を中身の高さにして（窓の高さを測るため）、窓をそれに合わせる */
+/* In the compact view, the left column takes its content height (to measure the window height), and the window fits it */
 body.compact .controls { overflow-y: visible; align-self: start; }
 body.compact .full-only { display: none; }
 .controls { min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); padding-right: var(--space-1); }
 .group { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 6px var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); }
-/* 欄の内側の余白は縦 6px・横 8px（縦を詰めて左の列を短くする） */
+/* Inner padding of the sections: 6px vertical, 8px horizontal (tight vertically to keep the left column short) */
 .group h2 { font-size: var(--text-s); font-weight: 600; letter-spacing: 0.06em; color: var(--muted); margin: 0; }
 .group label { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
 .group select, .group input[type="range"] { width: 100%; }
@@ -63,7 +63,7 @@ body.compact .full-only { display: none; }
 .field-label { min-width: 3.2em; color: var(--muted); }
 .group label select { flex: 1; width: auto; min-width: 0; }
 
-/* 部品: ボタン・選ぶ欄・数の欄は高さ 24px、1px の枠、角 4px */
+/* Controls: buttons, selects, and number fields are 24px high with a 1px border and 4px corners */
 button, select, input[type="number"] {
   font: inherit;
   color: var(--ink);
@@ -76,7 +76,7 @@ select, input[type="number"] { background: var(--surface); padding: 0 var(--spac
 select:disabled, input:disabled { color: var(--muted); background: var(--control); }
 input[type="number"] { width: 64px; font-variant-numeric: tabular-nums; }
 input.value { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-s); box-sizing: border-box; font-family: inherit; }
-/* アイコンと文字を中央にそろえ、高さを決める（絵文字が無くなっても、言葉でボタンの高さが変わらないように） */
+/* Centre icons and text and fix the height (so text does not change the button height now that emoji are gone) */
 button {
   background: var(--control);
   padding: 0 var(--space-2);
@@ -92,11 +92,11 @@ button:hover:not(:disabled) { background: var(--control-hover); }
 button:disabled { color: var(--muted); cursor: default; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .icon { width: 14px; height: 14px; flex: none; stroke-width: 1.5; }
-/* 元に戻すボタンはアイコンだけ */
+/* The reset buttons are icons only */
 button.reset { width: 24px; padding: 0; }
 
-/* スライダー: 4px の溝、埋まった部分と 12px の丸いつまみは強調の色。埋まった範囲は main.ts が --from・--to に書く
-   （ピッチとフォルマントは中央からつまみまで、音量は左端から） */
+/* Sliders: a 4px track; the filled part and the 12px round thumb use the accent colour. main.ts writes the filled range to --from and --to
+   (from the centre to the thumb for pitch and formant, from the left end for volume) */
 input[type="range"] {
   appearance: none;
   height: 16px;
@@ -120,80 +120,80 @@ input[type="range"]::-webkit-slider-thumb {
   border: none;
 }
 
-/* ピッチとフォルマントの値の行: − と + の間に大きな値の欄、右に元に戻すボタン。どれも高さ 32px */
+/* Pitch and formant value rows: a large value field between − and +, and a reset button on the right. All 32px high */
 .value-row > * { height: 32px; flex: none; }
 .value-row .step { width: 24px; padding: 0; font-size: 16px; }
 .value-row button.reset { width: 32px; }
 .group input.value { flex: 1; min-width: 0; width: auto; font-size: 20px; font-weight: 600; text-align: right; padding: 0 var(--space-2); font-variant-numeric: tabular-nums; }
-/* スライダーの中央（既定の値）に縦 6px の目盛り */
+/* A 6px vertical tick at the centre of the slider (the default value) */
 .slider { position: relative; padding-bottom: 6px; }
 .slider .tick { position: absolute; left: 50%; top: 12px; width: 1px; height: 6px; background: var(--muted); transform: translateX(-0.5px); }
-/* スペクトルの凡例の線の見本 */
+/* Line samples in the spectrum legend */
 .line-sample { display: block; flex: none; }
 
-/* 上の帯: 部品の間 4px、止める切り替えの組の間 8px、開始・停止の後 12px。状態の知らせは残りの幅を取り、収まらなければ省略記号で切る */
+/* Top bar: 4px between controls, 8px between hold switch groups, 12px after start/stop. The status message takes the remaining width and is cut with an ellipsis if it does not fit */
 .bar { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .bar > * { flex: none; }
 .bar .run { width: 80px; margin-right: var(--space-2); }
 .hold-group { display: flex; align-items: center; gap: var(--space-1); margin-left: var(--space-1); }
-/* 組と組の間は 16px で、真ん中に区切りの線（切り替えの右 8px・線 1px・名前の左 7px） */
+/* 16px between groups, with a divider in the middle (8px right of the switch, 1px line, 7px left of the name) */
 .hold-group + .hold-group::before { content: ""; flex: none; width: 1px; height: 16px; margin-right: 3px; background: var(--line); }
 .bar .save { margin-left: var(--space-1); }
 .bar .message { flex: 1 1 auto; min-width: 0; margin: 0 0 0 var(--space-2); display: flex; align-items: center; gap: 2px; color: var(--danger); }
 .bar .message .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .bar .message[data-kind="saved"] { color: var(--muted); }
 .bar-end { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
-/* 設定の板（分析）: 帯の下、窓の右端にそろえる */
+/* Settings panel (analysis): below the bar, aligned with the window's right edge */
 .settings { position: fixed; inset: auto; top: calc(var(--space-2) * 2 + 32px); right: var(--space-2); left: auto; width: 300px; margin: 0; padding: var(--space-3); box-sizing: border-box; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-m); box-shadow: 0 4px 16px rgb(0 0 0 / 0.15); }
 .settings .group { border: none; padding: 0; }
-/* モニターの ON/OFF のトグルボタン。ON は青に白い文字 */
+/* Monitor ON/OFF toggle button. ON is white text on blue */
 .monitor-toggle { flex: none; width: 64px; padding: 0 var(--space-1); }
 .monitor-toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-/* 流す音のボタンは今の値を出し、色をスペクトルの線の色（SHIFTED が青、ORIGINAL が灰）に合わせる */
+/* The source button shows the current value in the spectrum line colour (blue for SHIFTED, grey for ORIGINAL) */
 .route-toggle { flex: 1; min-width: 0; color: #fff; }
 .route-toggle[data-source="shifted"], .route-toggle[data-source="shifted"]:hover { background: var(--accent); border-color: var(--accent); }
 .route-toggle[data-source="original"], .route-toggle[data-source="original"]:hover { background: var(--before); border-color: var(--before); }
 
-/* 止める切り替え: 名前・切り替え（92px）を横に並べる */
+/* Hold switches: the name and the switch (92px) side by side */
 .hold-name { white-space: nowrap; }
 .hold-switch { padding: 0; overflow: hidden; gap: 0; background: var(--surface); width: 92px; }
 .hold-switch:hover:not(:disabled) { background: var(--surface); }
 .hold-switch .seg { flex: 1; height: 100%; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); font-size: var(--text-s); }
 .hold-switch[aria-pressed="false"] .seg.live { background: var(--ink); color: #fff; }
 .hold-switch[aria-pressed="true"] .seg.hold { background: var(--hold); color: #fff; }
-/* アイコンだけのボタン（キー操作の一覧を開く） */
+/* Icon-only button (opens the keyboard shortcuts) */
 .icon-button { width: 24px; padding: 0; }
 
-/* 右の表示: 上の段に 2 つのスペクトログラムを同じ幅で、下の段（.lower）にスペクトルと数値の表。
-   下の段の高さは右の表示の 2/5 と表の中身の高さの大きい方（表を縦にスクロールさせない） */
+/* Display on the right: two spectrograms of equal width in the upper row, and the spectrum and values table in the lower row (.lower).
+   The lower row is the larger of 2/5 of the display and the table's content height (the table never scrolls vertically) */
 .screen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 3fr) minmax(min-content, 2fr); gap: var(--space-2); min-height: 0; }
 .gram-before { grid-column: 1; }
 .gram-after { grid-column: 2; }
-/* 表の列は中身の幅と 3/10 の大きい方、スペクトルは残りの幅（表を横にスクロールさせない） */
+/* The table column is the larger of its content width and 3/10; the spectrum takes the rest (the table never scrolls horizontally) */
 .lower { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 7fr) minmax(max-content, 3fr); gap: var(--space-2); min-height: 0; }
 .panel { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-m); padding: var(--space-1) 6px; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-/* 止めた図: 枠を 2px の紫にする。内側の影で足し、図の大きさを変えない */
+/* Held plots: a 2px purple border, added with an inset shadow so the plot size does not change */
 .panel[data-held="true"] { border-color: var(--hold); box-shadow: inset 0 0 0 1px var(--hold); }
-/* 題の行の高さを決める。止めた札が出ても、左右の図の大きさ（同じ高さが同じ周波数）を変えないため */
+/* Fix the height of the title row, so the hold label does not change the plot sizes (the same height must mean the same frequency on both sides) */
 .panel figcaption { font-weight: 600; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; min-width: 0; height: 18px; flex: none; }
 .caption-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-/* 凡例は題の右端。狭いときは題の方を切る */
+/* The legend is at the right of the title. When narrow, the title is cut instead */
 .legend { margin-left: auto; display: flex; gap: var(--space-2); flex: none; font-weight: normal; font-size: var(--text-s); }
 .legend span { display: inline-flex; align-items: center; gap: 3px; }
 .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 1px; flex: none; }
 .canvas-box { flex: 1; min-height: 0; position: relative; }
 .canvas-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-/* 始める前の案内: 図の中央に、地を付けずに出す。押せる部品を持たない */
+/* The guide before starting: centred in the plot, without a background, and with nothing to press */
 .plot-guide { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(320px, 90%); margin: 0; text-align: center; color: var(--muted); pointer-events: none; }
 .plot-guide:empty { display: none; }
 .table-box { flex: 1; }
-/* 重ね描きの破線は図の上に重ねるだけで、マウスは下（カーソルの canvas）へ通す */
+/* The overlay dashed lines only sit on the plot; the mouse passes through to the cursor canvas below */
 .canvas-box canvas.target { pointer-events: none; }
-/* 重ね描きの凡例: 紫の破線の見本と、止めた時刻と側。狭いときは題より先にこの文字を切り、F1〜F4 の凡例は切らない */
+/* Overlay legend: a purple dashed sample, and the held time and side. When narrow, this text is cut before the title, and the F1–F4 legend is never cut */
 .target-legend { display: inline-flex; align-items: center; gap: 3px; min-width: 0; flex: 0 1 auto; color: var(--hold); font-weight: normal; font-size: var(--text-s); overflow: hidden; }
 .target-legend[hidden] { display: none; }
 .target-legend .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-/* 止めた札: 紫の地に白い文字 */
+/* Hold label: white text on purple */
 .state:empty { display: none; }
 .state.frozen { background: var(--hold); color: #fff; font-size: var(--text-s); line-height: 14px; padding: 1px 6px; border-radius: var(--radius-s); flex: none; }
 .differs { color: var(--danger); font-weight: normal; display: inline-flex; align-items: center; gap: 2px; }
@@ -204,7 +204,7 @@ th:first-child, td:first-child { text-align: left; padding-left: 0; }
 td .swatch { margin-right: 3px; vertical-align: 0; }
 td.stale { color: var(--muted); opacity: 0.6; }
 
-/* キー操作の一覧 */
+/* Keyboard shortcuts */
 dialog.shortcuts { width: 360px; box-sizing: border-box; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--ink); box-shadow: 0 4px 16px rgb(0 0 0 / 0.15); }
 dialog.shortcuts::backdrop { background: rgb(0 0 0 / 0.3); }
 .shortcuts-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); }

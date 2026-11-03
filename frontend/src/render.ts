@@ -1,5 +1,5 @@
-// 描画の部品。store の値を読むだけで、状態を持たない（スペクトログラムの過去の画像だけを canvas に持つ）。
-// 色は tokens.ts から CSS の変数を読み、直書きしない。
+// Drawing parts. They only read values from the store and keep no state (only the spectrograms keep their past image on the canvas).
+// Colours are read from CSS variables through tokens.ts and never hard-coded.
 
 import { t } from "./i18n";
 import { color, formantColor } from "./tokens";
@@ -7,19 +7,19 @@ import type { Frame } from "./types";
 import type { SideView } from "./store";
 import type { Summary } from "./summary";
 
-/// スペクトログラムの左の周波数の目盛りの幅（CSS の px）
+/// Width of the frequency scale on the left of a spectrogram (CSS px)
 export const AXIS = 34;
-/// スペクトログラムの右の、F1〜F4 の今の値を出す欄の幅（CSS の px）
+/// Width of the column on the right of a spectrogram that shows the current F1–F4 values (CSS px)
 export const VALUE_GUTTER = 44;
-/// 値の欄で、値どうしを離す最小の間（CSS の px）
+/// Minimum gap between values in the value column (CSS px)
 export const VALUE_MIN_GAP = 12;
-/// 倍音の点の高さ（CSS の px）。F1〜F4 より控えめにする
+/// Height of the harmonic dots (CSS px). Smaller than F1–F4
 export const HARMONIC_PX = 1;
 const DB_FLOOR = -100;
 
-/// canvas の画素数を、表示の大きさと画面の拡大率に合わせる。変わったら true。
+/// Matches a canvas's pixel count to its display size and the screen's scale factor. true if it changed.
 export function fitCanvas(canvas: HTMLCanvasElement): boolean {
-  // 最小化の間などは表示の大きさが 0 になる。そのときは画素数を替えない（替えると描いたものが消える）
+  // The display size becomes 0 while minimised and so on. Then the pixel count is not changed (changing it would erase the drawing)
   if (canvas.clientWidth === 0 || canvas.clientHeight === 0) return false;
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
@@ -31,20 +31,20 @@ export function fitCanvas(canvas: HTMLCanvasElement): boolean {
 }
 
 export interface ValueLabel {
-  /// F1〜F4 の番号（0 から）
+  /// F1–F4 index (from 0)
   index: number;
-  /// 線の高さ（ずらす前）
+  /// Height of the line (before moving)
   lineY: number;
-  /// 文字の高さ（重ならないようにずらした後）
+  /// Height of the text (after moving apart to avoid overlap)
   y: number;
   text: string;
-  /// 止めた側の目標の値（重ね描き）。今の値は false
+  /// A target value from the held side (overlay). false for current values
   target: boolean;
 }
 
-/// 値の欄の F1〜F4 の値の位置。高さは周波数の位置にし、近すぎる値は下の値を下へずらす。
-/// 図の下端を越えるときは下端に寄せる（重なってよい）。値の無いフォルマントは出さない。
-/// targets（片側だけを止めたときの、止めた側の値）も同じ規則で一緒に並べ、今の値と重ねない。
+/// Positions of the F1–F4 values in the value column. The height is the frequency position; values too close together push the lower one down.
+/// Values beyond the bottom of the plot are moved to the bottom (they may overlap). Formants without a value are not shown.
+/// targets (the held side's values when only one side is held) are placed together under the same rules, without overlapping the current values.
 export function valueLabels(values: (number | null)[], axisMax: number, height: number, minGap: number, targets: (number | null)[] = []): ValueLabel[] {
   const labels: ValueLabel[] = [];
   const add = (list: (number | null)[], target: boolean) =>
@@ -66,18 +66,18 @@ export function valueLabels(values: (number | null)[], axisMax: number, height: 
   return labels;
 }
 
-/// フォルマントと倍音の位置を、時間とともに右から左へ流す図。
-/// 1 列が分析の 1 フレーム（10 ms）。倍音は観測できたものだけを薄い点で、F1〜F4 は色の点で描く。
-/// 観測できていない倍音は描かない（フォルマントと混ざり、前と後の違いが見えにくくなるため）。
-/// 音の強さの濃淡は描かない（今の瞬間のスペクトルで見る）。
-/// 右端の値の欄は流さずに毎回塗り直し、F1〜F4 の今の値（数値の表と同じ 250 ms の中央値）を出す。
-/// 描き直しのために覚えておくフレームの数（10 ms ごとなので 20 秒）。
+/// A plot that scrolls the formant and harmonic positions from right to left over time.
+/// One column is one analysis frame (10 ms). Only harmonics that were seen are drawn, as faint dots; F1–F4 are coloured dots.
+/// Harmonics that were not seen are not drawn (they would mix with the formants and make the original/shifted difference harder to see).
+/// Sound intensity shading is not drawn (it is seen in the current spectrum).
+/// The value column at the right edge does not scroll; it is repainted each time with the current F1–F4 (the same 250 ms medians as the values table).
+/// Number of frames kept for redrawing (20 seconds at 10 ms each).
 const HISTORY = 2000;
 
 export class Spectrogram {
   private ctx: CanvasRenderingContext2D;
   private axisMax = 0;
-  /// 描いたフレーム。窓の大きさや縦の範囲が変わったら、これから描き直す
+  /// Drawn frames. When the window size or vertical range changes, the plot is redrawn from these
   private history: Frame[] = [];
   private values: (number | null)[] = [null, null, null, null];
   private stale = false;
@@ -87,7 +87,7 @@ export class Spectrogram {
     this.ctx = canvas.getContext("2d")!;
   }
 
-  /// 大きさか縦の範囲が変わったら、覚えているフレームから描き直す。
+  /// When the size or vertical range changes, redraws from the kept frames.
   prepare(axisMax: number): void {
     if (fitCanvas(this.canvas) || axisMax !== this.axisMax) {
       this.axisMax = axisMax;
@@ -108,8 +108,8 @@ export class Spectrogram {
     this.draw(frame);
   }
 
-  /// 右端の値を替える（止めている側は止めた時点の値のまま呼ばれる）。
-  /// targets は、他方だけを止めているときの止めた側の値（目標）。重ねないときは空
+  /// Changes the values at the right edge (a held side is called with the values from when it was held).
+  /// targets are the held side's values (goals) when only the other side is held. Empty when not overlaid
   setValues(values: (number | null)[], stale: boolean, targets: (number | null)[] = [], targetsStale = false): void {
     const eq = (a: (number | null)[], b: (number | null)[]) => a.length === b.length && a.every((v, i) => v === b[i]);
     const same = stale === this.stale && targetsStale === this.targetsStale && eq(values, this.values) && eq(targets, this.targets);
@@ -152,7 +152,7 @@ export class Spectrogram {
     const hold = color("hold");
     for (const l of labels) {
       if (l.target) {
-        // 目標の値: 紫の文字だけ（頭の短い横線は付けない）。古い値は灰色
+        // Target values: purple text only (no short line in front). Old values are grey
         c.fillStyle = this.targetsStale ? muted : hold;
         c.fillText(l.text, left + 10 * dpr, l.y * dpr);
         continue;
@@ -163,7 +163,7 @@ export class Spectrogram {
       c.fillText(l.text, left + 10 * dpr, l.y * dpr);
     }
     c.textBaseline = "alphabetic";
-    // 自己試験が読む（図の中の文字は DOM から読めないため）
+    // For the self-test to read (text inside the plot cannot be read from the DOM)
     this.canvas.dataset.values = this.values.map((v) => (v === null ? "" : v.toFixed(0))).join(",");
   }
 
@@ -174,12 +174,12 @@ export class Spectrogram {
     const right = width - Math.round(VALUE_GUTTER * dpr);
     const step = Math.max(1, Math.round(dpr));
     const c = this.ctx;
-    // 流すのは目盛りと値の欄の間だけ
+    // Only the part between the scale and the value column scrolls
     c.drawImage(this.canvas, axis + step, 0, right - axis - step, height, axis, 0, right - axis - step, height);
     const x = right - step;
     c.fillStyle = color("surface");
     c.fillRect(x, 0, step, height);
-    // 1 kHz ごとの薄い横線
+    // Faint horizontal lines every 1 kHz
     c.fillStyle = color("grid");
     for (let f = 1000; f < this.axisMax; f += 1000) c.fillRect(x, Math.round(height - (f / this.axisMax) * height), step, 1);
     if (frame.voiced) {
@@ -201,17 +201,17 @@ export class Spectrogram {
   }
 }
 
-/// スペクトルの図の配置（canvas の画素）。左に dB の目盛り、曲線は上の図に、F1〜F4 の印は図の下の 2 行の帯
-/// （上が変える前、下が変えた後）に、行の名前は右の余白に置く。印を曲線に重ねないため。
+/// Layout of the spectrum plot (canvas pixels): a dB scale on the left, the curve in the upper plot, and the F1–F4 marks in a 2-row band below the plot
+/// (original on top, shifted below), with the row names in the right margin. This keeps the marks off the curve.
 export interface SpectrumLayout {
   dpr: number;
-  /// 曲線・格子・印の左端（dB の目盛りの右）
+  /// Left edge of the curve, grid, and marks (right of the dB scale)
   plotX: number;
-  /// 曲線・格子・目盛り・印の横の位置を決める幅（左の目盛りと右の余白を除く）
+  /// Width that sets the horizontal positions of the curve, grid, scale, and marks (excluding the left scale and the right margin)
   plotW: number;
-  /// 曲線を描く高さ
+  /// Height where the curve is drawn
   plotH: number;
-  /// 印の行の上端。[変える前, 変えた後]
+  /// Top of the mark rows. [original, shifted]
   rowTop: [number, number];
   rowH: number;
 }
@@ -221,7 +221,7 @@ const SPECTRUM_RIGHT = 56;
 const SPECTRUM_AXIS = 16;
 const MARK_ROW = 8;
 const MARK_GAP = 2;
-/// 印の帯の分だけ図を低くする（図と帯の間 2px、行 8px ×2、行の間 2px、帯と目盛りの間 2px）
+/// Lowers the plot by the height of the mark band (2px between the plot and the band, 8px rows ×2, 2px between rows, 2px between the band and the scale)
 const MARK_STRIP = 2 + MARK_ROW * 2 + MARK_GAP + 2;
 
 export function spectrumLayout(width: number, height: number, dpr: number): SpectrumLayout {
@@ -232,42 +232,42 @@ export function spectrumLayout(width: number, height: number, dpr: number): Spec
   return { dpr, plotX, plotW, plotH, rowTop: [top, top + (MARK_ROW + MARK_GAP) * dpr], rowH: MARK_ROW * dpr };
 }
 
-/// スペクトルの縦の目盛り（dB）。0 から下限まで 20 dB ごと
+/// Vertical scale of the spectrum (dB). Every 20 dB from 0 to the floor
 export function dbTicks(): number[] {
   const ticks: number[] = [];
   for (let db = 0; db >= DB_FLOOR; db -= 20) ticks.push(db);
   return ticks;
 }
 
-/// 負の数の記号は、目盛りと札でマイナス記号（U+2212）にする
+/// Negative numbers use the minus sign (U+2212) on the scale and labels
 const signed = (n: number) => (n < 0 ? `−${Math.abs(n)}` : String(n));
 
 export function dbLabel(db: number): string {
   return signed(db);
 }
 
-/// カーソルの値の札: 周波数は kHz で小数 2 桁
+/// Cursor label: frequency in kHz with 2 decimal places
 export function formatKHz(hz: number): string {
   return `${(hz / 1000).toFixed(2)} kHz`;
 }
 
-/// カーソルの値の札: dB は整数
+/// Cursor label: dB as an integer
 export function formatDb(db: number): string {
   return `${signed(Math.round(db) === 0 ? 0 : Math.round(db))} dB`;
 }
 
-/// スペクトログラムの高さ y（上が 0）の周波数
+/// Frequency at height y of a spectrogram (0 at the top)
 export function gramFreqAt(y: number, height: number, axisMax: number): number {
   return Math.min(axisMax, Math.max(0, (1 - y / height) * axisMax));
 }
 
-/// スペクトルの横の位置 x の周波数。曲線の範囲の外は null
+/// Frequency at horizontal position x of the spectrum. null outside the curve
 export function spectrumFreqAt(x: number, l: SpectrumLayout, axisMax: number): number | null {
   if (x < l.plotX || x > l.plotX + l.plotW) return null;
   return ((x - l.plotX) / l.plotW) * axisMax;
 }
 
-/// スペクトルの高さ y の dB。曲線の範囲の外は null
+/// dB at height y of the spectrum. null outside the curve
 export function spectrumDbAt(y: number, l: SpectrumLayout): number | null {
   if (y < 0 || y > l.plotH) return null;
   return DB_FLOOR + ((l.plotH - y) / l.plotH) * -DB_FLOOR;
@@ -281,7 +281,7 @@ export interface Mark {
   color: string;
 }
 
-/// 片側の F1〜F4 の印の位置。声の出ていないフレームでは出さない（行は空になる）。
+/// Positions of one side's F1–F4 marks. Not shown for frames without voice (the row is empty).
 export function formantMarks(frame: Frame | null, side: "before" | "after", axisMax: number, l: SpectrumLayout): Mark[] {
   if (!frame || !frame.voiced) return [];
   const y = l.rowTop[side === "before" ? 0 : 1];
@@ -294,8 +294,8 @@ export function formantMarks(frame: Frame | null, side: "before" | "after", axis
   return marks;
 }
 
-/// 今の瞬間のスペクトル。横が周波数、縦が dB。前を灰色の破線、後を青で重ねる。
-/// 前と後でスペクトルの範囲（上限）が違うので、それぞれの範囲で横の位置を決める。
+/// The current spectrum. Frequency across, dB up. The original as a grey dashed line, the shifted in blue, overlaid.
+/// The original and shifted spectra have different ranges (ceilings), so each uses its own range for horizontal positions.
 export function drawSpectrum(
   canvas: HTMLCanvasElement,
   before: SideView | null,
@@ -315,7 +315,7 @@ export function drawSpectrum(
   c.strokeStyle = color("grid");
   c.fillStyle = muted;
   c.font = `${10 * dpr}px system-ui`;
-  // 縦の目盛り（dB）と横の格子
+  // Vertical scale (dB) and horizontal grid
   const yOf = (db: number) => plotH - ((Math.max(DB_FLOOR, Math.min(0, db)) - DB_FLOOR) / -DB_FLOOR) * plotH;
   c.textAlign = "right";
   c.textBaseline = "middle";
@@ -333,7 +333,7 @@ export function drawSpectrum(
   c.fillText("dB", 2 * dpr, 0);
   c.textBaseline = "alphabetic";
   canvas.dataset.dbTicks = ticks.join(",");
-  // 横の目盛り（周波数）と縦の格子
+  // Horizontal scale (frequency) and vertical grid
   c.textAlign = "center";
   for (let f = 0; f <= axisMax; f += 1000) {
     const x = plotX + (f / axisMax) * plotW;
@@ -376,7 +376,7 @@ export function drawSpectrum(
   const afterInk = color("accent");
   draw(before, "before", beforeInk, [4, 2]);
   draw(after, "after", afterInk, []);
-  // 右の余白に、印の行の名前を書く（印が無いときも出す）
+  // Write the mark row names in the right margin (even when there are no marks)
   c.textAlign = "left";
   c.textBaseline = "middle";
   const rows: [string, string][] = [
@@ -394,7 +394,7 @@ function fmt(v: number | null | undefined, digits = 0): string {
   return v === null || v === undefined ? "—" : v.toFixed(digits);
 }
 
-/// 数値の表の行（PNG にも同じ行を描く）。前を左、後を右に置く。比の列は持たない（変えた量は設定で分かるため）。
+/// Rows of the values table (the PNG draws the same rows). Original on the left, shifted on the right. No ratio column (the amount changed is known from the settings).
 export function tableRows(before: Summary | null, after: Summary | null): string[][] {
   const rows: string[][] = [["", t("original"), t("shifted")]];
   rows.push([t("row.f0"), fmt(before?.f0, 1), fmt(after?.f0, 1)]);
@@ -412,7 +412,7 @@ export function tableRows(before: Summary | null, after: Summary | null): string
   return rows;
 }
 
-/// 表の F1〜F4 の行（tableRows の 2〜5 行目）の頭に、図と同じ色の見本を置く
+/// Puts a swatch of the plot colour at the start of the F1–F4 rows of the table (rows 2 to 5 of tableRows)
 const FORMANT_ROW_FIRST = 2;
 
 export function renderTable(table: HTMLTableElement, before: SideView | null, after: SideView | null): void {

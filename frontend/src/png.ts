@@ -1,4 +1,4 @@
-// 止めた画面を 1 枚の PNG に描き直す。
+// Redraws the held screen into one PNG.
 
 import { t } from "./i18n";
 import { tableRows } from "./render";
@@ -26,8 +26,8 @@ function sideLine(label: string, v: SideView | null): string {
   });
 }
 
-/// 画像の下の段の並べ方。左にスペクトル、右に数値の表を置き、重ならないようにする。
-/// 表の幅は文字から測った値で、スペクトルは残りの幅に、画面と同じ縦横の比で入れる。
+/// Layout of the lower row of the image: the spectrum on the left and the values table on the right, without overlap.
+/// The table width is measured from the text, and the spectrum fills the rest at the same aspect ratio as on screen.
 export function layoutLower(totalWidth: number, tableWidth: number, spectrumAspect: number) {
   const margin = 10;
   const gap = 20;
@@ -37,12 +37,12 @@ export function layoutLower(totalWidth: number, tableWidth: number, spectrumAspe
   return { spectrumX: margin, spectrumWidth, spectrumHeight, tableX, width: Math.max(totalWidth, tableX + tableWidth + margin) };
 }
 
-/// 画像の上の、状態と設定の行の高さ（CSS の px）。スペクトログラムはこの下から描く
+/// Height of the status and settings line at the top of the image (CSS px). The spectrograms are drawn below it
 export const PNG_HEADER = 86;
 
 export async function composePng(
   grams: [HTMLCanvasElement, HTMLCanvasElement],
-  /// 重ね描きの canvas（片側だけを止めているときの破線）。スペクトログラムの上に重ねて写す
+  /// The overlay canvas (dashed lines when one side is held). Copied on top of the spectrogram
   targets: [HTMLCanvasElement, HTMLCanvasElement],
   spectrum: HTMLCanvasElement,
   before: SideView | null,
@@ -50,12 +50,12 @@ export async function composePng(
   now: Date,
 ): Promise<Uint8Array> {
   const dpr = window.devicePixelRatio || 1;
-  // canvas は画素数が画面の拡大率倍になっているので、表示の大きさ（CSS の px）で並べる
+  // Canvases have the screen's scale factor times as many pixels, so lay them out at their display size (CSS px)
   const gw = grams[0].clientWidth;
   const gh = grams[0].clientHeight;
   const rows = tableRows(before?.summary ?? null, after?.summary ?? null);
 
-  // 表の列の幅を、描く文字から測る
+  // Measure the table column widths from the text to draw
   const measure = document.createElement("canvas").getContext("2d")!;
   measure.font = "12px system-ui";
   const colGap = 16;
@@ -90,7 +90,7 @@ export async function composePng(
   const lowerTop = header + gh + 20;
   c.drawImage(spectrum, lower.spectrumX, lowerTop, lower.spectrumWidth, lower.spectrumHeight);
   c.font = "12px system-ui";
-  // 1 列目（見出し）は左寄せ、数の列は右寄せ
+  // The first column (headings) is left-aligned; number columns are right-aligned
   const colRight = [0, 1, 2].map((j) => lower.tableX + colWidths.slice(0, j + 1).reduce((a, b) => a + b, 0) + colGap * j);
   rows.forEach((r, i) => {
     const y = lowerTop + 12 + i * 16;
@@ -102,7 +102,7 @@ export async function composePng(
   });
   c.textAlign = "left";
   const blob: Blob = await new Promise((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG にできませんでした"))), "image/png"),
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("could not make a PNG"))), "image/png"),
   );
   return new Uint8Array(await blob.arrayBuffer());
 }

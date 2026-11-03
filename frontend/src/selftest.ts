@@ -1,6 +1,6 @@
-// 画面の通しの試験（`--ui-selftest <dir>` で起動したときだけ動く）。
-// 利用者と同じ操作（ボタンを押す・値を入れる）を DOM で順に行い、画面に出たものを読んで判定する。
-// 言葉に依らないように、文ではなく data-* の印で状態を読む。結果は <dir>/ui-report.json に書き、アプリは終わる。
+// End-to-end UI test (runs only when started with `--ui-selftest <dir>`).
+// Performs the same operations as a user (pressing buttons, entering values) on the DOM in order, and judges by reading what appears on screen.
+// To avoid depending on language, state is read from data-* marks rather than text. Results go to <dir>/ui-report.json, and the app exits.
 
 import { invoke } from "@tauri-apps/api/core";
 import { lang, t } from "./i18n";
@@ -20,19 +20,19 @@ const stateText = (side: string) => q(`#${side}-state`).textContent ?? "";
 const near = (v: number, target: number, pct: number) => Math.abs(v / target - 1) * 100 <= pct;
 const pressed = (testid: string) => q(`[data-testid="${testid}"]`).getAttribute("aria-pressed") === "true";
 
-// 受け入れ基準の項目を判定した時点の窓の画像を、Rust 側が <dir>/shots/<name>.png に書く（Windows だけ）。
-// 撮れないことは試験の判定に入れない。
+// Rust writes a shot of the window at the time each acceptance item is checked to <dir>/shots/<name>.png (Windows only).
+// Failing to take a shot does not count in the test results.
 async function shot(name: string): Promise<void> {
-  // DOM を変えた直後は、まだ画面に描かれていない。描き直しを 2 回待ってから撮る
+  // Right after a DOM change, it is not painted yet. Wait for two repaints before taking the shot
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   try {
     await invoke<string>("selftest_shot", { name });
   } catch {
-    // 撮れないことは試験の失敗にしない
+    // Failing to take a shot is not a test failure
   }
 }
 
-/// 窓の中の大きさを変え、画面がその大きさになるまで待つ（試験の入口だけで動く Rust の selftest_resize）。
+/// Changes the inner window size and waits until the screen has that size (Rust's selftest_resize, which works only through the test entry point).
 async function resizeWindow(width: number, height: number): Promise<{ ok: boolean; innerWidth: number; innerHeight: number; error?: string; firstTry?: { innerWidth: number; innerHeight: number } }> {
   try {
     await invoke("selftest_resize", { width, height });
@@ -41,7 +41,7 @@ async function resizeWindow(width: number, height: number): Promise<{ ok: boolea
   }
   const fits = () => Math.abs(window.innerWidth - width) <= 2 && Math.abs(window.innerHeight - height) <= 2;
   let ok = await waitFor(fits, 3000);
-  // 窓の大きさに窓の縁やタイトルバーが入る OS（macOS では高さが 32 px 足りなかった）では、画面の中が頼んだ大きさになるよう、差を足して 1 回だけ頼み直す
+  // On OSes where the window size includes the frame and title bar (on macOS the height was 32 px short), ask once more with the difference added so the inside gets the requested size
   const first = { innerWidth: window.innerWidth, innerHeight: window.innerHeight };
   if (!ok) {
     try {
@@ -51,17 +51,17 @@ async function resizeWindow(width: number, height: number): Promise<{ ok: boolea
     }
     ok = await waitFor(fits, 3000);
   }
-  // 大きさが変わった後の描き直しを待つ
+  // Wait for the repaint after the size change
   await sleep(800);
   return { ok, innerWidth: window.innerWidth, innerHeight: window.innerHeight, ...(ok && (first.innerWidth !== width || first.innerHeight !== height) ? { firstTry: first } : {}) };
 }
 
-/// ピッチ・フォルマントの今の値（欄の文字は符号やマイナス記号を含むので、main.ts が書く data-value を読む）
+/// The current pitch or formant value (the field text contains signs and minus signs, so read the data-value main.ts writes)
 const shiftValue = (target: "pitch" | "formant") => Number(q<HTMLInputElement>(`#${target}-num`).dataset.value);
 
-/// ピッチ・フォルマントの欄の見た目と操作（U6・U7・U8）。VB-CABLE が無くても動く
+/// Look and controls of the pitch and formant fields (U6, U7, U8). Works without VB-CABLE
 async function checkShiftControls(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
-  // U6: スペクトルの題は文字だけになり、線の見本の凡例が付く
+  // U6: the spectrum title is text only, with a legend of line samples
   const caption = q(".spectrum-panel .caption-title").textContent ?? "";
   const lines = [...document.querySelectorAll<SVGLineElement>('[data-testid="spectrum-legend"] line')];
   const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -94,7 +94,7 @@ async function checkShiftControls(record: (c: string, pass: boolean, detail: unk
   reset("pitch");
   reset("formant");
 
-  // U7: どの操作で変えても、ピッチは +5.0・0.0 の形、フォルマントは 1.00 の形で出る
+  // U7: whatever operation changes them, pitch shows as +5.0 or 0.0 and formant as 1.00
   const s = slider("pitch");
   s.value = "5";
   s.dispatchEvent(new Event("input"));
@@ -120,7 +120,7 @@ async function checkShiftControls(record: (c: string, pass: boolean, detail: unk
     formantText,
   });
 
-  // U8: 刻みのボタンの行が無く、− と +（Shift で大きい刻み）とホイールで動く。フォルマント ×1.00 はスライダーの中央
+  // U8: there is no row of step buttons; − and + (the large step with Shift) and the wheel move the values. Formant ×1.00 is at the slider's centre
   const oldSteps = document.querySelectorAll("button[data-step]").length;
   const click = (testid: string, shiftKey = false) =>
     q(`[data-testid="${testid}"]`).dispatchEvent(new MouseEvent("click", { shiftKey, bubbles: true, cancelable: true }));
@@ -170,7 +170,7 @@ async function checkShiftControls(record: (c: string, pass: boolean, detail: unk
   );
 }
 
-/// 数値の表が欄の中に収まり（横にも縦にもはみ出さない）、2 つのスペクトログラムが同じ大きさか（U4）
+/// Whether the values table fits in its section (no horizontal or vertical overflow) and the two spectrograms are the same size (U4)
 function tableFits(): { lang: string; fits: boolean; table: number[]; panel: number[]; grams: number[][] } {
   const t = q("#numbers").getBoundingClientRect();
   const p = q(".table-panel").getBoundingClientRect();
@@ -183,7 +183,7 @@ function tableFits(): { lang: string; fits: boolean; table: number[]; panel: num
   return { lang: lang(), fits: inside && same, table: [t.width, t.height].map(Math.round), panel: [p.width, p.height].map(Math.round), grams: g };
 }
 
-/// 英語と日本語の両方で tableFits を見る（言葉を替えて戻す）
+/// Checks tableFits in both English and Japanese (switches the language and back)
 async function tableFitsBothLanguages(): Promise<ReturnType<typeof tableFits>[]> {
   const first = tableFits();
   click("lang-toggle");
@@ -194,7 +194,7 @@ async function tableFitsBothLanguages(): Promise<ReturnType<typeof tableFits>[]>
   return [first, second];
 }
 
-/// 重ね描き（U10・U11）。変えた後だけを止めた状態で呼ばれ、同じ状態に戻して終わる
+/// Overlay (U10, U11). Called with only SHIFTED held, and ends back in the same state
 async function checkOverlay(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
   await sleep(500);
   const look = () =>
@@ -210,16 +210,16 @@ async function checkOverlay(record: (c: string, pass: boolean, detail: unknown) 
     ) as Record<"before" | "after", { targets: string; values: string; legend: string }>;
   const shiftedHeld = look();
   await shot("U10-overlay");
-  // 変える前だけを止める
+  // Hold only ORIGINAL
   click("freeze-after");
   click("freeze-before");
   await sleep(500);
   const originalHeld = look();
-  // 両側を止める
+  // Hold both sides
   click("freeze-after");
   await sleep(300);
   const bothHeld = look();
-  // 変えた後だけを止めた状態に戻す
+  // Back to only SHIFTED held
   click("freeze-before");
   await sleep(300);
   const restored = look();
@@ -238,13 +238,13 @@ async function checkOverlay(record: (c: string, pass: boolean, detail: unknown) 
       bothHeld.before.targets === "" &&
       bothHeld.after.targets === "" &&
       bothHeld.before.legend === "" &&
-      // 止め直すとその時点の値になるので、最初と同じ値ではなく、重ねた値が止めた側の値と同じことを見る
+      // Holding again takes the values at that moment, so check that the overlaid values equal the held side's values rather than the first values
       filled(restored.before.targets) &&
       restored.before.targets === restored.after.values,
     { shiftedHeld, originalHeld, bothHeld, restored },
   );
 
-  // U11: 保存する PNG の、変える前の図の目標の高さの画素に、そのフォルマントの色の破線がある
+  // U11: in the saved PNG, the pixels at the target heights in the ORIGINAL plot have a dashed line in that formant's colour
   const grams: [HTMLCanvasElement, HTMLCanvasElement] = [q("#before-gram"), q("#after-gram")];
   const targetsCanvases: [HTMLCanvasElement, HTMLCanvasElement] = [q("#before-target"), q("#after-target")];
   const bytes = await composePng(grams, targetsCanvases, q<HTMLCanvasElement>("#spectrum"), null, null, new Date());
@@ -265,7 +265,7 @@ async function checkOverlay(record: (c: string, pass: boolean, detail: unknown) 
   const found = ys.map((y, i) => {
     if (y === null) return null;
     const want = hex(css(`--formant-${i + 1}`));
-    // 破線なので、線の高さの横の何点かを見て、どれかがその色に近ければよい
+    // It is dashed, so look at several points across the line's height and accept if any is close to the colour
     for (let x = 60; x < gw - 60; x += 3) {
       const px = c.getImageData(Math.round((10 + x) * dpr), Math.round((PNG_HEADER + y) * dpr), 1, 1).data;
       if (Math.abs(px[0] - want[0]) + Math.abs(px[1] - want[1]) + Math.abs(px[2] - want[2]) < 60) return true;
@@ -297,8 +297,8 @@ async function waitFor(cond: () => boolean, ms: number): Promise<boolean> {
   return cond();
 }
 
-/// DEVICES 欄のボタンが、取りうる文言のどれでも 1 行に収まり、欄からはみ出さないか（今の言葉で測る）。
-/// 測るために文言を一時的に入れ替え、終わったら戻す。
+/// Whether the DEVICES section buttons fit on one line and within the section with every possible label (measured in the current language).
+/// Swaps the labels temporarily to measure, and restores them afterwards.
 function devicesTextsFit(): { lang: string; id: string; text: string; fits: boolean; scrollWidth: number; clientWidth: number; height: number }[] {
   const cases: [string, string[]][] = [
     ["run", [t("start"), t("stop")]],
@@ -308,13 +308,13 @@ function devicesTextsFit(): { lang: string; id: string; text: string; fits: bool
   const out = [];
   for (const [id, texts] of cases) {
     const b = q<HTMLButtonElement>(`#${id}`);
-    // 文字は .label の span にある（アイコンの SVG を消さないよう、span だけを入れ替える）
+    // The text is in the .label span (swap only the span so the icon SVG stays)
     const label = b.querySelector<HTMLElement>(".label") ?? b;
     const keep = label.textContent;
     for (const text of texts) {
       label.textContent = text;
       const rect = b.getBoundingClientRect();
-      // 開始・停止は帯に、他は DEVICES の欄にある。入っている方の右端を越えない
+      // Start/stop is on the bar and the rest in the DEVICES section. None goes beyond the right edge of its container
       const groupRight = (b.closest(".group, .bar") as HTMLElement).getBoundingClientRect().right;
       const fits = b.scrollWidth <= b.clientWidth + 1 && rect.right <= groupRight && rect.height <= 25;
       out.push({ lang: lang(), id, text, fits, scrollWidth: b.scrollWidth, clientWidth: b.clientWidth, height: rect.height });
@@ -324,8 +324,8 @@ function devicesTextsFit(): { lang: string; id: string; text: string; fits: bool
   return out;
 }
 
-/// モニターの ON/OFF のボタン。機器を選ばずに ON にすると拒まれ、表示が OFF に戻る。
-/// モニターに選べる機器（出力と別のもの）があれば、ON と OFF が切り替わることも見る。止まっている間に行うので機器は開かない。
+/// The monitor ON/OFF button. Turning it ON without a device is refused and the display goes back to OFF.
+/// If there is a device that can be the monitor (other than the output), also checks that ON and OFF switch. Done while stopped, so no device is opened.
 async function checkMonitor(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
   const button = q<HTMLElement>("#monitor-on");
   const select = q<HTMLSelectElement>("#monitor");
@@ -362,7 +362,7 @@ async function checkMonitor(record: (c: string, pass: boolean, detail: unknown) 
     const off = !pressed("monitor-on");
     await record("monitor-toggle", on && off, { device: candidate.textContent, on, off });
   }
-  // 元の選択に戻す（OFF のまま）
+  // Restore the original choice (still OFF)
   select.value = keep;
   select.dispatchEvent(new Event("change"));
   await sleep(300);
@@ -370,7 +370,7 @@ async function checkMonitor(record: (c: string, pass: boolean, detail: unknown) 
 }
 
 
-/// CSS の変数が実際に描かれる色（rgb(...) の形）
+/// The colour a CSS variable actually renders as (rgb(...) form)
 function resolved(name: string): string {
   const probe = document.createElement("span");
   probe.style.color = `var(--${name})`;
@@ -382,7 +382,7 @@ function resolved(name: string): string {
 
 const rgbOf = (css: string) => (css.match(/\d+/g) ?? []).slice(0, 3).map(Number);
 
-/// 文字と全体の表示のキーを、利用者が押したのと同じように送る（フォーカスのある要素から）
+/// Sends text and full-view keys as if the user pressed them (from the focused element)
 function press(key: string, opts: KeyboardEventInit = {}, target: Element = document.activeElement ?? document.body): void {
   target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts }));
 }
@@ -391,10 +391,10 @@ function blur(): void {
   (document.activeElement as HTMLElement | null)?.blur?.();
 }
 
-/// 絵文字と記号のアイコン（S2 で無くしたもの）
+/// Emoji and symbol icons (removed in S2)
 const OLD_ICONS = /[\u25B6\u25A0\u23F8\u21C4\u21BA\u21F2\u21F1\u26A0]|\u{1F3A7}|\u{1F4F7}/u;
 
-/// S2: 見えているボタンに絵文字・記号のアイコンが無く、高さが 24px。アイコンを持つボタンは SVG を持つ
+/// S2: visible buttons have no emoji or symbol icons and are 24px high. Buttons with icons have an SVG
 function checkButtons(): { lang: string; bad: unknown[]; checked: number } {
   const bad: unknown[] = [];
   let checked = 0;
@@ -405,7 +405,7 @@ function checkButtons(): { lang: string; bad: unknown[]; checked: number } {
     const text = b.textContent ?? "";
     const needsIcon = b.dataset.icon !== undefined || ["run", "route", "view-toggle"].includes(b.id);
     const hasSvg = b.querySelector("svg.icon") !== null;
-    // ピッチとフォルマントの値の行（− と + と元に戻す）は、大きな値の欄に合わせて 32px
+    // The pitch and formant value rows (−, +, and reset) are 32px to match the large value field
     const expected = b.closest(".value-row") ? 32 : 24;
     if (h !== expected || OLD_ICONS.test(text) || (needsIcon && !hasSvg)) bad.push({ id: b.id || b.className, h, text, needsIcon, hasSvg });
   });
@@ -414,7 +414,7 @@ function checkButtons(): { lang: string; bad: unknown[]; checked: number } {
   return { lang: lang(), bad, checked };
 }
 
-/// S3: 図の題の凡例と、表の F1〜F4 の行の色の見本が、F1〜F4 の変数の色
+/// S3: the legends in the plot titles and the swatches in the F1–F4 table rows use the F1–F4 variable colours
 function checkLegend(): { pass: boolean; detail: unknown } {
   const want = [1, 2, 3, 4].map((n) => resolved(`formant-${n}`));
   const legends = ["before", "after"].map((side) => {
@@ -431,7 +431,7 @@ function checkLegend(): { pass: boolean; detail: unknown } {
   return { pass: legendOk && tableOk, detail: { want, legends, table } };
 }
 
-/// 上の帯（U1）: 部品がそろい、どれも窓の幅を越えず、帯の高さが 32px。キーの札は無く、止める切り替えの組の間に区切りの線がある
+/// Top bar (U1): all parts are there, none is wider than the window, and the bar is 32px high. There are no key hints, and there are dividers between the hold switch groups
 function checkBar(): { lang: string; pass: boolean; detail: unknown } {
   const bar = q(".bar").getBoundingClientRect();
   const ids = ["run", "freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open", "lang-toggle", "view-toggle"];
@@ -440,9 +440,9 @@ function checkBar(): { lang: string; pass: boolean; detail: unknown } {
     const r = el.getBoundingClientRect();
     return { id, inBar: q(".bar").contains(el), visible: el.offsetParent !== null, right: Math.round(r.right) };
   });
-  // 帯にキーの札を出さない（キーは ? の一覧で知る）
+  // No key hints on the bar (keys are learned from the ? list)
   const keyHints = q(".bar").querySelectorAll(".key").length;
-  // 組と組の間の区切りの線: 2 本で、前の切り替えの右から約 8px、次の名前の左まで約 7px
+  // Dividers between groups: 2 of them, about 8px right of the previous switch and about 7px left of the next name
   const switches = ["freeze-all", "freeze-before", "freeze-after"].map((id) => q(`[data-testid="${id}"]`));
   const dividers = switches.slice(1).map((sw, i) => {
     const group = sw.parentElement!;
@@ -469,7 +469,7 @@ function checkBar(): { lang: string; pass: boolean; detail: unknown } {
   return { lang: lang(), pass, detail: { barHeight: bar.height, parts, keyHints, dividers, messageInBar, innerWidth: window.innerWidth } };
 }
 
-/// 左の列（U2）: PITCH・FORMANT・DEVICES の 3 つの欄だけで、DEVICES に機器の部品があり、縦にスクロールしない
+/// Left column (U2): only the PITCH, FORMANT, and DEVICES sections, device controls in DEVICES, and no vertical scrolling
 function checkColumn(): { lang: string; pass: boolean; detail: unknown } {
   const controls = q(".controls");
   const groups = [...controls.querySelectorAll<HTMLElement>(":scope > .group")].filter((g) => g.offsetParent !== null);
@@ -481,7 +481,7 @@ function checkColumn(): { lang: string; pass: boolean; detail: unknown } {
   return { lang: lang(), pass, detail: { headings, inDevices, ...scroll, width: Math.round(controls.getBoundingClientRect().width) } };
 }
 
-/// 英語と日本語の両方で、帯と左の列を見る（言葉を替えて戻す）
+/// Checks the bar and the left column in both English and Japanese (switches the language and back)
 async function barAndColumnBothLanguages(): Promise<{ bar: ReturnType<typeof checkBar>[]; column: ReturnType<typeof checkColumn>[] }> {
   const bar = [checkBar()];
   const column = [checkColumn()];
@@ -494,7 +494,7 @@ async function barAndColumnBothLanguages(): Promise<{ bar: ReturnType<typeof che
   return { bar, column };
 }
 
-/// 設定の板（U3）: ボタンで開き、分析の欄が中にあり、Esc と板の外を押すと閉じ、閉じると設定のボタンにフォーカスが戻る
+/// Settings panel (U3): opens with the button, has the analysis fields inside, closes with Esc and outside clicks, and returns focus to the settings button on close
 async function checkSettings(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
   const panel = q("#settings");
   const open = () => panel.matches(":popover-open");
@@ -539,7 +539,7 @@ export async function runSelftest(dir: string): Promise<void> {
   };
   try {
     await waitFor(() => q("#cable").dataset.found !== undefined, 10_000);
-    // 起動したとき、覚えておいたピッチとフォルマント（試験では環境変数で渡した値、無ければ既定）が欄に出ている
+    // At start, the remembered pitch and formant (in tests, the values given in the environment variable, or the defaults) are in the fields
     const expected = await invoke<[number, number] | null>("selftest_expected_shift").catch(() => null);
     const shown = [Number(q<HTMLInputElement>("#pitch-num").dataset.value), Number(q<HTMLInputElement>("#formant-num").dataset.value)];
     await record(
@@ -547,7 +547,7 @@ export async function runSelftest(dir: string): Promise<void> {
       expected !== null && Math.abs(shown[0] - expected[0]) < 1e-6 && Math.abs(shown[1] - expected[1]) < 1e-6,
       { expected, shown, pitchText: q<HTMLInputElement>("#pitch-num").value, formantText: q<HTMLInputElement>("#formant-num").value },
     );
-    // 言葉の切り替え: 文が替わり、もう一度で戻る（選んだ言葉は試験の設定のディレクトリに覚える）
+    // Language switch: the text changes and switching again changes it back (the chosen language is remembered in the test config directory)
     const startEn = q("#run").textContent;
     const langBefore = document.documentElement.lang;
     click("lang-toggle");
@@ -566,15 +566,15 @@ export async function runSelftest(dir: string): Promise<void> {
       startEn,
       startOther,
     });
-    // DEVICES 欄のボタンの文言が、どちらの言葉でも 1 行に収まり、列からはみ出さない（D5）
+    // The DEVICES section button labels fit on one line and within the column in both languages (D5)
     const overflowing = [...fitOther, ...fitBack].filter((f) => !f.fits);
     await record("devices-fit", overflowing.length === 0, { overflowing, checked: fitOther.length + fitBack.length });
-    // 絵文字・記号のアイコンが無く、どのボタンも高さ 24px（S2）
+    // No emoji or symbol icons, and every button is 24px high (S2)
     await record("S2-icons", buttonsOther.bad.length === 0 && buttonsBack.bad.length === 0 && buttonsOther.checked > 10, {
       other: buttonsOther,
       back: buttonsBack,
     });
-    // F1〜F4 の凡例と表の色の見本（S3）、スペクトルの dB の目盛り（S6）、止める切り替えの並び（U1。前の S9 を置き換えた）
+    // The F1–F4 legend and table swatches (S3), the spectrum dB scale (S6), and the hold switch layout (U1, which replaced S9)
     const legend = checkLegend();
     await record("S3-legend", legend.pass, legend.detail);
     const dbTicksText = q<HTMLCanvasElement>("#spectrum").dataset.dbTicks;
@@ -585,11 +585,11 @@ export async function runSelftest(dir: string): Promise<void> {
       await record("U1-bar", bar.every((b) => b.pass), { size: "1280x860", bar });
       await record("U2-column", column.every((c) => c.pass), { size: "1280x860", column });
       await checkSettings(record);
-      // U9: 状態の知らせは帯の 1 か所で、左の列に知らせの文は無い
+      // U9: the status message is in one place on the bar, and the left column has no message text
       await record("U9-status", q(".bar").contains(q("#message")) && q(".controls").querySelector(".message") === null, {});
     }
 
-    // キー操作の一覧: ? で開き、開いている間は他のキーが効かず、Esc で閉じる（S12）
+    // Keyboard shortcuts: ? opens the list, other keys do nothing while it is open, and Esc closes it (S12)
     blur();
     const dialog = q<HTMLDialogElement>('[data-testid="shortcuts"]');
     const pitchBeforeDialog = q<HTMLInputElement>("#pitch-num").value;
@@ -619,18 +619,18 @@ export async function runSelftest(dir: string): Promise<void> {
       closedByQuestion: !dialog.open,
     });
 
-    // モニターはチェックボックスでなくトグルボタン（D3）
+    // The monitor is a toggle button, not a checkbox (D3)
     await checkMonitor(record);
-    // 簡易表示: 右の表示と分析・一時停止の欄が消え、もう一度で戻る
+    // Compact view: the display on the right and the analysis and hold sections disappear, and switching again brings them back
     q("#message").textContent = "leftover";
     click("view-toggle");
     await sleep(2500);
     const compactHidden = getComputedStyle(q("#screen")).display === "none";
     const saveHidden = q<HTMLElement>("#save").offsetParent === null;
     const messageCleared = (q("#message").textContent ?? "") === "";
-    // 窓が左の列の中身の高さに合い、下に大きな余白が残らない
+    // The window fits the content height of the left column, leaving no large space below
     const spare = window.innerHeight - q(".controls").getBoundingClientRect().bottom;
-    // 横にもはみ出さない（長い機器の名前でも）
+    // No horizontal overflow either (even with a long device name)
     const overflowX = document.documentElement.scrollWidth - window.innerWidth;
     const controlsRight = q(".controls").getBoundingClientRect().right;
     const controlsRect = q(".controls").getBoundingClientRect();
@@ -642,7 +642,7 @@ export async function runSelftest(dir: string): Promise<void> {
       controlsScroll: q(".controls").scrollHeight,
       lastMessage: q("#message").textContent,
     };
-    // U12: 簡易表示では止める・保存・設定・キー操作が見えず、欄は全体の表示と同じ順で、左の列の幅は全体の表示と同じ 250px
+    // U12: in the compact view, hold, save, settings, and keyboard shortcuts are hidden, the sections are in the same order as the full view, and the left column is 250px wide as in the full view
     const compactU12 = {
       hidden: ["freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open"].every((id) => q(`[data-testid="${id}"]`).offsetParent === null),
       column: checkColumn().detail,
@@ -666,11 +666,11 @@ export async function runSelftest(dir: string): Promise<void> {
     }
 
     if (q("#cable").dataset.found === "false") {
-      // VB-CABLE が無いときは、出力が空で開始できない（C4）
+      // Without VB-CABLE, the output is empty and it cannot start (C4)
       await record("C4", disabled("run") && q<HTMLSelectElement>("#output").value === "", {
         runDisabled: disabled("run"),
       });
-      // U5: 出力を選ぶ案内が図の中に出て、画面のどこにも VB-CABLE の語が無い（いつも使う前提にしない）
+      // U5: a guide to choose an output appears in the plot, and the word VB-CABLE appears nowhere on screen (it is not assumed)
       const guide = q("#plot-guide").textContent ?? "";
       const mentions = /VB-?CABLE/i.test(document.body.innerText);
       await shot("U5-guide-before-start");
@@ -678,14 +678,14 @@ export async function runSelftest(dir: string): Promise<void> {
     } else {
       const out = q<HTMLSelectElement>("#output");
       await record("cable-found", out.value !== "", { output: out.selectedOptions[0]?.textContent });
-      // U5: 出力が選ばれていて始める前は「開始を押す」案内が出て、開始すると消える
+      // U5: with an output chosen and before starting, a "press start" guide appears and disappears on start
       const guideBefore = q("#plot-guide").textContent ?? "";
       await shot("U5-guide-before-start");
       click("run");
       await sleep(5000);
       const guideAfter = q("#plot-guide").textContent ?? "";
       await record("U5-guide", guideBefore === t("guide.start") && guideAfter === "", { guideBefore, guideAfter });
-      // 開始と停止は 1 つのボタン。動いている間は STOP を出し、IN と OUT を選べない（D1）
+      // Start and stop share one button. While running it shows STOP, and IN and OUT cannot be changed (D1)
       const whileRunning = {
         running: q("#run").dataset.running,
         text: q("#run").textContent,
@@ -695,7 +695,7 @@ export async function runSelftest(dir: string): Promise<void> {
       const stats = JSON.parse(q("#test-stats").textContent || "{}");
       await record("B6", stats.drawsPerSecond >= 30 && stats.receiveToDrawMs <= 100, {
         ...stats,
-        note: "受けてから描くまでの遅れ。音から分析の結果が届くまでの遅れは含まない",
+        note: "Delay from receiving to drawing. Does not include the delay from the sound to the analysis result arriving",
       });
       let [b, a] = f0Row();
       await record("start-0st", near(b, 150, 1) && near(a, 150, 1), { before: b, after: a });
@@ -714,7 +714,7 @@ export async function runSelftest(dir: string): Promise<void> {
       const saveEnabled = !disabled("save");
       await record("B5-freeze", frozen("before") && frozen("after") && JSON.stringify(held) === JSON.stringify(still), { held, still });
 
-      // 止めた図: 2px の紫の枠、札、切り替えの HOLD。図の大きさは変わらない（S8）
+      // A held plot: a 2px purple border, a label, and HOLD on the switch. The plot size does not change (S8)
       const holdColor = resolved("hold");
       const heldLook = ["before", "after"].map((side) => {
         const panel = q(`#${side}-panel`);
@@ -743,7 +743,7 @@ export async function runSelftest(dir: string): Promise<void> {
         { holdColor, heldLook, switchesPressed, holdSegs, sizeLive, sizeHeld },
       );
 
-      // 右端の値が数値の表の値と同じ（S4）
+      // The values at the right edge equal the values in the table (S4)
       const tableFormants = (col: number) =>
         [...document.querySelectorAll<HTMLTableRowElement>('[data-testid="numbers"] tr')]
           .filter((r) => r.querySelector(".swatch"))
@@ -760,13 +760,13 @@ export async function runSelftest(dir: string): Promise<void> {
         gutter,
       );
 
-      // 倍音の点が --harmonic の色で、高さが 1px（拡大率を掛けた画素）（S5）
+      // Harmonic dots are in the --harmonic colour and 1px high (in pixels times the scale factor) (S5)
       {
         const cv = q<HTMLCanvasElement>("#before-gram");
         const [hr, hg, hb] = rgbOf(resolved("harmonic"));
         const data = cv.getContext("2d")!.getImageData(0, 0, cv.width, cv.height).data;
         const dpr = window.devicePixelRatio || 1;
-        // 値の欄の手前の、最新の列を縦に見る
+        // Look down the latest column, just before the value column
         const x = cv.width - Math.round(44 * dpr) - 1;
         let pixels = 0;
         let longest = 0;
@@ -783,7 +783,7 @@ export async function runSelftest(dir: string): Promise<void> {
         await record("S5-harmonics", pixels > 0 && longest <= Math.max(1, Math.round(dpr)), { pixels, longest, dpr, harmonic: [hr, hg, hb] });
       }
 
-      // 図の上のカーソル: 周波数（スペクトルでは dB も）の札がマウスの位置の値を出し、外すと消える（S7）
+      // Cursor over the plots: the label shows the frequency (and dB on the spectrum) at the pointer position and disappears when it leaves (S7)
       {
         const axisMax = Number(q<HTMLInputElement>("#ceiling").value) * Math.max(1, shiftValue("formant"));
         const hover = (id: string, fx: number, fy: number) => {
@@ -814,11 +814,11 @@ export async function runSelftest(dir: string): Promise<void> {
             Math.abs(kHz(spText.hz) - kHz(spWant.hz)) <= 0.02 &&
             Math.abs(dB(spText.db) - dB(spWant.db)) <= 1 &&
             cleared,
-          { axisMax, gramText, gramWant, spText, spWant, cleared, note: "PNG は図の canvas だけから作り、カーソルを描く重ねた canvas を使わない（png.ts の composePng）" },
+          { axisMax, gramText, gramWant, spText, spWant, cleared, note: "The PNG is made only from the plot canvases, not the overlaid canvas the cursor is drawn on (composePng in png.ts)" },
         );
       }
 
-      // 止めている間に図の大きさが変わっても（窓の最小化や大きさの変更）、描いた点が残る
+      // Drawn dots remain when the plot size changes while held (minimising or resizing the window)
       const inked = () => {
         const cv = q<HTMLCanvasElement>("#before-gram");
         const data = cv.getContext("2d")!.getImageData(0, 0, cv.width, cv.height).data;
@@ -859,13 +859,13 @@ export async function runSelftest(dir: string): Promise<void> {
       );
 
       click("freeze-after");
-      // 片側だけ止めても、札の分で題の行が高くならず、左右の図の高さ（同じ高さが同じ周波数）がそろう（S8）
+      // Holding one side does not make the title row taller with the label, and the left and right plots stay the same height (the same height means the same frequency) (S8)
       {
         const gramHeights = ["before", "after"].map((side) => q<HTMLCanvasElement>(`#${side}-gram`).getBoundingClientRect().height);
         const held = ["before", "after"].map((side) => q(`#${side}-panel`).dataset.held);
         await record("S8-one-side", gramHeights[0] === gramHeights[1] && held[0] === "false" && held[1] === "true", { gramHeights, held });
       }
-      // U10・U11: 片側だけを止めると、動いている側の図に止めた側の F1〜F4 を破線で重ね、題に凡例を出す。PNG にも写る
+      // U10, U11: holding one side overlays the held side's F1–F4 as dashed lines on the live side's plot and shows a legend in the title. It also appears in the PNG
       await checkOverlay(record);
       setNumber("pitch-num", 7);
       await sleep(3000);
@@ -879,7 +879,7 @@ export async function runSelftest(dir: string): Promise<void> {
       const none = !frozen("before") && !frozen("after");
       await record("B8", both && none, { both, none });
 
-      // 出力とモニターに流す音の切り替え（1 つのボタンで両方。押すたびに入れ替わる。D4）
+      // Switching the audio sent to the output and monitor (one button for both, swapping on each press. D4)
       const routeButtons = document.querySelectorAll("button[data-testid^=\"route\"]").length;
       const first = q("#route").dataset.source;
       click("route");
@@ -898,7 +898,7 @@ export async function runSelftest(dir: string): Promise<void> {
         message: q("#message").textContent,
       });
 
-      // 矢印のキーでピッチとフォルマントが決めた幅だけ変わる。数の欄に入力しているときは変わらない（S10）
+      // Arrow keys change the pitch and formant by fixed steps. Nothing changes while typing in a number field (S10)
       {
         blur();
         const num = (id: string) => shiftValue(id === "pitch-num" ? "pitch" : "formant");
@@ -915,12 +915,12 @@ export async function runSelftest(dir: string): Promise<void> {
         const f1 = num("formant-num");
         press("ArrowRight", { shiftKey: true });
         const f2 = num("formant-num");
-        // スライダーは値を刻み（0.001）に丸めて持つので、刻みの幅までの差を許す
+        // The slider keeps values rounded to its step (0.001), so allow a difference up to the step
         const sliderMatches = Math.abs(Number(q<HTMLInputElement>("#formant").value) - formantToSlider(shiftValue("formant"))) <= 0.001;
         press("ArrowLeft", { shiftKey: true });
         press("ArrowLeft");
         const f3 = num("formant-num");
-        // 値の欄にフォーカスがあるときは、欄の ↑ だけが効く（全体のキーと 2 重に動かない）
+        // With focus in the value field, only the field's ↑ works (no double change with the global keys)
         const field = q<HTMLInputElement>("#pitch-num");
         field.focus();
         press("ArrowUp", {}, field);
@@ -935,7 +935,7 @@ export async function runSelftest(dir: string): Promise<void> {
         );
       }
 
-      // 0 で全体を止め、S で保存、Space で戻す。止めていないときの S は何もしない（S9・S11）
+      // 0 holds all, S saves, Space resumes. S does nothing while not held (S9, S11)
       {
         blur();
         q("#message").textContent = "";
@@ -961,7 +961,7 @@ export async function runSelftest(dir: string): Promise<void> {
         });
       }
 
-      // 画面に収まり、縦に流さなくてよい
+      // Fits on screen without vertical scrolling
       const root = document.documentElement;
       await record("fits-window", root.scrollHeight <= window.innerHeight + 1, { scrollHeight: root.scrollHeight, innerHeight: window.innerHeight });
 
@@ -988,7 +988,7 @@ export async function runSelftest(dir: string): Promise<void> {
         { runButtons, whileRunning, afterStop },
       );
     }
-    // 最小の窓（960×640）にして撮り、元の大きさに戻す。配置が小さい窓に収まるかを画像で見るため
+    // Shrink to the smallest window (960×640), take a shot, and restore the size, to see in the image whether the layout fits a small window
     {
       const small = await resizeWindow(960, 640);
       await record("window-960x640", small.ok, small);

@@ -1,11 +1,11 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 
-// Tauri の画面。開発のときは 5173 番で待ち、build したものは ../frontend/dist に書く
+// The Tauri screen. Serves on port 5173 during development and writes the build to ../frontend/dist
 export default defineConfig({
   clearScreen: false,
   server: { port: 5173, strictPort: true },
   build: { target: "es2022", outDir: "dist", emptyOutDir: true },
-  // 単体の試験で style.css を ?raw で読むため、CSS を空にしない
+  // Unit tests read style.css with ?raw, so do not empty the CSS
   test: { css: true },
 });

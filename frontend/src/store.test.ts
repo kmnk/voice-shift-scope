@@ -23,7 +23,7 @@ function pair(time: number, beforeF0: number, afterF0: number, semitones = 0): P
 }
 
 describe("FreezeStore", () => {
-  it("B5: 全体を止めると前後とも変わらず、もう一度で最新に戻る", () => {
+  it("B5: holding all keeps both unchanged, and doing it again returns to the latest", () => {
     const s = new FreezeStore();
     s.receive(pair(1, 150, 200));
     s.toggleAll();
@@ -36,7 +36,7 @@ describe("FreezeStore", () => {
     expect(s.view("after")!.frame.f0).toBe(160);
   });
 
-  it("B7: 変えた後だけを止めると、前は動き続け、時刻が違う印が付く", () => {
+  it("B7: holding only shifted keeps original moving and marks the times as different", () => {
     const s = new FreezeStore();
     s.receive(pair(1, 150, 200));
     s.toggle("after");
@@ -49,7 +49,7 @@ describe("FreezeStore", () => {
     expect(s.timesDiffer()).toBe(false);
   });
 
-  it("B7: 変える前だけを止めても同じ", () => {
+  it("B7: the same when holding only original", () => {
     const s = new FreezeStore();
     s.receive(pair(1, 150, 200));
     s.toggle("before");
@@ -58,7 +58,7 @@ describe("FreezeStore", () => {
     expect(s.view("after")!.frame.f0).toBe(160);
   });
 
-  it("B8: 片方を止めた後の全体の操作は両方を止め、もう一度で両方が動く", () => {
+  it("B8: ALL after holding one side holds both, and again resumes both", () => {
     const s = new FreezeStore();
     s.receive(pair(1, 150, 200));
     s.toggle("after");
@@ -73,7 +73,7 @@ describe("FreezeStore", () => {
     expect(s.view("before")!.time).toBe(3);
   });
 
-  it("止めた側は、止めた時の設定を持ち続ける", () => {
+  it("a held side keeps the settings from when it was held", () => {
     const s = new FreezeStore();
     s.receive(pair(1, 150, 200, 5));
     s.toggle("after");
@@ -82,7 +82,7 @@ describe("FreezeStore", () => {
     expect(s.view("before")!.settings.semitones).toBe(7);
   });
 
-  it("無声の間は直前の値を薄く残す", () => {
+  it("keeps the last value faintly while unvoiced", () => {
     const s = new FreezeStore();
     for (let i = 0; i < 25; i++) s.receive(pair(i, 150, 200));
     for (let i = 25; i < 50; i++) {
