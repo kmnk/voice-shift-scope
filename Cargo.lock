@@ -4096,7 +4096,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "voice-app"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "thiserror 2.0.21",
  "voice-domain",
@@ -4104,7 +4104,7 @@ dependencies = [
 
 [[package]]
 name = "voice-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "hound",
@@ -4116,14 +4116,14 @@ dependencies = [
 
 [[package]]
 name = "voice-domain"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "voice-dsp"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "cc",
  "rustfft",
@@ -4132,7 +4132,7 @@ dependencies = [
 
 [[package]]
 name = "voice-runtime"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "cpal",
  "ringbuf",
@@ -4142,7 +4142,7 @@ dependencies = [
 
 [[package]]
 name = "voice-tauri"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "hound",
  "png 0.18.1",
