@@ -185,7 +185,7 @@ const dict = {
     "overlay.legend": "停止中 {t} s（{side}）",
     "panel.spectrum": "スペクトル",
     "panel.values": "数値（250 ms の中央値）",
-    "times.differ": "止めたタイミングが違う",
+    "times.differ": "タイミングが違う",
     "row.f0": "F0 (Hz)",
     "row.formant": "F{n} Hz（帯域幅）",
     "row.observed": "観測できた倍音",
