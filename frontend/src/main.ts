@@ -209,10 +209,6 @@ function draw(): void {
     legend.hidden = !overlay;
     (legend.querySelector(".label") as HTMLElement).textContent = overlay && other ? t("overlay.legend", { t: other.time.toFixed(2), side: t(otherSide === "before" ? "original" : "shifted") }) : "";
   }
-  const differ = $("times-differ");
-  if (store.timesDiffer()) setContent(differ, "warn", t("times.differ"));
-  else differ.replaceChildren();
-  differ.dataset.differ = String(store.timesDiffer());
   $("ceiling-note").textContent = t("ceiling.note", { hz: afterCeiling.toFixed(0) });
 }
 

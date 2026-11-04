@@ -200,13 +200,12 @@ input[type="range"]::-webkit-slider-thumb {
 /* Hold label: white text on purple */
 .state:empty { display: none; }
 .state.frozen { background: var(--hold); color: var(--on-fill); font-size: var(--text-s); line-height: 14px; padding: 1px 6px; border-radius: var(--radius-s); flex: none; }
-.differs { color: var(--danger); font-weight: normal; display: inline-flex; align-items: center; gap: 2px; }
-.differs:empty { display: none; }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th, td { padding: 0 2px; text-align: right; border-bottom: 1px solid var(--grid); line-height: 1.35; white-space: nowrap; }
 th:first-child, td:first-child { text-align: left; padding-left: 0; }
 td .swatch { margin-right: 3px; vertical-align: 0; }
 td.stale { color: var(--muted); opacity: 0.6; }
+td.held-time { color: var(--hold); }
 
 /* Keyboard shortcuts */
 dialog.shortcuts { width: 360px; box-sizing: border-box; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--ink); box-shadow: 0 4px 16px var(--shadow); }

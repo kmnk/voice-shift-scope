@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { renderTable } from "./render";
 import { FreezeStore } from "./store";
 import type { Frame, Pair } from "./types";
 
@@ -36,17 +37,18 @@ describe("FreezeStore", () => {
     expect(s.view("after")!.frame.f0).toBe(160);
   });
 
-  it("B7: holding only shifted keeps original moving and marks the times as different", () => {
+  it("B7: holding only shifted keeps original moving and keeps the held time", () => {
     const s = new FreezeStore();
     s.receive(pair(1, 150, 200));
     s.toggle("after");
     s.receive(pair(2, 120, 160));
     expect(s.view("after")!.frame.f0).toBe(200);
     expect(s.view("before")!.frame.f0).toBe(120);
-    expect(s.timesDiffer()).toBe(true);
+    expect(s.view("after")!.time).toBe(1);
+    expect(s.view("before")!.time).toBe(2);
     s.toggle("after");
     expect(s.view("after")!.frame.f0).toBe(160);
-    expect(s.timesDiffer()).toBe(false);
+    expect(s.view("after")!.time).toBe(2);
   });
 
   it("B7: the same when holding only original", () => {
@@ -90,5 +92,26 @@ describe("FreezeStore", () => {
     }
     expect(s.view("before")!.summary!.f0).toBe(150);
     expect(s.view("before")!.summary!.stale).toBe(true);
+  });
+});
+
+describe("values table time row", () => {
+  const timeRow = (s: FreezeStore) => {
+    const table = { innerHTML: "" } as HTMLTableElement;
+    renderTable(table, s.view("before"), s.view("after"));
+    return table.innerHTML.match(/<tr data-row="time">.*?<\/tr>/)![0];
+  };
+
+  it("B7: shows the same time on both sides while live, and the held time in the held colour", () => {
+    const s = new FreezeStore();
+    s.receive(pair(1, 150, 200));
+    expect(timeRow(s)).toBe('<tr data-row="time"><td>Time (s)</td><td data-side="before" data-frozen="false">1.00</td><td data-side="after" data-frozen="false">1.00</td></tr>');
+    s.toggle("after");
+    s.receive(pair(2.5, 120, 160));
+    expect(timeRow(s)).toBe('<tr data-row="time"><td>Time (s)</td><td data-side="before" data-frozen="false">2.50</td><td data-side="after" data-frozen="true" class="held-time">1.00</td></tr>');
+  });
+
+  it("shows a dash before any values arrive", () => {
+    expect(timeRow(new FreezeStore())).toContain('data-frozen="false">—</td>');
   });
 });

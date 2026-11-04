@@ -80,11 +80,4 @@ export class FreezeStore {
       if (both || !this.isFrozen(side)) this.toggle(side);
     }
   }
-
-  /// Whether the original and shifted displays show different times (to mark the ratio).
-  timesDiffer(): boolean {
-    const b = this.view("before");
-    const a = this.view("after");
-    return !!b && !!a && Math.abs(b.time - a.time) > 1e-6;
-  }
 }

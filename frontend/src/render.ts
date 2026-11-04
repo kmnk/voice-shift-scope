@@ -418,17 +418,21 @@ const FORMANT_ROW_FIRST = 2;
 export function renderTable(table: HTMLTableElement, before: SideView | null, after: SideView | null): void {
   const rows = tableRows(before?.summary ?? null, after?.summary ?? null);
   const stale = [before?.summary?.stale, after?.summary?.stale];
-  table.innerHTML = rows
-    .map((r, i) => {
-      const tag = i === 0 ? "th" : "td";
-      const formant = i - FORMANT_ROW_FIRST;
-      const swatch =
-        formant >= 0 && formant < 4
-          ? `<span class="swatch" data-formant="${formant + 1}" style="background: var(--formant-${formant + 1})"></span>`
-          : "";
-      return `<tr>${r
-        .map((cell, j) => `<${tag}${j > 0 && stale[j - 1] ? ' class="stale"' : ""}>${j === 0 ? swatch : ""}${cell}</${tag}>`)
-        .join("")}</tr>`;
-    })
-    .join("");
+  const html = rows.map((r, i) => {
+    const tag = i === 0 ? "th" : "td";
+    const formant = i - FORMANT_ROW_FIRST;
+    const swatch =
+      formant >= 0 && formant < 4
+        ? `<span class="swatch" data-formant="${formant + 1}" style="background: var(--formant-${formant + 1})"></span>`
+        : "";
+    return `<tr>${r
+      .map((cell, j) => `<${tag}${j > 0 && stale[j - 1] ? ' class="stale"' : ""}>${j === 0 ? swatch : ""}${cell}</${tag}>`)
+      .join("")}</tr>`;
+  });
+  // Under the column names: the time of each column's values, so a held column shows it is from another moment.
+  // Screen only; the PNG already has each side's time in its top lines
+  const time = (side: "before" | "after", v: SideView | null) =>
+    `<td data-side="${side}" data-frozen="${v?.frozen ?? false}"${v?.frozen ? ' class="held-time"' : ""}>${v ? v.time.toFixed(2) : "—"}</td>`;
+  html.splice(1, 0, `<tr data-row="time"><td>${t("row.time")}</td>${time("before", before)}${time("after", after)}</tr>`);
+  table.innerHTML = html.join("");
 }

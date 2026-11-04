@@ -1035,6 +1035,9 @@ export async function runSelftest(dir: string): Promise<void> {
         { liveLook },
       );
 
+      // The time row of the values table: both sides show the same time while live (B7)
+      const timeCells = () => ["before", "after"].map((side) => q(`#numbers tr[data-row="time"] td[data-side="${side}"]`).textContent ?? "");
+      const liveTimes = timeCells();
       click("freeze-after");
       // Holding one side does not make the title row taller with the label, and the left and right plots stay the same height (the same height means the same frequency) (S8)
       {
@@ -1047,8 +1050,13 @@ export async function runSelftest(dir: string): Promise<void> {
       setNumber("pitch-num", 7);
       await sleep(3000);
       [b, a] = f0Row();
-      const differ = q("#times-differ").dataset.differ === "true";
-      await record("B7", near(a, 150 * 2 ** (5 / 12), 1.5) && near(b, 150, 1) && differ, { before: b, after: a, differ });
+      // The held column's time is the time in the held plot's label, the live column's is another, and there is no separate note
+      const heldTimes = timeCells();
+      const heldLabel = q("#after-state").textContent ?? "";
+      const labelTime = heldLabel.match(/\d+\.\d{2}/)?.[0] ?? "";
+      const timesOk = liveTimes[0] === liveTimes[1] && liveTimes[0] !== "—" && heldTimes[1] === labelTime && heldTimes[0] !== heldTimes[1];
+      const noNote = document.querySelector("#times-differ, .differs") === null;
+      await record("B7", near(a, 150 * 2 ** (5 / 12), 1.5) && near(b, 150, 1) && timesOk && noNote, { before: b, after: a, liveTimes, heldTimes, heldLabel, noNote });
 
       click("freeze-all");
       const both = frozen("before") && frozen("after");
