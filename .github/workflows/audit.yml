@@ -1,0 +1,37 @@
+name: audit
+
+# Checks the dependencies against the published advisories.
+# It also runs every week, so an advisory published after a change still turns this workflow red.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # Warnings (unmaintained, unsound, yanked) also fail. The ignored ones are in crates that are
+      # not in the Windows build (`cargo tree --target x86_64-pc-windows-msvc -i <crate>` prints nothing):
+      # RUSTSEC-2024-0370 proc-macro-error (unmaintained), RUSTSEC-2024-0429 glib (unsound)
+      - run: cargo audit --deny warnings --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2024-0429
+
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Only the dependencies that go into the app. The development tools (vitest, vite) are not in the exe
+      - name: npm audit
+        working-directory: frontend
+        run: npm audit --omit=dev
