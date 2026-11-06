@@ -167,6 +167,8 @@ input[type="range"]::-webkit-slider-thumb {
 .hold-switch[aria-pressed="true"] .seg.hold { background: var(--hold); color: var(--on-fill); }
 /* Icon-only button (opens the keyboard shortcuts) */
 .icon-button { width: 24px; padding: 0; }
+/* An icon-only button set with setContent() has an empty .label; without this the gap beside it pushes the icon 2px left */
+button > .label:empty { display: none; }
 
 /* Lock (L1–L8 in docs/criteria.md): an icon-only button at the start of the bar, then a 1px × 16px divider.
    8px from the button to start/stop: 4px gap, the line, and 3px (the line is moved by 1px to sit on whole pixels, as with the hold dividers) */
