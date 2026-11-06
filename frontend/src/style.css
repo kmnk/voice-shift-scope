@@ -168,6 +168,15 @@ input[type="range"]::-webkit-slider-thumb {
 /* Icon-only button (opens the keyboard shortcuts) */
 .icon-button { width: 24px; padding: 0; }
 
+/* Lock (L1–L8 in docs/criteria.md): an icon-only button at the start of the bar, then a 1px × 16px divider.
+   8px from the button to start/stop: 4px gap, the line, and 3px (the line is moved by 1px to sit on whole pixels, as with the hold dividers) */
+.lock-divider { width: 1px; height: 16px; background: var(--line); margin-right: -1px; }
+.lock[aria-pressed="true"], .lock[aria-pressed="true"]:hover { background: var(--ink); border-color: var(--ink); color: var(--on-fill); }
+/* While locked, the controls on the bar and in the left column are only dimmed (colours, sizes, and positions stay).
+   The lock button, the divider, the status message, the frames of the left column sections, and the display on the right are not dimmed */
+body.locked .bar > :not(.lock, .lock-divider, .message),
+body.locked .controls .group > * { opacity: 0.4; }
+
 /* Display on the right: two spectrograms of equal width in the upper row, and the spectrum and values table in the lower row (.lower).
    The lower row is the larger of 2/5 of the display and the table's content height (the table never scrolls vertically) */
 .screen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 3fr) minmax(min-content, 2fr); gap: var(--space-2); min-height: 0; }

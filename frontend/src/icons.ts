@@ -6,6 +6,8 @@ import {
   Camera,
   CircleQuestionMark,
   Headphones,
+  Lock,
+  LockOpen,
   Maximize2,
   Minimize2,
   Play,
@@ -31,6 +33,8 @@ const ICONS = {
   settings: Settings,
   close: X,
   warn: TriangleAlert,
+  lock: Lock,
+  unlock: LockOpen,
 } satisfies Record<string, IconNode>;
 
 export type IconName = keyof typeof ICONS;

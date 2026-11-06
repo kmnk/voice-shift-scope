@@ -7,8 +7,11 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <!-- Top bar: controls used while watching the plots (start/stop, hold, save) and the status message; settings, keyboard shortcuts, language, and view on the right -->
+    <!-- Top bar: the lock first, then controls used while watching the plots (start/stop, hold, save) and the status message; settings, keyboard shortcuts, language, and view on the right.
+         The lock is pressed only with the mouse (tabindex -1, and main.ts keeps it from taking focus) -->
     <header class="bar">
+      <button id="lock" class="icon-button lock" data-testid="lock" aria-pressed="false" tabindex="-1"></button>
+      <span class="lock-divider" aria-hidden="true"></span>
       <button id="run" class="run" data-testid="run"></button>
       <div class="hold-group full-only">
         <span class="hold-name" data-i18n="hold.row.all"></span>
