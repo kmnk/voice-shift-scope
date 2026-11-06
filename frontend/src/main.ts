@@ -4,6 +4,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { applyStatic, hasKey, lang, setLang, t, type Lang } from "./i18n";
 import { Cursor } from "./cursor";
 import { icon, setContent, type IconName } from "./icons";
+import { LOCK_GUARDED_EVENTS, blocksWhileLocked } from "./lock";
 import { composePng, fileName } from "./png";
 import { Spectrogram, drawSpectrum, renderTable } from "./render";
 import { STEP, fillRange, formatShift, formantToSlider, normalize, parseShift, sliderToFormant, type ShiftTarget } from "./shift";
@@ -215,6 +216,7 @@ function draw(): void {
 /// When the language changes, also rewrites dynamically written text.
 function refreshTexts(): void {
   applyStatic();
+  showLock();
   // The view switch is an icon-only button. Its name is in the tooltip and for screen readers
   const viewToggle = $("view-toggle");
   setContent(viewToggle, view === "full" ? "compact" : "full", "");
@@ -376,7 +378,73 @@ function showStatus(s: Status): void {
   if (parts.length > 0) message(parts.join(" / "), "status");
 }
 
+/// The lock (L1–L8 in docs/criteria.md). Not remembered: the app always starts unlocked
+let locked = false;
+/// The analysis settings when locked, to put back into the fields if code changes them while locked
+let analysisWhenLocked: string[] = [];
+const ANALYSIS_FIELDS = ["ceiling", "threshold", "relative-limit"];
+
+/// What the lock makes inert: everything on the bar but the lock, its divider, and the status message, and the left column
+function lockedParts(): HTMLElement[] {
+  const bar = [...document.querySelector(".bar")!.children].filter((el) => !el.matches(".lock, .lock-divider, .message")) as HTMLElement[];
+  return [...bar, document.querySelector(".controls") as HTMLElement];
+}
+
+function showLock(): void {
+  const button = $("lock");
+  button.setAttribute("aria-pressed", String(locked));
+  setContent(button, locked ? "lock" : "unlock", "");
+  button.title = t(locked ? "lock.off" : "lock.on");
+  button.setAttribute("aria-label", button.title);
+}
+
+/// Locking closes the settings panel, puts half-typed text in the value fields back to the current values (it does not become a value),
+/// and takes focus away. The order matters: locked is set first, so the change a value field sends when it loses focus is stopped
+function setLocked(on: boolean): void {
+  locked = on;
+  if (on) {
+    closeSettings();
+    showShift("pitch");
+    showShift("formant");
+    analysisWhenLocked = ANALYSIS_FIELDS.map((id) => $<HTMLInputElement>(id).value);
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  }
+  for (const el of lockedParts()) el.inert = on;
+  document.body.classList.toggle("locked", on);
+  showLock();
+}
+
+/// Shows the current values again in the controls (after code changed a field, slider, or select while locked)
+function restoreControls(): void {
+  showShift("pitch");
+  showShift("formant");
+  if (devices) showDevices(devices);
+  ANALYSIS_FIELDS.forEach((id, i) => {
+    if (analysisWhenLocked[i] !== undefined) $<HTMLInputElement>(id).value = analysisWhenLocked[i];
+  });
+}
+
+function wireLock(): void {
+  const button = $("lock");
+  // Pressed only with the mouse: it does not take focus, so Space and Enter never press it
+  button.addEventListener("mousedown", (e) => e.preventDefault());
+  button.addEventListener("click", () => setLocked(!locked));
+  // inert stops the real mouse and focus. Keys, and clicks and values sent by code (click(), dispatchEvent), are stopped here,
+  // in the capture phase on window, before any other listener
+  const guard = (e: Event) => {
+    if (!locked) return;
+    const k = e as KeyboardEvent;
+    const onLockButton = e.target instanceof Node && button.contains(e.target);
+    if (!blocksWhileLocked({ type: e.type, ctrlKey: k.ctrlKey, altKey: k.altKey, metaKey: k.metaKey, onLockButton })) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.type === "input" || e.type === "change") restoreControls();
+  };
+  for (const type of LOCK_GUARDED_EVENTS) window.addEventListener(type, guard, { capture: true, passive: false });
+}
+
 function wire(): void {
+  wireLock();
   $("run").addEventListener("click", async () => {
     if (!devices?.running) {
       await start();

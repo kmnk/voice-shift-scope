@@ -490,6 +490,266 @@ async function checkKeys(record: (c: string, pass: boolean, detail: unknown) => 
 }
 
 
+/// The lock (L1–L7). Called while stopped, in the full view and unlocked, and ends in the same state.
+/// The tests send synthetic events, which do not run the browser's default actions (focus moving with Tab, Space pressing a button),
+/// so for keys defaultPrevented stands in for them, and for the mouse the inert attribute on the parts does
+async function checkLock(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
+  const lock = q<HTMLButtonElement>("#lock");
+  const isLocked = () => pressed("lock") && document.body.classList.contains("locked");
+  const rect = (el: Element) => el.getBoundingClientRect();
+  const key = (k: string, opts: KeyboardEventInit, target: Element): boolean => {
+    const ev = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...opts });
+    target.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  };
+  // L1: the lock is first on the bar, then a 1px × 16px divider, then start/stop 8px to the right of the lock
+  const layout = () => {
+    const bar = q(".bar");
+    const first = bar.firstElementChild as HTMLElement | null;
+    const second = first?.nextElementSibling as HTMLElement | null;
+    const third = second?.nextElementSibling as HTMLElement | null;
+    const b = rect(lock);
+    const d = rect(q(".lock-divider"));
+    const r = rect(q("#run"));
+    return {
+      order: [first?.id, second?.className, third?.id],
+      button: [Math.round(b.width), Math.round(b.height)],
+      divider: [d.width, d.height],
+      gap: Math.round(r.left - b.right),
+      dividerBetween: d.left >= b.right && d.right <= r.left,
+      dividerCentred: Math.abs((d.top + d.bottom) / 2 - (b.top + b.bottom) / 2) <= 1,
+    };
+  };
+  const layoutOk = (l: ReturnType<typeof layout>) =>
+    l.order.join(",") === "lock,lock-divider,run" && l.button.join("x") === "24x24" && l.divider[0] === 1 && l.divider[1] === 16 && l.gap === 8 && l.dividerBetween && l.dividerCentred;
+  // Left edges of the visible bar parts from start/stop to the right (the same before and after locking)
+  const lefts = () =>
+    ["run", "freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open", "lang-toggle", "view-toggle"]
+      .map((id) => q(`[data-testid="${id}"]`))
+      .filter((el) => el.offsetParent !== null)
+      .map((el) => Math.round(rect(el).left * 10) / 10);
+  const name = () => ({ pressed: lock.getAttribute("aria-pressed"), label: lock.getAttribute("aria-label"), title: lock.title, icon: lock.querySelector<SVGElement>("svg.icon")?.dataset.icon });
+  // Everything the controls can change, read from data-* marks and attributes
+  const state = () =>
+    JSON.stringify({
+      running: q("#run").dataset.running,
+      holds: ["freeze-all", "freeze-before", "freeze-after"].map(pressed),
+      monitor: pressed("monitor-on"),
+      source: q("#route").dataset.source,
+      lang: document.documentElement.lang,
+      compact: document.body.classList.contains("compact"),
+      pitch: shiftValue("pitch"),
+      formant: shiftValue("formant"),
+      settings: q("#settings").matches(":popover-open"),
+      shortcuts: q<HTMLDialogElement>("#shortcuts").open,
+      message: q("#message").dataset.kind ?? "",
+    });
+  const inertParts = () => [...[...q(".bar").children].filter((el) => !el.matches(".lock, .lock-divider, .message")), q(".controls")] as HTMLElement[];
+  // Opacity as drawn: the product of the element's and its ancestors' opacity
+  const drawnOpacity = (el: Element) => {
+    let o = 1;
+    for (let e: Element | null = el; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity);
+    return Math.round(o * 100) / 100;
+  };
+
+  blur();
+  q("#message").textContent = "";
+  q("#message").dataset.kind = "";
+  // Start from a pitch that − and reset would change
+  click("pitch-up");
+  const fullUnlocked = layout();
+  const leftsUnlocked = lefts();
+  const nameUnlocked = name();
+  await shot("L-unlocked-full");
+
+  lock.click();
+  await sleep(200);
+  const fullLocked = layout();
+  const leftsLocked = lefts();
+  const nameLocked = name();
+  await shot("L-locked-full");
+  await record("L1-lock-button", layoutOk(fullUnlocked) && layoutOk(fullLocked) && JSON.stringify(leftsUnlocked) === JSON.stringify(leftsLocked), {
+    fullUnlocked,
+    fullLocked,
+    leftsUnlocked,
+    leftsLocked,
+  });
+
+  // L3: no button on the bar or in the left column changes anything while locked
+  {
+    const before = state();
+    const runEnabled = !disabled("run");
+    const pressedIds = ["run", "freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open", "lang-toggle", "view-toggle", "monitor-on", "route", "pitch-up", "pitch-down", "formant-up", "formant-down"];
+    for (const id of pressedIds) click(id);
+    document.querySelectorAll<HTMLButtonElement>("button.reset").forEach((b) => b.click());
+    await sleep(800);
+    const after = state();
+    const inert = inertParts().map((el) => ({ el: el.id || el.className, inert: el.inert }));
+    await record("L3-lock-buttons", isLocked() && before === after && inert.every((i) => i.inert), { before, after, runEnabled, pressed: pressedIds, inert });
+  }
+
+  // L4: typing in the value fields, the sliders, the selects, and the wheel change nothing while locked
+  {
+    const ids = ["pitch", "formant", "volume", "pitch-num", "formant-num", "input", "output", "monitor", "ceiling"];
+    const values = () => Object.fromEntries(ids.map((id) => [id, q<HTMLInputElement>(`#${id}`).value]));
+    const before = { state: state(), values: values() };
+    const setTo = (id: string, value: string, type: "input" | "change") => {
+      const el = q<HTMLInputElement | HTMLSelectElement>(`#${id}`);
+      el.value = value;
+      el.dispatchEvent(new Event(type, { bubbles: true }));
+    };
+    setTo("pitch", "5", "input");
+    setTo("formant", "0.5", "input");
+    setTo("volume", "0.2", "input");
+    setTo("pitch-num", "+7", "change");
+    setTo("ceiling", "6000", "change");
+    for (const id of ["input", "output", "monitor"]) {
+      const select = q<HTMLSelectElement>(`#${id}`);
+      const other = [...select.options].find((o) => o.value !== select.value);
+      if (other) setTo(id, other.value, "change");
+    }
+    const wheelPrevented: boolean[] = [];
+    for (const id of ["pitch-num", "pitch", "formant"]) {
+      const ev = new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true });
+      q(`#${id}`).dispatchEvent(ev);
+      wheelPrevented.push(ev.defaultPrevented);
+      await sleep(150);
+    }
+    await sleep(500);
+    const after = { state: state(), values: values() };
+    await record("L4-lock-fields", isLocked() && JSON.stringify(before) === JSON.stringify(after) && wheelPrevented.every(Boolean), { before, after, wheelPrevented });
+  }
+
+  // L5: keys change nothing while locked, sent from the body, a slider, a select, a button, and a value field; focus does not move and cannot be put on the controls
+  {
+    const before = state();
+    const focusBefore = document.activeElement;
+    const keys: [string, KeyboardEventInit][] = [
+      [" ", {}], ["Tab", {}], ["Tab", { shiftKey: true }], ["a", {}], ["s", {}], ["d", {}],
+      ["ArrowUp", {}], ["ArrowDown", {}], ["ArrowLeft", {}], ["ArrowRight", {}],
+      ["ArrowUp", { shiftKey: true }], ["ArrowRight", { shiftKey: true }], ["?", {}], ["Enter", {}],
+    ];
+    const notPrevented: string[] = [];
+    for (const target of [document.body, q("#volume"), q("#monitor"), q("#monitor-on"), q("#run"), q("#pitch-num"), lock]) {
+      for (const [k, opts] of keys) if (!key(k, opts, target)) notPrevented.push(`${target.id || target.tagName}:${opts.shiftKey ? "Shift+" : ""}${k}`);
+    }
+    await sleep(600);
+    const after = state();
+    q<HTMLButtonElement>("#monitor-on").focus();
+    q<HTMLInputElement>("#volume").focus();
+    const focusRefused = document.activeElement === focusBefore;
+    const lockFocusable = lock.tabIndex;
+    blur();
+    await record("L5-lock-keys", isLocked() && before === after && notPrevented.length === 0 && focusRefused && lockFocusable === -1, { before, after, notPrevented, focusRefused, lockFocusable });
+  }
+
+  // L6: the controls on the bar and in the left column are dimmed to 0.5 or less; the lock, the status message, the section frames, and the display are not
+  const look = () => {
+    const dimmed = [".hold-name", "#run", "#freeze-all", "#save", "#settings-open", "#shortcuts-open", "#lang-toggle", "#view-toggle", ".controls h2", ".controls .field-label", "button.step", "#pitch-num", "#pitch", "#volume", "#monitor", "#monitor-on", "#route", "button.reset"].map((sel) => ({ sel, o: drawnOpacity(q(sel)) }));
+    const kept = ["#lock", "#message", ".controls .group", "#before-panel", "#after-panel", ".spectrum-panel", ".table-panel"].map((sel) => ({ sel, o: drawnOpacity(q(sel)) }));
+    return { dimmed, kept };
+  };
+  {
+    const l = look();
+    const lockBg = getComputedStyle(lock).backgroundColor;
+    const lockIcon = getComputedStyle(lock.querySelector("svg.icon")!).color;
+    const fill = lockBg === resolved("ink") && lockIcon === resolved("on-fill");
+    await record("L6-lock-look", isLocked() && l.dimmed.every((d) => d.o <= 0.5) && l.kept.every((k) => k.o === 1) && fill, { ...l, lockBg, lockIcon, fill });
+  }
+
+  // L2: the lock button's state and name (English here, Japanese below), and the icon
+  lock.click();
+  await sleep(200);
+  const nameBack = name();
+  click("lang-toggle");
+  await sleep(200);
+  const jaUnlocked = name();
+  lock.click();
+  await sleep(200);
+  const jaLocked = name();
+  lock.click();
+  await sleep(200);
+  click("lang-toggle");
+  await sleep(200);
+  {
+    const want = (pressed: string, label: string, icon: string) => ({ pressed, label, title: label, icon });
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const en = lang() === "en";
+    await record(
+      "L2-lock-toggle",
+      en &&
+        same(nameUnlocked, want("false", "Lock controls", "unlock")) &&
+        same(nameLocked, want("true", "Unlock controls", "lock")) &&
+        same(nameBack, nameUnlocked) &&
+        same(jaUnlocked, want("false", "操作をロックする", "unlock")) &&
+        same(jaLocked, want("true", "ロックを解除する", "lock")),
+      { nameUnlocked, nameLocked, nameBack, jaUnlocked, jaLocked },
+    );
+  }
+
+  // L7: after unlocking, the buttons, sliders, and keys work as before
+  {
+    const source = () => q("#route").dataset.source;
+    const s0 = source();
+    click("route");
+    await sleep(400);
+    const byClick = source();
+    click("route");
+    await sleep(400);
+    blur();
+    const tabPrevented = key("Tab", {}, document.body);
+    await sleep(400);
+    const byTab = source();
+    key("Tab", {}, document.body);
+    await sleep(400);
+    const p0 = shiftValue("pitch");
+    click("pitch-down");
+    const byButton = shiftValue("pitch");
+    const slider = q<HTMLInputElement>("#pitch");
+    slider.value = "2";
+    slider.dispatchEvent(new Event("input"));
+    const bySlider = shiftValue("pitch");
+    q<HTMLButtonElement>('button.reset[data-target="pitch"]').click();
+    const byReset = shiftValue("pitch");
+    const notInert = inertParts().every((el) => !el.inert);
+    const undimmed = look().dimmed.every((d) => d.o === 1);
+    await record(
+      "L7-lock-released",
+      !isLocked() && byClick !== s0 && source() === s0 && tabPrevented && byTab !== s0 && Math.abs(byButton - (p0 - 0.1)) < 1e-6 && bySlider === 2 && byReset === 0 && notInert && undimmed,
+      { s0, byClick, tabPrevented, byTab, p0, byButton, bySlider, byReset, notInert, undimmed },
+    );
+  }
+
+  // L1 in the compact view: the lock is first on the one-row bar, and locking moves nothing
+  {
+    click("view-toggle");
+    await sleep(2500);
+    const compact = document.body.classList.contains("compact");
+    const unlocked = layout();
+    const leftsBefore = lefts();
+    const tops = ["lock", "run", "lang-toggle", "view-toggle"].map((id) => Math.round(rect(q(`[data-testid="${id}"]`)).top));
+    const oneRow = tops.every((top) => Math.abs(top - tops[0]) <= 1);
+    const inWindow = rect(q("#view-toggle")).right <= window.innerWidth;
+    await shot("L-unlocked-compact");
+    lock.click();
+    await sleep(300);
+    const locked = layout();
+    const leftsAfter = lefts();
+    await shot("L-locked-compact");
+    const compactLook = look();
+    lock.click();
+    await sleep(200);
+    click("view-toggle");
+    await sleep(1500);
+    await record(
+      "L1-lock-compact",
+      compact && layoutOk(unlocked) && layoutOk(locked) && oneRow && inWindow && JSON.stringify(leftsBefore) === JSON.stringify(leftsAfter) && compactLook.dimmed.filter((d) => q(d.sel).offsetParent !== null).every((d) => d.o <= 0.5),
+      { compact, unlocked, locked, tops, oneRow, inWindow, leftsBefore, leftsAfter, compactLook },
+    );
+  }
+  blur();
+}
+
 /// S17: hold keys. Holding needs analysis results, so call this while audio is running
 async function checkHoldKeys(record: (c: string, pass: boolean, detail: unknown) => Promise<void>): Promise<void> {
   const key = (k: string): boolean => {
@@ -565,7 +825,7 @@ function checkButtons(): { lang: string; bad: unknown[]; checked: number } {
     checked++;
     const h = Math.round(b.getBoundingClientRect().height);
     const text = b.textContent ?? "";
-    const needsIcon = b.dataset.icon !== undefined || ["run", "route", "view-toggle"].includes(b.id);
+    const needsIcon = b.dataset.icon !== undefined || ["lock", "run", "route", "view-toggle"].includes(b.id);
     const hasSvg = b.querySelector("svg.icon") !== null;
     // The pitch and formant value rows (−, +, and reset) are 32px to match the large value field
     const expected = b.closest(".value-row") ? 32 : 24;
@@ -596,7 +856,7 @@ function checkLegend(): { pass: boolean; detail: unknown } {
 /// Top bar (U1): all parts are there, none is wider than the window, and the bar is 32px high. There are no key hints, and there are dividers between the hold switch groups
 function checkBar(): { lang: string; pass: boolean; detail: unknown } {
   const bar = q(".bar").getBoundingClientRect();
-  const ids = ["run", "freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open", "lang-toggle", "view-toggle"];
+  const ids = ["lock", "run", "freeze-all", "freeze-before", "freeze-after", "save", "settings-open", "shortcuts-open", "lang-toggle", "view-toggle"];
   const parts = ids.map((id) => {
     const el = q(`[data-testid="${id}"]`);
     const r = el.getBoundingClientRect();
@@ -708,6 +968,12 @@ export async function runSelftest(dir: string): Promise<void> {
       "P1-shift-restored",
       expected !== null && Math.abs(shown[0] - expected[0]) < 1e-6 && Math.abs(shown[1] - expected[1]) < 1e-6,
       { expected, shown, pitchText: q<HTMLInputElement>("#pitch-num").value, formantText: q<HTMLInputElement>("#formant-num").value },
+    );
+    // L8: the lock is not remembered; every start is unlocked (the run before ends locked)
+    await record(
+      "L8-start-unlocked",
+      !pressed("lock") && !document.body.classList.contains("locked") && !q(".controls").inert && q("#lock").getAttribute("aria-label") === t("lock.on"),
+      { pressed: q("#lock").getAttribute("aria-pressed"), bodyLocked: document.body.classList.contains("locked"), controlsInert: q(".controls").inert },
     );
     // Language switch: the text changes and switching again changes it back (the chosen language is remembered in the test config directory)
     const startEn = q("#run").textContent;
@@ -841,6 +1107,8 @@ export async function runSelftest(dir: string): Promise<void> {
     }
     // Key mapping (S15–S20)
     await checkKeys(record);
+    // The lock (L1–L7)
+    await checkLock(record);
 
     if (q("#cable").dataset.found === "false") {
       // Without VB-CABLE, the output is empty and it cannot start (C4)
@@ -876,6 +1144,22 @@ export async function runSelftest(dir: string): Promise<void> {
       });
       let [b, a] = f0Row();
       await record("start-0st", near(b, 150, 1) && near(a, 150, 1), { before: b, after: a });
+
+      // L6: while locked and running, the plots keep updating, and STOP does not stop
+      {
+        const received = () => Number(JSON.parse(q("#test-stats").textContent || "{}").received ?? NaN);
+        click("lock");
+        await sleep(300);
+        const r0 = received();
+        click("run");
+        await sleep(2200);
+        const r1 = received();
+        const stillRunning = q("#run").dataset.running === "true";
+        await shot("L-locked-running");
+        click("lock");
+        await sleep(300);
+        await record("L6-lock-running", r1 > r0 && stillRunning && !pressed("lock"), { r0, r1, stillRunning });
+      }
 
       setNumber("pitch-num", 5);
       await sleep(3000);
@@ -1165,6 +1449,8 @@ export async function runSelftest(dir: string): Promise<void> {
       const cases = [...smallTable.map((c) => ({ size: "960x640", ...c })), ...bigTable.map((c) => ({ size: "1280x860", ...c }))];
       await record("U4-table", small.ok && back.ok && cases.every((c) => c.fits), { cases });
     }
+    // End locked, so the next start shows that the lock is not remembered (L8)
+    if (!pressed("lock")) click("lock");
   } catch (e) {
     await record("error", false, { message: String(e) });
   }

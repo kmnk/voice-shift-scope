@@ -101,7 +101,7 @@ S9 (key hints on the hold switches) and S14 (length of the left column) were rep
 
 | Name | What it checks | Checked by |
 | --- | --- | --- |
-| U1 | At 1280×860 and 960×640, in English and Japanese, the top bar has start/stop, the three hold switches, save, the status message, and the settings, ?, language, and view buttons; no part is wider than the window; the bar is 32 px high. The bar has no key hints, and there are 2 divider lines (1 px wide, 16 px high) between the groups of hold switches | `selftest` (`U1-bar`, `U1-bar-960x640`) |
+| U1 | At 1280×860 and 960×640, in English and Japanese, the top bar has the lock, start/stop, the three hold switches, save, the status message, and the settings, ?, language, and view buttons; no part is wider than the window; the bar is 32 px high. The bar has no key hints, and there are 2 divider lines (1 px wide, 16 px high) between the groups of hold switches | `selftest` (`U1-bar`, `U1-bar-960x640`) |
 | U2 | In the same 4 cases, the left column has only the `PITCH`, `FORMANT`, and `DEVICES` sections, and its `scrollHeight` does not exceed its `clientHeight` | `selftest` (`U2-column`, `U2-column-960x640`) |
 | U3 | The settings button opens the panel; the analysis settings are in the panel; Esc and clicking outside close it; focus returns to the settings button | `selftest` (`U3-settings`) |
 | U4 | The values table stays within its frame, and the two spectrograms have the same width and height | `selftest` (`U4-table`) |
@@ -115,6 +115,23 @@ S9 (key hints on the hold switches) and S14 (length of the left column) were rep
 | U12 | In the compact view, the hold switches, save, settings, and ? buttons are hidden, the sections are in the order `PITCH`, `FORMANT`, `DEVICES`, and the left column is 250 px wide | `selftest` (`U12-compact`, `compact-view`) |
 
 U13 checked that the self-test results did not change during that change.
+
+## L. Lock
+
+The lock button is the first part of the top bar. While locked, nothing but the lock button changes the state. The self-test sends synthetic events, which do not run the browser's default actions (focus moving with `Tab`, `Space` or `Enter` pressing a focused button, dragging a slider, opening a select). So for keys it checks that they are `preventDefault`ed, and for the mouse that the parts are `inert`.
+
+| Name | What it checks | Checked by |
+| --- | --- | --- |
+| L1 | In the full and compact views, the bar starts with the lock button (24×24 px), then a divider (1 px wide, 16 px high, vertically centred on the button), then start/stop 8 px to the right of the lock. Locking does not move start/stop or any part to its right. In the compact view the lock, start/stop, language, and view buttons are on one row | `selftest` (`L1-lock-button`, `L1-lock-compact`) |
+| L2 | Pressing the lock sets `aria-pressed` to `true`, the name (`title` and `aria-label`) to `Unlock controls` / `ロックを解除する`, and the icon to `lock`. Pressing it again gives `false`, `Lock controls` / `操作をロックする`, and `unlock` | `selftest` (`L2-lock-toggle`) |
+| L3 | While locked, pressing start/stop, the three hold switches, save, settings, ?, language, view, MON, SRC, `−`, `+`, and reset changes nothing (running, the hold switches, MON, SRC, language, view, pitch, formant, the settings panel, the shortcut list, the status message), and the parts on the bar other than the lock, its divider, and the status message, and the left column, are `inert` | `selftest` (`L3-lock-buttons`) |
+| L4 | While locked, the pitch, formant, and volume sliders, typing in the value fields and the ceiling field, the IN, OUT, and monitor selects, and the wheel on the value field and sliders change no value, and the controls show the current values again | `selftest` (`L4-lock-fields`) |
+| L5 | While locked, `Space`, `Tab`, `Shift+Tab`, `A`, `S`, `D`, the arrows (also with `Shift`), `?`, and `Enter`, sent from the body, the volume slider, the monitor select, the MON and start/stop buttons, the pitch field, and the lock button, are all `preventDefault`ed and change nothing; the controls cannot take focus; the lock button has `tabindex="-1"` | `selftest` (`L5-lock-keys`) |
+| L6 | While locked, the parts on the bar and the contents of the left column are drawn at opacity 0.5 or less, and the lock button, the status message, the section frames, and the plots, spectrum, and values table at 1. The lock button is filled with `--ink` with the icon in `--on-fill`. While running and locked, the number of analysis results received keeps growing and STOP does not stop | `selftest` (`L6-lock-look`; `L6-lock-running` runs only with VB-CABLE) |
+| L7 | After unlocking, SRC switches by button and by `Tab`, and `−`, the slider, and reset change the pitch; nothing is `inert` or dimmed | `selftest` (`L7-lock-released`) |
+| L8 | Every start is unlocked. The self-test ends locked, so running it twice with the same `VOICE_SHIFT_SCOPE_CONFIG_DIR` checks that the lock is not remembered | `selftest` (`L8-start-unlocked`) |
+
+The self-test also writes `shots/L-unlocked-full.png`, `L-locked-full.png`, `L-unlocked-compact.png`, `L-locked-compact.png`, and (with VB-CABLE) `L-locked-running.png`.
 
 ## P. Remembering the pitch and formant
 
