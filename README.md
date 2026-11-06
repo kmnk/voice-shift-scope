@@ -38,6 +38,8 @@ The current release packages are not code-signed, so you may see the following.
 
 The `?` button on the top bar lists the keyboard shortcuts.
 
+The lock button at the start of the top bar stops every other button, field, and key until it is pressed again. The plots keep updating while locked.
+
 ## Passing the voice to another app
 
 `OUT` can be any playback device, such as speakers or headphones. To pass the shifted voice to a call or recording app as a microphone, install a virtual audio device such as VB-CABLE (https://vb-audio.com/Cable/ ), choose its playback side in `OUT` (`CABLE Input` for VB-CABLE), and choose its recording side (`CABLE Output`) as the microphone in the other app. If VB-CABLE is installed and `OUT` has never been chosen, the app chooses it (the chosen `OUT` is kept for the next start).
