@@ -817,6 +817,13 @@ function blur(): void {
 const OLD_ICONS = /[\u25B6\u25A0\u23F8\u21C4\u21BA\u21F2\u21F1\u26A0]|\u{1F3A7}|\u{1F4F7}/u;
 
 /// S2: visible buttons have no emoji or symbol icons and are 24px high. Buttons with icons have an SVG
+/// How far the middle of the icon is from the middle of the button, in px (positive: to the right)
+function centerOffset(b: HTMLElement, svg: SVGElement): number {
+  const br = b.getBoundingClientRect();
+  const ir = svg.getBoundingClientRect();
+  return ir.left + ir.width / 2 - (br.left + br.width / 2);
+}
+
 function checkButtons(): { lang: string; bad: unknown[]; checked: number } {
   const bad: unknown[] = [];
   let checked = 0;
@@ -829,7 +836,10 @@ function checkButtons(): { lang: string; bad: unknown[]; checked: number } {
     const hasSvg = b.querySelector("svg.icon") !== null;
     // The pitch and formant value rows (−, +, and reset) are 32px to match the large value field
     const expected = b.closest(".value-row") ? 32 : 24;
-    if (h !== expected || OLD_ICONS.test(text) || (needsIcon && !hasSvg)) bad.push({ id: b.id || b.className, h, text, needsIcon, hasSvg });
+    // An icon-only button has its icon in the middle (an empty .label beside it would push the icon 2px to the left)
+    const svg = b.querySelector<SVGElement>(":scope > svg.icon");
+    const off = svg && text.trim() === "" ? centerOffset(b, svg) : 0;
+    if (h !== expected || OLD_ICONS.test(text) || (needsIcon && !hasSvg) || Math.abs(off) > 0.5) bad.push({ id: b.id || b.className, h, text, needsIcon, hasSvg, off });
   });
   const texts = [...document.querySelectorAll<HTMLElement>("figcaption, .message, .cable")].map((e) => e.textContent ?? "");
   for (const text of texts) if (OLD_ICONS.test(text)) bad.push({ text });
